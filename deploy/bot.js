@@ -41,6 +41,7 @@ let temperature = parseFloat(arg("--temp", "1.0"));
 const joinId = arg("--join", null);
 // ms de extrapolación como cliente; por defecto se mide en vivo (ver inputDelayTicks)
 const extrapMs = arg("--extrap", null) != null ? parseFloat(arg("--extrap")) : null;
+const STADIUM_ARG = arg("--stadium", null);
 
 // Modelo multi-tarea (obs "universal", train/multitask.py): juega cualquier mapa y formato.
 // La geometría del mapa de la sala se calcula con el mismo código Python del entrenamiento
@@ -128,8 +129,10 @@ function BotPlugin(session) {
     // si hay más jugadores que en el entrenamiento, usar los más cercanos a la pelota
     const mates = inGame.filter((p) => teamIdx(p.team.id) === myTeam).sort((a, b) => d2(a) - d2(b)).slice(0, T - 1);
     const opps = inGame.filter((p) => teamIdx(p.team.id) !== myTeam).sort((a, b) => d2(a) - d2(b)).slice(0, T);
-    const conv = (p) => ({ team: teamIdx(p.team.id), pos: [disc(p).pos.x, disc(p).pos.y],
-                           vel: [disc(p).speed.x, disc(p).speed.y], canKick: true, touching: false });
+    const conv = (p) => ({
+      team: teamIdx(p.team.id), pos: [disc(p).pos.x, disc(p).pos.y],
+      vel: [disc(p).speed.x, disc(p).speed.y], canKick: true, touching: false
+    });
     const players = [conv(me), ...mates.map(conv), ...opps.map(conv)];
     // rellenar con jugadores "fantasma" parados en su arco si faltan
     const ghost = (team) => ({ team, pos: [team === 0 ? -META.goal_x : META.goal_x, 0], vel: [0, 0], canKick: true, touching: false });
@@ -157,7 +160,7 @@ function BotPlugin(session) {
       assertObservationContract(META, rules);
       geom = stadiumGeometry(st);
       console.log(`mapa "${st.name}": cancha ${geom.field_half_w}x${geom.field_half_h}, reglas ` +
-                  `${rules.psOn ? "real (powershot + pelotas paradas)" : "sin script"}`);
+        `${rules.psOn ? "real (powershot + pelotas paradas)" : "sin script"}`);
       return true;
     } catch (e) {
       console.error("no pude calcular la geometría del mapa:", e.message);
@@ -183,8 +186,10 @@ function BotPlugin(session) {
     const bd = (useExt && ball.ext) || ball;
     const bpos = [bd.pos.x, bd.pos.y];
     const others = room.state.players.filter((p) => p.disc && teamIdx(p.team.id) >= 0 && p.id !== me.id);
-    const conv = (p) => ({ team: teamIdx(p.team.id), pos: [disc(p).pos.x, disc(p).pos.y],
-                           vel: [disc(p).speed.x, disc(p).speed.y], canKick: true, touching: false });
+    const conv = (p) => ({
+      team: teamIdx(p.team.id), pos: [disc(p).pos.x, disc(p).pos.y],
+      vel: [disc(p).speed.x, disc(p).speed.y], canKick: true, touching: false
+    });
     const players = [conv(me), ...others.map(conv)];
     const dist = Math.hypot(bpos[0] - players[0].pos[0], bpos[1] - players[0].pos[1]);
     players[0].touching = dist - geom.player_radius - geom.ball_radius < KICK_REACH;
@@ -196,9 +201,11 @@ function BotPlugin(session) {
       chargeTicks = players[0].touching && lastKey.kick ? chargeTicks + 1 : 0;
       const g = bd.gravity || { x: 0, y: 0 };
       const invb = (bd.invMass - geom.ball_invmass) / (cfg.power_inv - geom.ball_invmass);
-      ps = { comba: g.x !== 0 || g.y !== 0 ? 1 : 0, prog: Math.min(chargeTicks / cfg.charge, 1),
-             invb: Math.min(Math.max(invb, 0), 1), grav: [g.x / cfg.grav, g.y / cfg.grav],
-             holder: chargeTicks > 0 ? 0 : -1 };
+      ps = {
+        comba: g.x !== 0 || g.y !== 0 ? 1 : 0, prog: Math.min(chargeTicks / cfg.charge, 1),
+        invb: Math.min(Math.max(invb, 0), 1), grav: [g.x / cfg.grav, g.y / cfg.grav],
+        holder: chargeTicks > 0 ? 0 : -1
+      };
     }
     return {
       ball: { pos: bpos, vel: [bd.speed.x, bd.speed.y] },
@@ -250,8 +257,10 @@ function BotPlugin(session) {
       ? buildObsUniversal(s, 0, geom, { maxEntities: s.players.length - 1, ...rules })
       : buildObs(s, 0, META);
     const generation = policyMemory.generation;
-    session.run({ obs: new ort.Tensor("float32", Float32Array.from(obs), [1, obs.length]),
-                  ...policyMemory.feeds(ort) })
+    session.run({
+      obs: new ort.Tensor("float32", Float32Array.from(obs), [1, obs.length]),
+      ...policyMemory.feeds(ort)
+    })
       .then((out) => {
         if (generation !== policyMemory.generation) return;
         const a = sample(Array.from(out.logits.data));
@@ -313,6 +322,19 @@ function BotPlugin(session) {
     onOpen: (room) => {
       console.log("conectado a la sala:", room.name);
       room.onAfterRoomLink = (link) => console.log("link de la sala:", link);
+
+      if (STADIUM_ARG) {
+        const stadiumPath = path.join(REPO, "stadiums", `${STADIUM_ARG}.hbs`);
+
+        if (!fs.existsSync(stadiumPath)) {
+          console.error("No existe el mapa:", stadiumPath);
+        } else {
+          const stadiumText = fs.readFileSync(stadiumPath, "utf8");
+          const stadium = Utils.parseStadium(stadiumText);
+          room.setCurrentStadium(stadium);
+          console.log("mapa cargado:", stadiumPath);
+        }
+      }
     },
     onClose: (e) => { console.log("sala cerrada", e?.toString?.() ?? ""); process.exit(0); },
   };

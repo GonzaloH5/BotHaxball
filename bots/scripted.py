@@ -140,217 +140,439 @@ def _restart_kernel(rows, players, actions, bp, pp, team, sign, owner, kind, exc
 
 
 @njit(cache=True, nogil=True)
-def _six_cover_target(ordinal, bx, by, gx, H, radii):
-    """Roles estables por identidad: cuatro carriles de apoyo y un portero.
+def _clamp(v, lo, hi):
+    if v < lo:
+        return lo
+    if v > hi:
+        return hi
+    return v
 
-    El quinto jugador de campo (el más cercano) presiona en el llamador.
-    No cambiar carril con el ranking de distancias evita cruces/oscilaciones.
+
+@njit(cache=True, nogil=True)
+def _keeper_target(bx, by, gx, H, radii):
     """
-    if ordinal == 5:
-        x = -gx + max(60.0, .06 * gx)
-        y = min(max(by * .35, -.16 * H), .16 * H)
-    else:
-        depth = .12 if ordinal in (0, 4) else (.30 if ordinal in (1, 3) else .45)
-        x = max(bx - depth * gx, -.78 * gx)  # no ocupar el mismo fondo que el portero
-        y = by * .20 + (ordinal - 2) * .25 * H
-    margin = radii + 20.0
-    x = min(max(x, -gx + margin), gx - margin)
-    y = min(max(y, -H + margin), H - margin)
+    Portero dinámico.
+
+    Cerca de nuestro arco se queda profundo.
+    Cuando la pelota está lejos, adelanta la línea para no vivir
+    permanentemente dentro del arco.
+    """
+    phase = (bx + gx) / max(2.0 * gx, 1e-9)
+    phase = _clamp(phase, 0.0, 1.0)
+
+    base = max(35.0, 0.05 * gx)
+
+    # Puede adelantar hasta ~18% de la cancha cuando atacamos.
+    x = -gx + base + phase * 0.18 * gx
+
+    # Nunca convertirse en mediocampista.
+    x = min(x, -0.62 * gx)
+
+    # Sigue lateralmente la pelota, pero sin pegarse a los palos.
+    y = _clamp(by * 0.35, -0.30 * H, 0.30 * H)
+
     return x, y
 
 
 @njit(cache=True, nogil=True)
-def _scripted_kernel(rows, players, ball_pos, ball_vel, pp, team, sign, gx, H, radii, T):
+def _support_target(
+    support_rank,
+    support_count,
+    lane_ordinal,
+    field_count,
+    bx,
+    by,
+    gx,
+    H,
+    radii,
+    defending,
+):
+    """
+    Posición de los jugadores que no son presionador ni portero.
+
+    support_rank:
+        orden por cercanía a la pelota entre los apoyos.
+
+    lane_ordinal:
+        carril estable por identidad para evitar que todos persigan
+        exactamente el mismo punto.
+    """
+
+    if support_count <= 1:
+        rel = 0.0
+    else:
+        rel = support_rank / float(support_count - 1)
+
+    # El apoyo más cercano queda relativamente cerca de la jugada.
+    # Los siguientes forman líneas progresivamente más profundas.
+    depth = 0.18 + 0.28 * rel
+
+    if defending:
+        depth += 0.07
+
+    target_x = bx - depth * gx
+
+    # Los jugadores de campo nunca deben hundirse hasta el arco.
+    min_x = -0.72 * gx
+    max_x = gx - max(50.0, radii + 20.0)
+    target_x = _clamp(target_x, min_x, max_x)
+
+    # Carriles estables.
+    #
+    # field_count = jugadores de campo totales, incluido el presionador.
+    if field_count <= 1:
+        lane = 0.0
+    else:
+        center = (field_count - 1) * 0.5
+        lane_step = 0.55 * H / float(field_count - 1)
+        lane = (lane_ordinal - center) * lane_step
+
+    if defending:
+        # En defensa convergen algo hacia la pelota,
+        # pero conservando separación lateral.
+        target_y = by * 0.38 + lane * 0.75
+    else:
+        target_y = by * 0.28 + lane
+
+    margin = radii + 18.0
+    target_y = _clamp(target_y, -H + margin, H - margin)
+
+    return target_x, target_y
+
+
+@njit(cache=True, nogil=True)
+def _scripted_kernel(
+    rows,
+    players,
+    ball_pos,
+    ball_vel,
+    pp,
+    team,
+    sign,
+    gx,
+    H,
+    radii,
+    T,
+):
     out = np.empty((len(rows), len(players)), dtype=np.int64)
+
     for i in range(len(rows)):
         n = rows[i]
+
+        # ---------------------------------------------------------
+        # Distancia de TODOS los jugadores a la pelota.
+        # ---------------------------------------------------------
         distances = np.empty(pp.shape[1])
+
         for q in range(pp.shape[1]):
-            dx, dy = pp[n, q, 0] - ball_pos[n, 0], pp[n, q, 1] - ball_pos[n, 1]
+            dx = pp[n, q, 0] - ball_pos[n, 0]
+            dy = pp[n, q, 1] - ball_pos[n, 1]
             distances[q] = math.sqrt(dx * dx + dy * dy)
+
         for j in range(len(players)):
             p = players[j]
+            my_team = team[p]
             s = sign[p]
-            bx, by = ball_pos[n, 0] * s, ball_pos[n, 1]
+
+            bx = ball_pos[n, 0] * s
+            by = ball_pos[n, 1]
+
+            px = pp[n, p, 0] * s
+            py = pp[n, p, 1]
+
+            # -----------------------------------------------------
+            # Identidad dentro del equipo.
+            # -----------------------------------------------------
+            ordinal = 0
+            team_count = 0
+            keeper = -1
+
+            for q in range(pp.shape[1]):
+                if team[q] != my_team:
+                    continue
+
+                if q < p:
+                    ordinal += 1
+
+                team_count += 1
+                keeper = q
+
+            # En 1v1 y 2v2 no hay portero fijo.
+            if T < 3:
+                keeper = -1
+
+            # -----------------------------------------------------
+            # Presionador:
+            # jugador de campo más cercano a la pelota.
+            # -----------------------------------------------------
+            presser = -1
+            presser_distance = math.inf
+
+            for q in range(pp.shape[1]):
+                if team[q] != my_team:
+                    continue
+
+                if q == keeper:
+                    continue
+
+                if distances[q] < presser_distance:
+                    presser = q
+                    presser_distance = distances[q]
+
+            # -----------------------------------------------------
+            # Portero-líbero.
+            #
+            # Si la pelota está prácticamente encima del arco y
+            # el portero llega MUCHO antes, él se convierte
+            # temporalmente en el presionador.
+            # -----------------------------------------------------
+            if keeper >= 0:
+                keeper_bx = ball_pos[n, 0] * sign[keeper]
+
+                if (
+                    keeper_bx < -0.72 * gx
+                    and distances[keeper] + 25.0 < presser_distance
+                ):
+                    presser = keeper
+                    presser_distance = distances[keeper]
+
+            # -----------------------------------------------------
+            # Mejor rival respecto de la pelota.
+            # -----------------------------------------------------
+            opponent_best = math.inf
+
+            for q in range(pp.shape[1]):
+                if team[q] != my_team:
+                    if distances[q] < opponent_best:
+                        opponent_best = distances[q]
+
+            defending = (
+                bx < 0.0
+                and opponent_best + 20.0 < presser_distance
+            )
+
+            # -----------------------------------------------------
+            # Objetivo ofensivo para EL presionador.
+            # -----------------------------------------------------
             fx = bx + ball_vel[n, 0] * s * 6.0
             fy = by + ball_vel[n, 1] * 6.0
-            px, py = pp[n, p, 0] * s, pp[n, p, 1]
-            dx, dy = gx - fx, -fy
-            norm = max(math.sqrt(dx * dx + dy * dy), 1e-9)
-            tx, ty = dx / norm, dy / norm
-            dx, dy = fx - px, fy - py
-            distance = math.sqrt(dx * dx + dy * dy)
-            norm = max(distance, 1e-9)
-            aligned = (dx / norm) * tx + (dy / norm) * ty > 0.8
+
+            goal_dx = gx - fx
+            goal_dy = -fy
+            goal_norm = max(
+                math.sqrt(goal_dx * goal_dx + goal_dy * goal_dy),
+                1e-9,
+            )
+
+            tx = goal_dx / goal_norm
+            ty = goal_dy / goal_norm
+
+            ball_dx = fx - px
+            ball_dy = fy - py
+
+            distance = math.sqrt(
+                ball_dx * ball_dx + ball_dy * ball_dy
+            )
+
+            ball_norm = max(distance, 1e-9)
+
+            aligned = (
+                (ball_dx / ball_norm) * tx
+                + (ball_dy / ball_norm) * ty
+                > 0.8
+            )
+
+            # Objetivo ofensivo original.
             if aligned:
-                target_x, target_y = fx, fy
+                attack_x = fx
+                attack_y = fy
+
             elif px > fx - 5.0:
                 delta = py - fy + 1e-6
-                side = 1.0 if delta > 0 else (-1.0 if delta < 0 else 0.0)
-                target_x, target_y = min(fx - 10.0, px), fy + side * (radii + 25.0)
-            else:
-                target_x, target_y = fx - tx * (radii + 6.0), fy - ty * (radii + 6.0)
-            opponent = math.inf
-            rank = 0
-            for q in range(pp.shape[1]):
-                if team[q] != team[p]:
-                    opponent = min(opponent, distances[q])
-                elif distances[q] < distances[p] or (distances[q] == distances[p] and q < p):
-                    rank += 1
-            if T == 6:
-                # Portero fijo; el más cercano ENTRE LOS CINCO DE CAMPO nunca
-                # abandona la presión sólo porque el rival llega antes.
-                ordinal, keeper = 0, -1
-                for q in range(pp.shape[1]):
-                    if team[q] == team[p]:
-                        keeper = q
-                        if q < p:
-                            ordinal += 1
 
-                field_rank = 0
-                for q in range(pp.shape[1]):
-                    if team[q] == team[p] and q != keeper:
-                        if distances[q] < distances[p] or (distances[q] == distances[p] and q < p):
-                            field_rank += 1
-
-                if p == keeper or field_rank > 0:
-                    target_x, target_y = _six_cover_target(
-                        ordinal, bx, by, gx, H, radii
-                    )
-
-            elif T != 4 and opponent + 20.0 < distance and bx < 0:
-                target_x, target_y = -gx + 30.0, by * 0.4
-
-            if T == 4:
-                if rank == 0:
-                    # El más cercano mantiene la lógica ofensiva.
-                    pass
-
-                elif rank == 1:
-                    # Apoyo lateral.
-                    lateral = (-1.0 if by > 0 else 1.0) * 0.30 * H
-                    target_x = bx - 0.20 * gx
-                    target_y = by * 0.35 + lateral
-
-                elif rank == 2:
-                    # Defensor, sin hundirse hasta el arco.
-                    target_x = max(-0.55 * gx, bx - 0.35 * gx)
-                    target_y = by * 0.25
-
+                if delta > 0:
+                    side = 1.0
+                elif delta < 0:
+                    side = -1.0
                 else:
-                    # Portero.
-                    target_x = -gx + 35.0
-                    target_y = min(max(by * 0.20, -0.22 * H), 0.22 * H)
+                    side = 0.0
 
-            elif T != 6 and rank == 1:
-                lateral = (-1.0 if by > 0 else 1.0) * 0.28 * H
-                target_x = bx - 0.18 * gx
-                target_y = by * 0.4 + lateral
+                attack_x = min(fx - 10.0, px)
+                attack_y = fy + side * (radii + 25.0)
 
-            elif T != 6 and rank >= 2:
-                target_x = min(bx - 0.25 * gx, -0.55 * gx)
-                target_y = by * 0.35
+            else:
+                attack_x = fx - tx * (radii + 6.0)
+                attack_y = fy - ty * (radii + 6.0)
 
-            dx, dy = target_x - px, target_y - py
+            # -----------------------------------------------------
+            # ROLE SELECTION
+            # -----------------------------------------------------
+
+            if p == presser:
+                # Exactamente uno va a disputar la pelota.
+                target_x = attack_x
+                target_y = attack_y
+
+            elif p == keeper:
+                # Portero estable.
+                target_x, target_y = _keeper_target(
+                    bx,
+                    by,
+                    gx,
+                    H,
+                    radii,
+                )
+
+            else:
+                # -------------------------------------------------
+                # Jugador de apoyo / cobertura.
+                #
+                # Ranking solamente entre jugadores que NO son
+                # presionador ni portero.
+                # -------------------------------------------------
+                support_rank = 0
+                support_count = 0
+
+                for q in range(pp.shape[1]):
+                    if team[q] != my_team:
+                        continue
+
+                    if q == presser or q == keeper:
+                        continue
+
+                    if q == p:
+                        continue
+
+                    support_count += 1
+
+                    if (
+                        distances[q] < distances[p]
+                        or (
+                            distances[q] == distances[p]
+                            and q < p
+                        )
+                    ):
+                        support_rank += 1
+
+                # incluirnos
+                support_count += 1
+
+                # Carril estable entre los jugadores de campo.
+                lane_ordinal = 0
+                field_count = 0
+
+                for q in range(pp.shape[1]):
+                    if team[q] != my_team or q == keeper:
+                        continue
+
+                    if q < p:
+                        lane_ordinal += 1
+
+                    field_count += 1
+
+                target_x, target_y = _support_target(
+                    support_rank,
+                    support_count,
+                    lane_ordinal,
+                    field_count,
+                    bx,
+                    by,
+                    gx,
+                    H,
+                    radii,
+                    defending,
+                )
+
+            # -----------------------------------------------------
+            # Convertir objetivo en acción 0..8.
+            # -----------------------------------------------------
+            dx = target_x - px
+            dy = target_y - py
+
             norm = math.sqrt(dx * dx + dy * dy)
             denominator = max(norm, 1e-9)
-            ux, uy = dx / denominator, dy / denominator
 
-            best, move = -math.inf, 1
+            ux = dx / denominator
+            uy = dy / denominator
+
+            best = -math.inf
+            move = 1
+
             for m in range(1, 9):
-                score = ux * MOVE_UNIT[m, 0] + uy * MOVE_UNIT[m, 1]
+                score = (
+                    ux * MOVE_UNIT[m, 0]
+                    + uy * MOVE_UNIT[m, 1]
+                )
+
                 if score > best:
-                    best, move = score, m
+                    best = score
+                    move = m
 
             if norm < 2.0:
                 move = 0
 
-            out[i, j] = move + 9 * (aligned and distance < radii + 8.0)
+            # Cualquier jugador puede despejar/rematar si la pelota
+            # accidentalmente llega a sus pies y está bien orientado.
+            kick = aligned and distance < radii + 8.0
+
+            out[i, j] = move + 9 * kick
 
     return out
 
 
-def _scripted_reference(env, players: np.ndarray | None = None, eps: float = 0.0,
-                     rng: np.random.Generator | None = None) -> np.ndarray:
-    """Acciones (N, len(players)) en marco propio para los jugadores `players` de `env`."""
+def _scripted_reference(
+    env,
+    players: np.ndarray | None = None,
+    eps: float = 0.0,
+    rng: np.random.Generator | None = None,
+) -> np.ndarray:
+    """
+    Versión Python de exactamente la misma política táctica
+    utilizada por el kernel optimizado.
+    """
     rng = rng or np.random.default_rng()
+
     sim = env.sim
-    P = sim.P
-    players = np.arange(P) if players is None else np.asarray(players)
-    sign = env.sign[players]
-    st = sim.st
-    r_p = st.player["radius"]
-    r_b = st.ball["radius"]
-    gx = env.goal_x
 
-    ball = np.repeat(sim.ball_pos[:, None], len(players), 1).copy()
-    ball[..., 0] *= sign
-    bvel = np.repeat(sim.ball_vel[:, None], len(players), 1).copy()
-    bvel[..., 0] *= sign
-    me = sim.player_pos[:, players].copy()
-    me[..., 0] *= sign
+    players = (
+        np.arange(sim.P, dtype=np.int64)
+        if players is None
+        else np.asarray(players, dtype=np.int64)
+    )
 
-    # anticipar un poco la pelota
-    ball_f = ball + bvel * 6.0
-    goal = np.array([gx, 0.0])
-    to_goal = goal - ball_f
-    to_goal /= np.maximum(np.linalg.norm(to_goal, axis=-1, keepdims=True), 1e-9)
-    behind = ball_f - to_goal * (r_p + r_b + 6.0)
+    rows = np.arange(sim.N, dtype=np.int64)
 
-    to_ball = ball_f - me
-    dist_ball = np.linalg.norm(to_ball, axis=-1)
-    unit_tb = to_ball / np.maximum(dist_ball, 1e-9)[..., None]
-    aligned = np.sum(unit_tb * to_goal, axis=-1) > 0.8
+    actions = _scripted_kernel.py_func(
+        rows,
+        players,
+        sim.ball_pos,
+        sim.ball_vel,
+        sim.player_pos,
+        sim.player_team,
+        env.sign,
+        env.goal_x,
+        sim.st.field_half_h,
+        float(
+            sim.st.player["radius"]
+            + sim.st.ball["radius"]
+        ),
+        env.T,
+    )
 
-    # rodear la pelota: si estoy delante de ella, desviarme lateralmente
-    ahead = me[..., 0] > ball_f[..., 0] - 5.0
-    side = np.sign(me[..., 1] - ball_f[..., 1] + 1e-6)
-    detour = behind.copy()
-    detour[..., 1] = ball_f[..., 1] + side * (r_p + r_b + 25.0)
-    detour[..., 0] = np.minimum(ball_f[..., 0] - 10.0, me[..., 0])
-    target = np.where(aligned[..., None], ball_f, np.where(ahead[..., None], detour, behind))
-
-    # defensa: el rival más cercano a la pelota llega antes y la pelota está en mi mitad
-    team = sim.player_team[players]
-    d_all = np.linalg.norm(sim.player_pos - sim.ball_pos[:, None], axis=-1)  # (N, P)
-    opp_best = np.stack([np.min(d_all[:, sim.player_team != t], axis=1) for t in team], axis=1)
-    defend = (opp_best + 20.0 < dist_ball) & (ball[..., 0] < 0)
-    guard = np.stack([np.full(ball.shape[:-1], -gx + 30.0), ball[..., 1] * 0.4], axis=-1)
-    if env.T != 6:
-        target = np.where(defend[..., None], guard, target)
-
-    # roles por equipo: el más cercano a la pelota va a buscarla; el 2º se abre para apoyar
-    # (atrás y hacia el centro) y el resto cubre el arco. Sin esto los tres se amontonan.
-    if env.T == 6:
-        for j, p in enumerate(players):
-            mates = np.flatnonzero(sim.player_team == sim.player_team[p])
-            keeper = mates[-1]
-            ordinal = int(np.flatnonzero(mates == p)[0])
-            field = mates[:-1]
-            dp = d_all[:, p][:, None]
-            rank = ((d_all[:, field] < dp) | ((d_all[:, field] == dp) & (field[None, :] < p))).sum(axis=1)
-            for n in range(sim.N):
-                if p == keeper or rank[n] > 0:
-                    target[n, j] = _six_cover_target.py_func(ordinal, ball[n, j, 0], ball[n, j, 1],
-                                                            gx, st.field_half_h, r_p + r_b)
-    elif env.T > 1:
-        rank = np.zeros((sim.N, len(players)), dtype=np.int64)
-        for j, p in enumerate(players):
-            mates = np.where(sim.player_team == sim.player_team[p])[0]
-            dp = d_all[:, p][:, None]
-            dm = d_all[:, mates]
-            rank[:, j] = ((dm < dp) | ((dm == dp) & (mates[None, :] < p))).sum(axis=1)
-        lateral = np.where(ball[..., 1] > 0, -1.0, 1.0) * 0.28 * st.field_half_h
-        support = np.stack([ball[..., 0] - 0.18 * gx, ball[..., 1] * 0.4 + lateral], axis=-1)
-        cover = np.stack([np.minimum(ball[..., 0] - 0.25 * gx, -0.55 * gx), ball[..., 1] * 0.35], axis=-1)
-        target = np.where((rank == 1)[..., None], support, np.where((rank >= 2)[..., None], cover, target))
-
-    move = _dir_to_action(target - me)
-    kick = aligned & (dist_ball < r_p + r_b + 8.0)
-    act = move + 9 * kick
-    act = _restart_actions(env, np.arange(sim.N), players, act)
+    actions = _restart_actions(
+        env,
+        rows,
+        players,
+        actions,
+    )
 
     if eps > 0:
-        rnd = rng.random(act.shape) < eps
-        act = np.where(rnd, rng.integers(0, 18, act.shape), act)
-    return act
+        rnd = rng.random(actions.shape) < eps
+
+        actions = np.where(
+            rnd,
+            rng.integers(0, 18, actions.shape),
+            actions,
+        )
+
+    return actions
