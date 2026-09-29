@@ -3,8 +3,8 @@
 run_name: multi
 seed: 0
 tasks_file: train/tasks.yaml
-# Las marcas históricas de RS4 con powershot no son comparables con RS normal.
-task_metric_versions: {rs4_4v4: 1}
+# Invalidar marcas no comparables: RS4 cambió reglas; JJRS cambió de scripted.
+task_metric_versions: {rs4_4v4: 1, jjrs_6v6: 1}  # JJRS: scripted con roles 6v6 corregidos
 
 env:
   agents: 1152            # agentes simultáneos en total (se reparten entre tareas según su peso)

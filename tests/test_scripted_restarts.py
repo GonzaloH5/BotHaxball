@@ -18,7 +18,7 @@ def threads():
 
 
 def scenario(task, team, kind, side=1, optimized=True, count=1):
-    env = make_env(load_catalog()[task], count, 7, seed=0, random_reset_prob=0,
+    env = make_env(load_catalog()[task], count, max(7, load_catalog()[task].n_entities), seed=0, random_reset_prob=0,
                    optimize_rollout=optimized)
     env.reset()
     sim = env.sim
@@ -44,7 +44,7 @@ def scenario(task, team, kind, side=1, optimized=True, count=1):
     return env
 
 
-@pytest.mark.parametrize("task", ["rs4_3v3", "rs4_4v4", "rs_3v3"])
+@pytest.mark.parametrize("task", ["rs4_3v3", "rs4_4v4", "rs_3v3", "jjrs_6v6"])
 @pytest.mark.parametrize("team", [0, 1])
 @pytest.mark.parametrize("kind", [1, 2, 3, 6])
 @pytest.mark.parametrize("side", [-1, 1])

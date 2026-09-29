@@ -81,7 +81,7 @@ def test_complete_transitions_match_reference(task, delay):
         assert env.sim.rng.bit_generator.state == legacy.sim.rng.bit_generator.state
 
 
-@pytest.mark.parametrize("T", [1, 2, 3, 7, 11])
+@pytest.mark.parametrize("T", [1, 2, 3, 6, 7, 11])
 @pytest.mark.parametrize("eps", [0.0, 0.1, 0.5])
 def test_selected_bots_keep_actions_and_random_state(T, eps):
     env = HaxballEnv(17, T, "big", seed=13, random_reset_prob=1.0)

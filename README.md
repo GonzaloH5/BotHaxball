@@ -166,6 +166,15 @@ Si es válido, respalda los bytes del latest anterior en un archivo de nombre ú
 y restaura por reemplazo atómico. Retomar con `--resume` (no `--init-from`).
 Pruebas: `python -m pytest tests/test_atomic_checkpoints.py tests/test_soccer_curriculum.py -q`.
 
+El scripted de 6v6 mantiene un portero fijo, un perseguidor entre los cinco
+jugadores de campo y apoyos/coberturas en carriles distintos por identidad.
+El perseguidor no abandona la pelota sólo porque un rival esté más cerca; los
+apoyos no comparten el punto de cobertura ni ocupan el fondo del portero.
+Los saques siguen usando un único ejecutor. Esta corrección no cambia el bot
+de 4v4, recompensas ni entradas del modelo. Las métricas previas de JJRS se
+invalidan una vez al reanudar porque cambió el rival, no porque se reinicie PPO.
+Pruebas: `python -m pytest tests/test_scripted_six.py tests/test_scripted_restarts.py -q`.
+
 En una imagen de PyTorch con CUDA, crear el entorno con `python3 -m venv .venv --system-site-packages`
 y activarlo con `source .venv/bin/activate`. Instalar las dependencias de arriba sin instalar el wheel
 CPU de PyTorch. Verificar `python -c "import torch; print(torch.cuda.is_available())"` (debe ser `True`).

@@ -37,7 +37,7 @@ def scripted_actions(env, players=None, eps=0.0, rng=None, env_indices=None):
     rows = np.arange(sim.N) if env_indices is None else np.asarray(env_indices, dtype=np.int64)
     actions = _scripted_kernel(rows, players, sim.ball_pos, sim.ball_vel, sim.player_pos,
                                sim.player_team, env.sign, env.goal_x, sim.st.field_half_h,
-                               float(sim.st.player["radius"] + sim.st.ball["radius"]))
+                               float(sim.st.player["radius"] + sim.st.ball["radius"]), env.T)
     actions = _restart_actions(env, rows, players, actions)
     if eps > 0:
         rng = rng or np.random.default_rng()
@@ -140,7 +140,27 @@ def _restart_kernel(rows, players, actions, bp, pp, team, sign, owner, kind, exc
 
 
 @njit(cache=True, nogil=True)
-def _scripted_kernel(rows, players, ball_pos, ball_vel, pp, team, sign, gx, H, radii):
+def _six_cover_target(ordinal, bx, by, gx, H, radii):
+    """Roles estables por identidad: cuatro carriles de apoyo y un portero.
+
+    El quinto jugador de campo (el más cercano) presiona en el llamador.
+    No cambiar carril con el ranking de distancias evita cruces/oscilaciones.
+    """
+    if ordinal == 5:
+        x = -gx + max(60.0, .06 * gx)
+        y = min(max(by * .35, -.16 * H), .16 * H)
+    else:
+        depth = .12 if ordinal in (0, 4) else (.30 if ordinal in (1, 3) else .45)
+        x = max(bx - depth * gx, -.78 * gx)  # no ocupar el mismo fondo que el portero
+        y = by * .20 + (ordinal - 2) * .25 * H
+    margin = radii + 20.0
+    x = min(max(x, -gx + margin), gx - margin)
+    y = min(max(y, -H + margin), H - margin)
+    return x, y
+
+
+@njit(cache=True, nogil=True)
+def _scripted_kernel(rows, players, ball_pos, ball_vel, pp, team, sign, gx, H, radii, T):
     out = np.empty((len(rows), len(players)), dtype=np.int64)
     for i in range(len(rows)):
         n = rows[i]
@@ -177,12 +197,28 @@ def _scripted_kernel(rows, players, ball_pos, ball_vel, pp, team, sign, gx, H, r
                     opponent = min(opponent, distances[q])
                 elif distances[q] < distances[p] or (distances[q] == distances[p] and q < p):
                     rank += 1
-            if opponent + 20.0 < distance and bx < 0:
+            if T == 6:
+                # Portero fijo; el más cercano ENTRE LOS CINCO DE CAMPO nunca
+                # abandona la presión sólo porque el rival llega antes.
+                ordinal, keeper = 0, -1
+                for q in range(pp.shape[1]):
+                    if team[q] == team[p]:
+                        keeper = q
+                        if q < p:
+                            ordinal += 1
+                field_rank = 0
+                for q in range(pp.shape[1]):
+                    if team[q] == team[p] and q != keeper:
+                        if distances[q] < distances[p] or (distances[q] == distances[p] and q < p):
+                            field_rank += 1
+                if p == keeper or field_rank > 0:
+                    target_x, target_y = _six_cover_target(ordinal, bx, by, gx, H, radii)
+            elif opponent + 20.0 < distance and bx < 0:
                 target_x, target_y = -gx + 30.0, by * 0.4
-            if rank == 1:
+            if T != 6 and rank == 1:
                 lateral = (-1.0 if by > 0 else 1.0) * 0.28 * H
                 target_x, target_y = bx - 0.18 * gx, by * 0.4 + lateral
-            elif rank >= 2:
+            elif T != 6 and rank >= 2:
                 target_x, target_y = min(bx - 0.25 * gx, -0.55 * gx), by * 0.35
             dx, dy = target_x - px, target_y - py
             norm = math.sqrt(dx * dx + dy * dy)
@@ -245,11 +281,24 @@ def _scripted_reference(env, players: np.ndarray | None = None, eps: float = 0.0
     opp_best = np.stack([np.min(d_all[:, sim.player_team != t], axis=1) for t in team], axis=1)
     defend = (opp_best + 20.0 < dist_ball) & (ball[..., 0] < 0)
     guard = np.stack([np.full(ball.shape[:-1], -gx + 30.0), ball[..., 1] * 0.4], axis=-1)
-    target = np.where(defend[..., None], guard, target)
+    if env.T != 6:
+        target = np.where(defend[..., None], guard, target)
 
     # roles por equipo: el más cercano a la pelota va a buscarla; el 2º se abre para apoyar
     # (atrás y hacia el centro) y el resto cubre el arco. Sin esto los tres se amontonan.
-    if env.T > 1:
+    if env.T == 6:
+        for j, p in enumerate(players):
+            mates = np.flatnonzero(sim.player_team == sim.player_team[p])
+            keeper = mates[-1]
+            ordinal = int(np.flatnonzero(mates == p)[0])
+            field = mates[:-1]
+            dp = d_all[:, p][:, None]
+            rank = ((d_all[:, field] < dp) | ((d_all[:, field] == dp) & (field[None, :] < p))).sum(axis=1)
+            for n in range(sim.N):
+                if p == keeper or rank[n] > 0:
+                    target[n, j] = _six_cover_target.py_func(ordinal, ball[n, j, 0], ball[n, j, 1],
+                                                            gx, st.field_half_h, r_p + r_b)
+    elif env.T > 1:
         rank = np.zeros((sim.N, len(players)), dtype=np.int64)
         for j, p in enumerate(players):
             mates = np.where(sim.player_team == sim.player_team[p])[0]
