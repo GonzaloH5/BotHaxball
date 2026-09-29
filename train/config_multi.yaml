@@ -79,18 +79,20 @@ stages:
 
     fixed_weights: true
     weights:
-      jjrs_6v6:       30
-      rs4_4v4:        25
+      big_3v3:        0.05
+      futsal_2v2:     0.05
+      futsal_3v3:     0.05
+      futsal_af_3v3:  0.05
+      x1_1v1:         0.05
+      aha_3v3:        0.05
+      futsal_4v4:     0.05
 
-      big_3v3:          5
-      futsal_2v2:       5
-      futsal_3v3:       5
-      futsal_af_3v3:    5
-      x1_1v1:           5
-      aha_3v3:          5
-      futsal_4v4:       5
-      futsal_5v5:       5
-      futsal_7v7:       5
+      rs4_4v4:        0.55
+
+      jjrs_6v6:       0.00
+
+      futsal_5v5:     0.05
+      futsal_7v7:     0.05
 
     min_steps: 200_000_000
     max_steps: 800_000_000
