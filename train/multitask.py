@@ -31,6 +31,7 @@ from env.rewards import RewardConfig
 from env.tasks import load_catalog, make_env
 
 from .league import League
+from .cuda_decisions import DECISION_BACKENDS, CudaDecisionGraph, sample_decisions
 from .model import SetActorCritic, build_model
 from .ppo_selfplay import lerp, resolve_device
 from .runtime import CudaRolloutTransfer, batch_to_device, cpu_budget, load_config
@@ -73,6 +74,10 @@ class MultiTrainer:
     def __init__(self, cfg: dict, run: str, resume: bool, init_from: str | None = None):
         self.cfg = cfg
         self.optimize_rollout = cfg.get("runtime", {}).get("optimize_rollout", True)
+        self.cuda_decisions = cfg.get("runtime", {}).get("cuda_decisions", "legacy")
+        if self.cuda_decisions not in DECISION_BACKENDS:
+            raise ValueError(f"runtime.cuda_decisions debe ser uno de {DECISION_BACKENDS}")
+        self._decision_profile = None
         self.run_dir = ROOT / "runs" / run
         self.run_dir.mkdir(parents=True, exist_ok=True)
         p, r = cfg["ppo"], cfg["reward"]
@@ -109,6 +114,10 @@ class MultiTrainer:
               flush=True)
         self._rollout_transfer = (CudaRolloutTransfer(self.device, reuse_device=self.optimize_rollout)
                                   if self.device.type == "cuda" else None)
+        self._decision_graph = (CudaDecisionGraph(self.device, self.cuda_decisions)
+                                if self.device.type == "cuda" and self.cuda_decisions in ("auto", "graph") else None)
+        if self.device.type == "cuda":
+            print(f"decisiones CUDA: {self.cuda_decisions}", flush=True)
         from env.haxball_env import U_SELF_DIM
         mc = cfg["model"]
         model_cfg = dict(type=mc.get("type", "set"), self_dim=U_SELF_DIM, ent_dim=ENT_DIM,
@@ -187,6 +196,7 @@ class MultiTrainer:
         return share
 
     def build_envs(self) -> None:
+        self._reset_decision_graph()
         e = self.cfg["env"]
         names = self.active_tasks()
         # Migrar marcas antiguas sin procedencia antes de calcular los pesos.
@@ -297,6 +307,11 @@ class MultiTrainer:
         s.modes, s.opp_id, s.learner, s.scripted_eps = modes, opp_id, learner, st["scripted_eps"]
 
     # ------------------------------------------------------------ actuar
+    def _reset_decision_graph(self):
+        graph = getattr(self, "_decision_graph", None)
+        if graph is not None:
+            graph.reset()
+
     def _prepare_policy_groups(self):
         """Los modos/rivales no cambian dentro del rollout: índices una vez, no 128 veces."""
         grouped, offset = {}, 0
@@ -355,12 +370,61 @@ class MultiTrainer:
             actions[indices] = torch.distributions.Categorical(logits=logits, validate_args=False).sample()
         return actions, logp, values
 
+    @torch.no_grad()
+    def _mixed_policy_logits(self, flat):
+        """Un forward por modelo, sin RNG. Los valores siempre pertenecen al aprendiz."""
+        logits, values = self.model(flat)
+        groups = getattr(self, "_policy_groups", None)
+        if groups is None:
+            groups = self._prepare_policy_groups()
+        for oid, indices in groups:
+            logits[indices] = self.league.members[oid].model.logits(flat[indices])
+        return logits, values
+
+    def _cuda_inference(self, flat):
+        graph = self._decision_graph
+        if graph is None:
+            return self._mixed_policy_logits(flat)
+        before = graph.capture_seconds, graph.captures, graph.replays
+        result = graph.run(self._mixed_policy_logits, flat)
+        profile = self._decision_profile
+        if profile is not None:
+            profile.capture_seconds += graph.capture_seconds - before[0]
+            profile.captures += graph.captures - before[1]
+            profile.replays += graph.replays - before[2]
+        return result
+
+    @staticmethod
+    def _sample_cuda(logits, values):
+        return sample_decisions(logits, values)
+
     def _act_cuda(self, obs_list):
         transfer = self._rollout_transfer
+        profile = self._decision_profile
+        host_start = time.perf_counter() if profile is not None else 0.0
+        if profile is not None:
+            profile.mark(0)
         arrays = [o.reshape(-1, self.obs_dim) for o in obs_list]
         flat = (transfer.upload_many(arrays) if self.optimize_rollout
                 else transfer.upload(np.concatenate(arrays)))
-        transfer.enqueue_output(*self._policy_decisions(flat))
+        if profile is not None:
+            profile.mark(1)
+        if self.cuda_decisions == "legacy":
+            decisions = self._policy_decisions(flat)
+            if profile is not None:
+                profile.mark(2)  # legacy incluye el muestreo de cada rival dentro de esta fase
+        else:
+            logits, values = self._cuda_inference(flat)
+            if profile is not None:
+                profile.mark(2)
+            decisions = self._sample_cuda(logits, values)
+        if profile is not None:
+            profile.mark(3)
+        transfer.enqueue_output(*decisions)
+        if profile is not None:
+            profile.mark(4)
+            transfer.record_ready()  # incluir el último evento sin otra sincronización
+        host_submit = time.perf_counter() - host_start if profile is not None else 0.0
         # La copia GPU->CPU está en vuelo: calcular bots sobre los estados actuales, sin avanzar física.
         scripted = []
         for slot in self.slots:
@@ -369,7 +433,10 @@ class MultiTrainer:
                                      env_indices=rows)
                     if len(rows) else None)
             scripted.append((rows, acts))
+        wait_start = time.perf_counter() if profile is not None else 0.0
         actions, logp, values = transfer.wait_output()
+        if profile is not None:
+            profile.finish(host_submit, time.perf_counter() - wait_start)
         out, offset = [], 0
         for slot, (rows, bot_actions) in zip(self.slots, scripted):
             size = slot.N * slot.P
@@ -440,6 +507,7 @@ class MultiTrainer:
             s.buf = cache
             s.pool_goals = {}
         self._policy_groups = None
+        self._reset_decision_graph()
         if self.optimize_rollout:
             self._prepare_policy_groups()
         t0 = time.time()
@@ -471,7 +539,13 @@ class MultiTrainer:
                 slot.buf["rew"][t, rows] += p["gamma"] * bootstrap
             obs = new_obs
         self._obs = obs
-        t_roll = time.time() - t0
+        graph = self._decision_graph
+        capture_seconds = graph.capture_seconds if graph is not None else 0.0
+        captures = graph.captures if graph is not None else 0
+        replays = graph.replays if graph is not None else 0
+        # No permitir replay de buffers de RunningNorm anteriores después del update.
+        self._reset_decision_graph()
+        t_roll = time.time() - t0  # incluye preparar, capturar y liberar el graph de esta iteración
 
         t_prepare = time.time()
         # GAE por tarea y muestras de los agentes que aprenden
@@ -509,6 +583,9 @@ class MultiTrainer:
         stats["timing/prepare_seconds"] = t1 - t_prepare
         stats["timing/rollout_seconds"] = t_roll
         stats["timing/update_seconds"] = t_upd
+        stats["timing/cuda_capture_seconds"] = capture_seconds
+        stats["runtime/cuda_graph_captures"] = captures
+        stats["runtime/cuda_graph_replays"] = replays
         self.iteration += 1
 
         self.opponent_curriculum()

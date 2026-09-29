@@ -7,3 +7,4 @@ ppo:
   numba_threads: 31       # mejor medición en este Pod; --numba-threads permite comparar otro host
 runtime:
   optimize_rollout: true  # false: observaciones/física/bots de referencia para comparar
+  cuda_decisions: auto    # graph determinista por rollout + muestreo fresco; avisa si usa fallback eager

@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 import torch
 
+from train.cuda_decisions import CudaDecisionProfile
 from train.multitask import MultiTrainer
 from train.runtime import CudaRolloutTransfer, batch_to_device, load_config
 
@@ -35,7 +36,8 @@ class FixedPolicy:
 
 
 @pytest.mark.parametrize("device", ["cpu", "cuda"])
-def test_opponents_grouped_across_tasks_and_learner_values_preserved(device):
+@pytest.mark.parametrize("backend", ["legacy", "eager"])
+def test_opponents_grouped_across_tasks_and_learner_values_preserved(device, backend):
     if device == "cuda" and not torch.cuda.is_available():
         pytest.skip("Necesita CUDA: ejecutar en el Pod")
     trainer = MultiTrainer.__new__(MultiTrainer)
@@ -47,19 +49,23 @@ def test_opponents_grouped_across_tasks_and_learner_values_preserved(device):
     trainer.slots = [SimpleNamespace(N=2, P=4, T=2, opp_id=np.array([0, -1])),
                      SimpleNamespace(N=2, P=2, T=1, opp_id=np.array([-1, 0]))]
     flat = torch.arange(12, dtype=torch.float32, device=device).reshape(-1, 1)
-    actions, logp, values = trainer._policy_decisions(flat)
+    def decide():
+        if backend == "legacy":
+            return trainer._policy_decisions(flat)
+        return trainer._sample_cuda(*trainer._mixed_policy_logits(flat))
+    actions, logp, values = decide()
     expected = torch.full((12,), 3, device=device)
     expected[[2, 3, 11]] = 7
     torch.testing.assert_close(actions, expected)
     torch.testing.assert_close(values, flat[:, 0])
     torch.testing.assert_close(logp, torch.zeros_like(logp))
     assert opponent.calls == 1 and trainer.model.calls == 1
-    trainer._policy_decisions(flat)
+    decide()
     assert opponent.calls == 2
     trainer.slots[0].opp_id[:] = -1
     trainer.slots[1].opp_id[:] = -1
     trainer._prepare_policy_groups()  # cambia la asignación en la siguiente iteración
-    actions, _, _ = trainer._policy_decisions(flat)
+    actions, _, _ = decide()
     torch.testing.assert_close(actions, torch.full((12,), 3, device=device))
     assert opponent.calls == 2
 
@@ -88,8 +94,9 @@ def test_cuda_rollout_transfer_reuse_and_batch_dtypes():
     assert batch["obs"].device.type == "cuda"
 
 
-@pytest.mark.parametrize("device", ["cpu", "cuda"])
-def test_resume_cpu_checkpoint_and_update_with_bc_pool_and_timeouts(tmp_path, monkeypatch, device):
+@pytest.mark.parametrize("device,backend", [("cpu", "legacy"), ("cuda", "legacy"),
+                                           ("cuda", "eager"), ("cuda", "graph")])
+def test_resume_cpu_checkpoint_and_update_with_bc_pool_and_timeouts(tmp_path, monkeypatch, device, backend):
     if device == "cuda" and not torch.cuda.is_available():
         pytest.skip("Necesita CUDA: ejecutar en el Pod")
     from train import multitask
@@ -113,7 +120,10 @@ def test_resume_cpu_checkpoint_and_update_with_bc_pool_and_timeouts(tmp_path, mo
         initial.save(initial.run_dir / "latest.pt")
         cfg["bc_reference"] = str(reference)
         cfg["ppo"]["device"] = device
+        cfg["runtime"] = {"cuda_decisions": backend}
         resumed = MultiTrainer(cfg, "test", True)
+        if backend == "graph":
+            resumed._decision_profile = CudaDecisionProfile(resumed.device)
         assert resumed.steps == initial.steps
         before = [p.detach().clone() for p in resumed.model.parameters()]
         stats = []
@@ -128,6 +138,15 @@ def test_resume_cpu_checkpoint_and_update_with_bc_pool_and_timeouts(tmp_path, mo
         cached = [s._buffer_cache["obs"] for s in resumed.slots]
         resumed.iterate()
         assert all(s._buffer_cache["obs"] is before for s, before in zip(resumed.slots, cached))
+        if backend == "graph":
+            assert resumed._decision_graph.graph is None  # liberado antes de RunningNorm/Adam
+            for values in stats:
+                assert values["runtime/cuda_graph_captures"] == 1
+                assert values["runtime/cuda_graph_replays"] == cfg["ppo"]["rollout_len"]
+            profile = resumed._decision_profile
+            assert profile.captures == 2
+            assert profile.replays == profile.calls == 2 * cfg["ppo"]["rollout_len"]
+            assert all(np.isfinite(value) and value >= 0 for value in profile.totals.values())
     finally:
         initial.writer.close()
         if resumed is not None:

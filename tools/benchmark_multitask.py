@@ -14,6 +14,7 @@ from pathlib import Path
 import torch
 
 from train import multitask
+from train.cuda_decisions import DECISION_BACKENDS, CudaDecisionProfile
 from train.multitask import ROOT, MultiTrainer
 from train.runtime import load_config
 
@@ -26,6 +27,9 @@ class RolloutProfile:
     def __init__(self, trainer):
         self.totals, self.calls, self.originals = {}, {}, []
         self.wrap(trainer, "act", "decisiones (red+transferencia+bots)")
+        if trainer.device.type == "cuda" and trainer.cuda_decisions != "legacy":
+            self.wrap(trainer, "_cuda_inference", "host inferencia/captura (dentro de decisiones)")
+            self.wrap(trainer, "_sample_cuda", "host muestreo (dentro de decisiones)")
         self.wrap(multitask, "scripted_actions", "bots CPU (dentro de decisiones)")
         self.wrap(trainer, "values_many", "bootstrap de valores")
         for slot in trainer.slots:
@@ -71,18 +75,26 @@ def main():
     ap.add_argument("--device", choices=("cpu", "cuda"))
     ap.add_argument("--numba-threads", type=int)
     ap.add_argument("--baseline", action="store_true", help="Ruta de referencia sin optimizaciones del rollout")
+    ap.add_argument("--decision-backend", choices=DECISION_BACKENDS,
+                    help="legacy: decisiones anteriores; eager: un muestreo; auto/graph: CUDA Graph (graph exige captura)")
     ap.add_argument("--profile-rollout", action="store_true", help="Desglose inclusivo por componente (añade overhead)")
     args = ap.parse_args()
     if args.iters < 1 or args.warmup < 1:
         ap.error("iters y warmup deben ser positivos (Numba necesita calentamiento)")
     if args.numba_threads is not None and args.numba_threads < 1:
         ap.error("numba-threads debe ser positivo")
+    if args.baseline and args.decision_backend not in (None, "legacy"):
+        ap.error("--baseline usa decisiones legacy; comparar sólo inferencia sin --baseline")
     cfg = copy.deepcopy(load_config(args.config))
     if args.device:
         cfg["ppo"]["device"] = args.device
     if args.numba_threads is not None:
         cfg["ppo"]["numba_threads"] = args.numba_threads
     cfg.setdefault("runtime", {})["optimize_rollout"] = not args.baseline
+    if args.baseline:
+        cfg["runtime"]["cuda_decisions"] = "legacy"
+    elif args.decision_backend:
+        cfg["runtime"]["cuda_decisions"] = args.decision_backend
     # Sin replays/procesos externos ni checkpoints periódicos durante la medición.
     cfg["log"].update(every=1, checkpoint_every=10**12, replay_every=0)
     cfg["league"]["snapshot_every"] = 10**12
@@ -92,11 +104,17 @@ def main():
         shutil.copy2(args.checkpoint, Path(directory) / "latest.pt")
         trainer = MultiTrainer(cfg, Path(directory).name, resume=True)
         profile = RolloutProfile(trainer) if args.profile_rollout else None
+        decision_profile = (CudaDecisionProfile(trainer.device)
+                            if args.profile_rollout and trainer.device.type == "cuda" else None)
+        trainer._decision_profile = decision_profile
         records = []
         original_log = trainer.log
 
         def log(stats, lr, n, rollout, update):
-            records.append((n, rollout, stats.get("timing/prepare_seconds", 0.0), update))
+            records.append((n, rollout, stats.get("timing/prepare_seconds", 0.0), update,
+                            stats.get("timing/cuda_capture_seconds", 0.0),
+                            stats.get("runtime/cuda_graph_captures", 0),
+                            stats.get("runtime/cuda_graph_replays", 0)))
             original_log(stats, lr, n, rollout, update)
 
         trainer.log = log
@@ -109,6 +127,8 @@ def main():
                         torch.cuda.reset_peak_memory_stats(trainer.device)
                     if profile:
                         profile.reset()
+                    if decision_profile:
+                        decision_profile.reset()
                     start = time.perf_counter()
                 trainer.iterate()
             elapsed = time.perf_counter() - start
@@ -119,9 +139,19 @@ def main():
                 print(f"{name}: {sum(row[index] for row in measured) / args.iters:.3f} s/iter")
             if trainer.device.type == "cuda":
                 print(f"VRAM máxima asignada: {torch.cuda.max_memory_allocated(trainer.device) / 2**30:.2f} GiB")
+                captures, replays = (sum(row[i] for row in measured) / args.iters for i in (5, 6))
+                print(f"decisiones CUDA: {trainer.cuda_decisions} | capturas {captures:.1f}/iter | replays {replays:.0f}/iter")
+                print(f"preparación/captura graph: {sum(row[4] for row in measured) / args.iters:.3f} s/iter (incluida en rollout)")
+                if trainer._decision_graph is not None and trainer._decision_graph.disabled_reason is not None:
+                    print(f"fallback eager: {trainer._decision_graph.disabled_reason}")
             if profile:
                 profile.report(args.iters)
+            if decision_profile:
+                if trainer.cuda_decisions == "legacy":
+                    print("\nNota: en legacy, inferencia también incluye los muestreos; su fase muestreo no es comparable por separado.")
+                decision_profile.report(args.iters)
         finally:
+            trainer._decision_profile = None
             if profile:
                 profile.close()
             trainer.writer.close()

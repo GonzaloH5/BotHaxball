@@ -93,6 +93,9 @@ class CudaRolloutTransfer:
         if self.output is None or self.output.shape != packed.shape:
             self.output = torch.empty(packed.shape, dtype=packed.dtype, pin_memory=True)
         self.output.copy_(packed, non_blocking=True)
+        self.record_ready()
+
+    def record_ready(self):
         self.ready.record(torch.cuda.current_stream(self.device))
 
     def wait_output(self):

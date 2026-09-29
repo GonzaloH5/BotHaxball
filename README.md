@@ -133,7 +133,7 @@ CPU de PyTorch. Verificar `python -c "import torch; print(torch.cuda.is_availabl
 Desde la raíz del proyecto, con `runs/multi/latest.pt` y `runs/bc2/bc.pt` presentes:
 
 ```bash
-python -m pytest tests/test_cuda_runtime.py -q
+python -m pytest tests/test_cuda_decisions.py tests/test_cuda_runtime.py -q
 python -m tools.benchmark_multitask --config train/config_runpod.yaml --iters 5
 python -m train.multitask --config train/config_runpod.yaml --run multi --resume
 ```
@@ -167,7 +167,7 @@ Detener primero el entrenamiento con `Ctrl+C` y esperar el mensaje de guardado. 
 git pull --ff-only
 python -m pytest tests/test_rollout_optimized.py tests/test_cuda_runtime.py -q
 python -m tools.benchmark_multitask --config train/config_runpod.yaml --numba-threads 31 --warmup 3 --iters 15 --baseline
-python -m tools.benchmark_multitask --config train/config_runpod.yaml --numba-threads 31 --warmup 3 --iters 15
+python -m tools.benchmark_multitask --config train/config_runpod.yaml --numba-threads 31 --warmup 3 --iters 15 --decision-backend legacy
 python -m train.multitask --config train/config_runpod.yaml --run multi --resume
 ```
 
@@ -176,7 +176,51 @@ Las dos mediciones parten del mismo archivo y descartan su aprendizaje temporal.
 replays ni otros benchmarks a la vez. La primera compilación Numba puede tardar minutos y no representa
 la velocidad estable. Para localizar el cuello de botella restante, agregar `--profile-rollout`:
 los tiempos son inclusivos y hay solapamiento CPU/GPU, por lo que no deben sumarse.
-Para volver a la ruta de referencia: `--override runtime.optimize_rollout=false`. En otro host con menos
+Para volver a la ruta de referencia completa: `--override runtime.optimize_rollout=false runtime.cuda_decisions=legacy`. En otro host con menos
 de 31 hilos disponibles, usar `--override ppo.numba_threads=auto` al entrenar.
+
+#### Decisiones CUDA con menos lanzamientos desde CPU
+
+`config_runpod.yaml` activa `runtime.cuda_decisions=auto`: combina los logits del aprendiz y de los
+snapshots, captura la inferencia determinista en un CUDA Graph y lo repite durante el rollout. El
+muestreo categórico queda fuera del graph y usa aleatoriedad fresca en cada decisión. No activa AMP/TF32
+ni cambia recompensas, física, rivales, normalizadores, cantidad de muestras o PPO. Los valores y logp
+de las filas que aprenden siguen siendo los del aprendiz. Combinar los sorteos cambia el orden del RNG:
+la distribución es la misma, pero no se espera una trayectoria idéntica con la misma semilla.
+
+El graph se libera antes de actualizar RunningNorm/Adam y se captura de nuevo en cada rollout, porque
+los buffers de normalización y los rivales pueden cambiar. El coste de preparar/capturar está incluido
+en el benchmark, también después del calentamiento. `auto` avisa y usa la ruta eager si la captura
+no es compatible; los errores de modelo, falta de memoria o acceso ilegal no se ocultan. `graph` es
+estricto para validar el Pod. El mecanismo sigue las [indicaciones de CUDA Graphs de PyTorch 2.8](https://docs.pytorch.org/docs/2.8/notes/cuda.html#cuda-graphs).
+
+Detener y guardar con `Ctrl+C`. Para comparar **sólo este retoque**, sin cambiar el rollout optimizado
+anterior ni los 31 hilos, ejecutar ambas mediciones sin entrenamiento/replays concurrentes:
+
+```bash
+git pull --ff-only
+python -m pytest tests/test_cuda_decisions.py tests/test_cuda_runtime.py tests/test_rollout_optimized.py -q
+python -m tools.benchmark_multitask --config train/config_runpod.yaml --warmup 3 --iters 15 --decision-backend legacy
+python -m tools.benchmark_multitask --config train/config_runpod.yaml --warmup 3 --iters 15 --decision-backend graph
+```
+
+Ambos benchmarks usan copias del mismo checkpoint y descartan el aprendizaje temporal. Comparar
+`pasos/s reales`, no el máximo de una iteración, y repetir en orden inverso si hay mucho ruido del host.
+La ruta graph debe indicar `capturas 1.0/iter | replays 128/iter` con el rollout actual. No hay una
+aceleración garantizada: depende del overhead CPU/GPU y del número de snapshots de cada rollout.
+`--decision-backend eager` permite separar el beneficio de combinar muestreos del beneficio del graph.
+
+Con `--profile-rollout` se añaden eventos para H2D, inferencia, muestreo y D2H, leídos tras la espera que
+el rollout ya necesita (sin otra sincronización). Los intervalos del stream incluyen huecos de
+lanzamiento CPU; no prueban que la GPU esté saturada y no se suman a los tiempos CPU/inclusivos.
+
+Si las pruebas pasan y el benchmark mejora, reanudar normalmente:
+
+```bash
+python -m train.multitask --config train/config_runpod.yaml --run multi --resume
+```
+
+Para desactivar sólo este retoque, conservando las optimizaciones anteriores y el checkpoint:
+`--override runtime.cuda_decisions=legacy`. CPU y el entrenador recurrente no usan este graph.
 
 Uso responsable: usar el bot sólo en salas propias o con permiso. En salas públicas o competitivas contra personas es hacer trampa.
