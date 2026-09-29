@@ -64,11 +64,11 @@ task_reward_overrides:
 # Se pasa de etapa cuando todas las tareas activas llegaron a la liga y se cumplió min_steps (o max_steps).
 stages:
   - name: A_basico_mapas_distintos
-    tasks: [big_2v2, big_3v3, futsal_2v2, futsal_3v3, futsal_af_3v3, x1_1v1, aha_3v3]   # sin Classic (no hay recs de liga)
+    tasks: [big_3v3, futsal_2v2, futsal_3v3, futsal_af_3v3, x1_1v1, aha_3v3]   # Big sólo en su formato real 3v3
     min_steps: 60_000_000
     max_steps: 250_000_000
   - name: B_equipos_chicos_y_reales
-    tasks: [big_4v4, futsal_4v4, rs4_4v4, jjrs_6v6]
+    tasks: [futsal_4v4, rs4_4v4, jjrs_6v6]
     min_steps: 150_000_000
     max_steps: 600_000_000
   - name: C_equipos_medianos
