@@ -1,0 +1,93 @@
+# Entrenamiento PPO + self-play para HaxBall.
+# Uso: python -m train.ppo_selfplay --config train/config_x6_curriculum.yaml [--run nombre] [--resume]
+run_name: x6_curriculum
+seed: 0
+
+env:
+  stadium: x6_half        # Real Soccer x6 (Pegeche) al 50%: física idéntica, distancias a la mitad
+  n_per_team: 3          # 1 = 1v1. Para 2v2/3v3 usar otro run (el tamaño de la obs cambia)
+  n_envs: 192           # 6 agentes por partido
+  frame_skip: 3          # el agente decide cada 3 ticks (20 decisiones/s)
+  max_ticks: 7200        # 2 minutos de juego por episodio como máximo (termina antes si hay gol)
+  random_reset_prob: 0.3 # 30% de los episodios arrancan en posiciones aleatorias, 70% con saque
+  powershot: true       # carga de 1,6 s + curva, como ball-physics.js de la sala
+  obs_layout: entities  # obs por entidades: el mismo modelo sirve para cualquier tamaño de equipo
+  out_of_bounds: true   # pelota afuera => lateral/córner/saque de arco simplificado (-out_penalty al que la tocó último)
+  kickoff_timeout: 180   # 3 s para sacar; si no, penalidad y se reinicia (evita trabar el partido)
+  action_delay_max: 0    # lag simulado: cada partido sortea 0..N ticks de retraso de acción.
+                         # Para salas ajenas (--join) usar 3 en un fine-tune: el bot ya extrapola por el
+                         # retraso medido (~8 ticks como cliente), esto cubre el jitter restante.
+
+model:
+  type: entity          # EntityActorCritic (train/model.py)
+  hidden: 256
+  layers: 2
+  ent_hidden: 64
+
+ppo:
+  total_steps: 2_000_000_000   # decisiones de agentes; cortar cuando quieras (Ctrl+C guarda)
+  rollout_len: 128
+  epochs: 3
+  minibatch: 4096
+  lr: 5.0e-4
+  lr_final: 5.0e-5
+  gamma: 0.995
+  gae_lambda: 0.95
+  clip: 0.2
+  ent_coef: 0.01
+  ent_coef_final: 0.002
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  torch_threads: 8
+
+reward:
+  goal: 1.0
+  w_ball_progress: 1.0
+  w_near_ball: 0.5
+  kick_to_goal: 0.02
+  out_penalty: 0.1
+  w_spread: 0.3           # premio (potencial) por no amontonarse con los compañeros
+  kickoff_stall: 1.0      # igual que un gol en contra
+  kickoff_approach: 1.0   # premio por acercarse a la pelota en el saque propio (llegar ~ +1)
+  shaping_decay_steps: 300_000_000   # el shaping baja linealmente a 0 en estos pasos
+
+# Currículo: fracción de partidos por tipo de rival.
+# Se avanza de etapa cuando el winrate (por goles) contra el bot scripteado supera `advance_winrate`.
+curriculum:
+  - name: vs_scripted
+    scripted: 0.7
+    selfplay: 0.3
+    pool: 0.0
+    scripted_eps: 0.5      # el bot hace 50% de acciones al azar (fácil)
+    advance_winrate: 0.8
+  - name: vs_scripted_hard
+    scripted: 0.4
+    selfplay: 0.4
+    pool: 0.2
+    scripted_eps: 0.1
+    advance_winrate: 0.85
+  - name: league
+    scripted: 0.05
+    selfplay: 0.45
+    pool: 0.5
+    scripted_eps: 0.0
+    advance_winrate: 2.0   # última etapa
+
+league:
+  snapshot_every: 25       # iteraciones
+  max_size: 50
+  opponents_per_iter: 4
+  pfsp_power: 2.0
+
+log:
+  every: 5
+  checkpoint_every: 25
+
+# Currículo de tamaño de equipo. Cada etapa pisa n_per_team / stadium / n_envs de `env`.
+# Se pasa a la siguiente cuando el currículo de rivales llegó a la liga y se cumplió min_steps
+# (o al llegar a max_steps). n_envs se ajusta para mantener ~1150 agentes simultáneos.
+teams:
+  - {n_per_team: 1, stadium: x6_half, n_envs: 576, min_steps: 15_000_000, max_steps: 50_000_000}
+  - {n_per_team: 2, stadium: x6_half, n_envs: 288, min_steps: 20_000_000, max_steps: 70_000_000}
+  - {n_per_team: 3, stadium: x6_half, n_envs: 192, min_steps: 30_000_000, max_steps: 100_000_000}
+  - {n_per_team: 6, stadium: x6,      n_envs: 96}

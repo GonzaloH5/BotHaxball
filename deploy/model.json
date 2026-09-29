@@ -1,0 +1,13 @@
+{
+  "obs_dim": 28,
+  "n_actions": 18,
+  "n_per_team": 1,
+  "stadium": "classic",
+  "frame_skip": 3,
+  "pos_scale": 400.0,
+  "vel_scale": 5.0,
+  "goal_x": 370.0,
+  "max_ticks": 7200,
+  "checkpoint": "runs/classic_1v1/ckpt_000275.pt",
+  "steps": 24825728
+}

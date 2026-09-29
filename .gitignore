@@ -1,0 +1,25 @@
+# Entornos y cachés locales
+.venv/
+.pytest_cache/
+__pycache__/
+*.py[cod]
+.claude/
+graphify-out/
+
+# Dependencias instaladas y binarios redistribuibles
+node_modules/
+**/node_modules/
+*.exe
+
+# Datos y productos regenerables
+data/
+replays/
+replays_real/
+*.log
+
+# Sólo se versionan los checkpoints necesarios para reanudar en una máquina nueva.
+runs/**
+!runs/multi/
+!runs/multi/latest.pt
+!runs/bc2/
+!runs/bc2/bc.pt

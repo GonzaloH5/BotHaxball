@@ -1,0 +1,18 @@
+const assert = require("node:assert/strict");
+const { PolicyMemory } = require("./policy_memory");
+const meta = { recurrent: true, memory_size: 3, n_actions: 18 };
+const a = new PolicyMemory(meta), b = new PolicyMemory(meta);
+const pending = a.generation;
+assert(a.accept({ memory_out: { data: [1,2,3] } }, 9, pending));
+assert.equal(a.previousAction, 9);
+assert.deepEqual([...b.memory], [0,0,0]);
+a.reset();
+assert.equal(a.previousAction, 18);
+assert.deepEqual([...a.memory], [0,0,0]);
+assert.equal(a.accept({ memory_out: { data: [1,2,3] } }, 9, pending), false);
+assert.deepEqual([...a.memory], [0,0,0]);
+assert.throws(() => a.accept({memory_out:{data:[1]}}, 0, a.generation), /tamaño/);
+const plain = new PolicyMemory({n_actions:18});
+assert.deepEqual(plain.feeds(null), {});
+assert(plain.accept({}, 2, plain.generation));
+console.log("OK: memoria por sesión, reset, inferencias obsoletas y compatibilidad sin memoria");

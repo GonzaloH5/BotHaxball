@@ -1,0 +1,15 @@
+{
+  "name": "haxball-rl-bot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Bot de HaxBall entrenado con PPO + self-play (modelo ONNX)",
+  "main": "bot.js",
+  "scripts": {
+    "test": "node test_obs.js",
+    "start": "node bot.js"
+  },
+  "dependencies": {
+    "node-haxball": "^2.3.1",
+    "onnxruntime-node": "^1.20.0"
+  }
+}
