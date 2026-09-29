@@ -53,6 +53,7 @@ reward:
   kickoff_stall: 1.0
   kickoff_approach: 1.0
   shaping_decay_steps: 400_000_000
+  shaping_by_opp_stage: [0.15, 0.05, 0.0]
 
 # Retoque SOLO JJRS. Diferencias de potencial: permanecer colocado no paga
 # un bonus por tick. Conserva guía defensiva cuando decae el shaping general.

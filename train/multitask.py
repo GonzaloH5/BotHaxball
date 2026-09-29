@@ -271,10 +271,24 @@ class MultiTrainer:
             print(f"reparto fijo de agentes: {actual} (PPO usa sólo las filas que aprenden)", flush=True)
 
     def shaping_for(self, s) -> float:
-        """Guía (shaping) de una tarea: baja de 1 a 0 en `shaping_decay_steps` pasos GLOBALES contados desde que
-        la tarea entró al entrenamiento (no desde el paso 0), así las tareas de las etapas B/C —mapas grandes con
-        pocos goles— reciben la misma ayuda que tuvieron las de la etapa A."""
-        return max(0.0, 1.0 - (self.steps - s.intro_step) / self.cfg["reward"]["shaping_decay_steps"])
+        """Shaping por dificultad del rival.
+
+        R0: guía ligera para tareas todavía inmaduras.
+        R1: guía mínima.
+        R2: sin shaping auxiliar.
+        """
+        by_stage = self.cfg["reward"].get("shaping_by_opp_stage")
+
+        if by_stage is not None:
+            idx = min(s.opp_stage, len(by_stage) - 1)
+            return float(by_stage[idx])
+
+        # Compatibilidad con configs antiguas.
+        return max(
+            0.0,
+            1.0 - (self.steps - s.intro_step)
+            / self.cfg["reward"]["shaping_decay_steps"],
+        )
 
     def sync_task_state(self) -> None:
         for s in self.slots:
@@ -539,7 +553,14 @@ class MultiTrainer:
         for g in self.opt.param_groups:
             g["lr"] = lr
         ent_coef = lerp(p["ent_coef"], p["ent_coef_final"], frac)
-        self.rcfg.shaping_coef = max(0.0, 1.0 - self.steps / cfg["reward"]["shaping_decay_steps"])  # sólo para el log
+        for s in self.slots:
+            s.env.rcfg.shaping_coef = self.shaping_for(s)
+
+        # Sólo para mostrar un valor resumen en consola.
+        self.rcfg.shaping_coef = float(
+            np.mean([s.env.rcfg.shaping_coef for s in self.slots])
+        )
+
         for s in self.slots:
             s.env.rcfg.shaping_coef = self.shaping_for(s)
         for s in self.slots:
