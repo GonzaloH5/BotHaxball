@@ -65,23 +65,39 @@ task_reward_overrides:
 # Se pasa de etapa cuando todas las tareas activas llegaron a la liga y se cumplió min_steps (o max_steps).
 stages:
   - name: A_basico_mapas_distintos
-    tasks: [big_3v3, futsal_2v2, futsal_3v3, futsal_af_3v3, x1_1v1, aha_3v3]   # Big sólo en su formato real 3v3
+    tasks: [big_3v3, futsal_2v2, futsal_3v3, futsal_af_3v3, x1_1v1, aha_3v3]
     min_steps: 60_000_000
     max_steps: 250_000_000
+
   - name: B_equipos_chicos_y_reales
     tasks: [futsal_4v4, rs4_4v4, jjrs_6v6]
     min_steps: 150_000_000
     max_steps: 600_000_000
+
   - name: C_equipos_medianos
     tasks: [futsal_5v5, futsal_7v7]
+
+    fixed_weights: true
+    weights:
+      jjrs_6v6:       30
+      rs4_4v4:        25
+
+      big_3v3:          5
+      futsal_2v2:       5
+      futsal_3v3:       5
+      futsal_af_3v3:    5
+      x1_1v1:           5
+      aha_3v3:          5
+      futsal_4v4:       5
+      futsal_5v5:       5
+      futsal_7v7:       5
+
     min_steps: 200_000_000
     max_steps: 800_000_000
-  # D_haxeleven (h11_11v11) queda fuera por ahora: con 21 entidades el update es ~4x más caro en CPU.
-  # Para sumarlo: agregar una etapa con tasks: [h11_11v11] (la tarea ya está en train/tasks.yaml).
-
+    
 schedule:
   rehearsal_weight: 0.5
-  min_share: 0.04
+  min_share: 0.05
   rebalance_every: 25       # iteraciones entre chequeos de regresión / avance de etapa
   min_goals: 200            # goles vs bot que se miden (ventana por goles) para avanzar de rival / regresiones
   regression_drop: 0.15     # caída del winrate vs bot respecto de la mejor marca que dispara más peso

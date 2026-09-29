@@ -327,7 +327,15 @@ function BotPlugin(session) {
     ? `modelo ${MODEL} (multi-tarea: cualquier mapa y formato; entrenado en ${(META.tasks || []).join(", ")})`
     : `modelo ${MODEL} (obs ${META.obs_dim}, ${META.n_per_team}v${META.n_per_team}, estadio ${META.stadium})`);
   const common = {
-    storage: { player_name: arg("--player", "RL-Bot"), avatar: "🤖" },
+    storage: {
+      player_name: arg("--player", "RL-Bot"),
+      avatar: "8",
+      geo: {
+        lat: -34.6037,
+        lon: -58.3816,
+        flag: "ar"
+      }
+    },
     plugins: [new BotPlugin(session)],
     onOpen: (room) => {
       console.log("conectado a la sala:", room.name);
