@@ -4,4 +4,6 @@ bc_reference: runs/bc2/bc.pt
 ppo:
   device: cuda
   torch_threads: auto
-  numba_threads: auto
+  numba_threads: 31       # mejor medición en este Pod; --numba-threads permite comparar otro host
+runtime:
+  optimize_rollout: true  # false: observaciones/física/bots de referencia para comparar

@@ -42,8 +42,10 @@ def load_catalog(path: str | Path = DEFAULT_CATALOG) -> dict[str, Task]:
 
 def make_env(task: Task, n_envs: int, max_entities: int, reward: RewardConfig | None = None,
              seed: int | None = None, frame_skip: int = 3, max_ticks: int = 7200,
-             random_reset_prob: float = 0.3, kickoff_timeout: int = 180, action_delay_max: int = 0) -> HaxballEnv:
+             random_reset_prob: float = 0.3, kickoff_timeout: int = 180, action_delay_max: int = 0,
+             optimize_rollout: bool = True) -> HaxballEnv:
     return HaxballEnv(n_envs, task.n_per_team, task.stadium, frame_skip, max_ticks, random_reset_prob,
                       reward, seed=seed, action_delay_max=action_delay_max, kickoff_timeout=kickoff_timeout,
                       powershot=task.powershot, out_of_bounds=task.out_of_bounds,
-                      obs_layout="universal", max_entities=max_entities, rules=task.rules)
+                      obs_layout="universal", max_entities=max_entities, rules=task.rules,
+                      optimize_rollout=optimize_rollout)

@@ -185,8 +185,9 @@ def step_batch(pos, vel, mask, kick_cancel, kickoff, kickoff_team, actions, move
                g_p0, g_p1, g_team,
                goal_out, touch_out, kick_out,
                ball_grav, ps_on, ps_par, ps_held, ps_charge, ps_comba, ps_grav_left, ps_inv_left,
-               ps_gtick, ps_pending, ps_has_pending, ps_kick_out):
-    """Avanza un tick en los N partidos.
+               ps_gtick, ps_pending, ps_has_pending, ps_kick_out,
+               frames=1, window_goal=None, window_kicked=None, last_touch=None):
+    """Avanza frames ticks por partido con una única barrera paralela.
 
     goal_out[n]: +1 si anotó rojo, -1 si anotó azul, 0 nada.
     touch_out[n, p]: el jugador p tocó (o pateó) la pelota este tick.
@@ -194,151 +195,169 @@ def step_batch(pos, vel, mask, kick_cancel, kickoff, kickoff_team, actions, move
     inv_env[n, k]: invMass por partido (la de la pelota cambia con el powershot).
     ball_grav[n]: gravedad de la pelota (curva del powershot).
     ps_*: estado del powershot (sólo si ps_on). ps_kick_out[n, p]: pateó un powershot.
+    Los eventos anteriores describen el último tick. Los buffers opcionales window_*
+    conservan el primer gol y todas las patadas; last_touch conserva el último equipo.
+    Sin buffers y con frames=1 es la ruta original; reglas/lag llaman esa variante.
     """
     N = pos.shape[0]
     K = pos.shape[1]
     P = actions.shape[1]
     for n in prange(N):
-        goal_out[n] = 0
-        inv = inv_env[n]
-        # 1. inputs
-        for p in range(P):
-            k = first_player + p
-            a = actions[n, p]
-            kick_pressed = a >= 9
-            if not kick_pressed:
-                kick_cancel[n, p] = False
-            is_kicking = kick_pressed and not kick_cancel[n, p]
-            touch_out[n, p] = False
-            kick_out[n, p] = False
-            ps_kick_out[n, p] = False
-            # la pelota es el disco 0 (único con flag KICK)
-            dx = pos[n, 0, 0] - pos[n, k, 0]
-            dy = pos[n, 0, 1] - pos[n, k, 1]
-            d = math.sqrt(dx * dx + dy * dy)
-            if d - radius[k] - radius[0] < KICK_REACH:
-                touch_out[n, p] = True
-                if is_kicking and d > 0.0:
-                    nx = dx / d
-                    ny = dy / d
-                    # HaxBall: impulso = kickStrength * dirección * invMass de la pelota
-                    vel[n, 0, 0] += nx * p_kstr * inv[0]
-                    vel[n, 0, 1] += ny * p_kstr * inv[0]
-                    vel[n, k, 0] -= nx * p_kback * inv[k]
-                    vel[n, k, 1] -= ny * p_kback * inv[k]
-                    kick_cancel[n, p] = True
-                    kick_out[n, p] = True
-                    if ps_on and ps_comba[n]:
-                        # curva: gravedad perpendicular al tiro, proporcional a la velocidad
-                        # lateral del jugador respecto de la pelota (setDiscProps del script)
-                        lat = nx * vel[n, k, 1] - ny * vel[n, k, 0]
-                        ci = min(1.0, max(-1.0, lat / ps_par[PS_MAX_LAT]))
-                        sx = vel[n, 0, 0]
-                        sy = vel[n, 0, 1]
-                        sp = math.sqrt(sx * sx + sy * sy)
-                        gx_ = 0.0
-                        gy_ = 0.0
-                        if sp > 0.1:
-                            gx_ = sy / sp * ci * ps_par[PS_GRAV]
-                            gy_ = -sx / sp * ci * ps_par[PS_GRAV]
-                        ps_pending[n, 0] = gx_
-                        ps_pending[n, 1] = gy_
-                        ps_has_pending[n] = True
-                        ps_grav_left[n] = int(ps_par[PS_CURVE])
-                        ps_inv_left[n] = int(ps_par[PS_INV_RESET])
-                        ps_comba[n] = False
-                        ps_held[n] = -1
+        if window_goal is not None:
+            window_goal[n] = 0
+        if window_kicked is not None:
+            for p in range(P):
+                window_kicked[n, p] = False
+        for _ in range(frames):
+            goal_out[n] = 0
+            inv = inv_env[n]
+            # 1. inputs
+            for p in range(P):
+                k = first_player + p
+                a = actions[n, p]
+                kick_pressed = a >= 9
+                if not kick_pressed:
+                    kick_cancel[n, p] = False
+                is_kicking = kick_pressed and not kick_cancel[n, p]
+                touch_out[n, p] = False
+                kick_out[n, p] = False
+                ps_kick_out[n, p] = False
+                # la pelota es el disco 0 (único con flag KICK)
+                dx = pos[n, 0, 0] - pos[n, k, 0]
+                dy = pos[n, 0, 1] - pos[n, k, 1]
+                d = math.sqrt(dx * dx + dy * dy)
+                if d - radius[k] - radius[0] < KICK_REACH:
+                    touch_out[n, p] = True
+                    if is_kicking and d > 0.0:
+                        nx = dx / d
+                        ny = dy / d
+                        # HaxBall: impulso = kickStrength * dirección * invMass de la pelota
+                        vel[n, 0, 0] += nx * p_kstr * inv[0]
+                        vel[n, 0, 1] += ny * p_kstr * inv[0]
+                        vel[n, k, 0] -= nx * p_kback * inv[k]
+                        vel[n, k, 1] -= ny * p_kback * inv[k]
+                        kick_cancel[n, p] = True
+                        kick_out[n, p] = True
+                        if ps_on and ps_comba[n]:
+                            # curva: gravedad perpendicular al tiro, proporcional a la velocidad
+                            # lateral del jugador respecto de la pelota (setDiscProps del script)
+                            lat = nx * vel[n, k, 1] - ny * vel[n, k, 0]
+                            ci = min(1.0, max(-1.0, lat / ps_par[PS_MAX_LAT]))
+                            sx = vel[n, 0, 0]
+                            sy = vel[n, 0, 1]
+                            sp = math.sqrt(sx * sx + sy * sy)
+                            gx_ = 0.0
+                            gy_ = 0.0
+                            if sp > 0.1:
+                                gx_ = sy / sp * ci * ps_par[PS_GRAV]
+                                gy_ = -sx / sp * ci * ps_par[PS_GRAV]
+                            ps_pending[n, 0] = gx_
+                            ps_pending[n, 1] = gy_
+                            ps_has_pending[n] = True
+                            ps_grav_left[n] = int(ps_par[PS_CURVE])
+                            ps_inv_left[n] = int(ps_par[PS_INV_RESET])
+                            ps_comba[n] = False
+                            ps_held[n] = -1
+                            ps_charge[n] = -1
+                            ps_kick_out[n, p] = True
+                is_kicking = kick_pressed and not kick_cancel[n, p]
+                acc = p_kacc if is_kicking else p_acc
+                m = a % 9
+                vel[n, k, 0] += move_unit[m, 0] * acc
+                vel[n, k, 1] += move_unit[m, 1] * acc
+            # 2. integración: pos += v; v = (v + gravedad) * damping
+            bx0 = pos[n, 0, 0]
+            by0 = pos[n, 0, 1]
+            for k in range(K):
+                pos[n, k, 0] += vel[n, k, 0]
+                pos[n, k, 1] += vel[n, k, 1]
+                dmp = damping[k]
+                if k >= first_player:
+                    p = k - first_player
+                    if actions[n, p] >= 9 and not kick_cancel[n, p]:
+                        dmp = p_kdamp
+                if k == 0:
+                    vel[n, 0, 0] += ball_grav[n, 0]
+                    vel[n, 0, 1] += ball_grav[n, 1]
+                vel[n, k, 0] *= dmp
+                vel[n, k, 1] *= dmp
+            # 3. colisiones
+            _collide_env(pos[n], vel[n], mask[n], radius, inv, bcoef, group,
+                         v_pos, v_bcoef, v_group, v_mask,
+                         s_p0, s_p1, s_curved, s_center, s_radius, s_t0, s_t1, s_bias, s_bcoef, s_group, s_mask,
+                         p_normal, p_dist, p_bcoef, p_group, p_mask)
+            # 4. estado
+            if kickoff[n]:
+                if vel[n, 0, 0] != 0.0 or vel[n, 0, 1] != 0.0:
+                    kickoff[n] = False
+                    for p in range(P):
+                        mask[n, first_player + p] = PLAYER_MASK
+            else:
+                qx = pos[n, 0, 0]
+                qy = pos[n, 0, 1]
+                mvx = qx - bx0
+                mvy = qy - by0
+                for g in range(g_p0.shape[0]):
+                    ax = g_p0[g, 0]
+                    ay = g_p0[g, 1]
+                    gx = g_p1[g, 0] - ax
+                    gy = g_p1[g, 1] - ay
+                    c1 = _cross(qx - ax, qy - ay, mvx, mvy) * _cross(qx - g_p1[g, 0], qy - g_p1[g, 1], mvx, mvy)
+                    c2 = _cross(bx0 - ax, by0 - ay, gx, gy) * _cross(qx - ax, qy - ay, gx, gy)
+                    if c1 <= 0.0 and c2 <= 0.0 and (mvx != 0.0 or mvy != 0.0):
+                        # entró en el arco de g_team -> anota el otro equipo
+                        goal_out[n] = -1 if g_team[g] == 0 else 1
+                        break
+            # 5. script de la sala (onGameTick), después de la física
+            if ps_on:
+                ps_gtick[n] += 1
+                if ps_has_pending[n]:  # runAfterGameTick: la curva arranca en el tick siguiente al tiro
+                    ball_grav[n, 0] = ps_pending[n, 0]
+                    ball_grav[n, 1] = ps_pending[n, 1]
+                    ps_has_pending[n] = False
+                elif ps_grav_left[n] > 0:
+                    ps_grav_left[n] -= 1
+                    if ps_grav_left[n] == 0:
+                        ball_grav[n, 0] = 0.0
+                        ball_grav[n, 1] = 0.0
+                if ps_inv_left[n] > 0:
+                    ps_inv_left[n] -= 1
+                    if ps_inv_left[n] == 0:
+                        inv[0] = ps_par[PS_BASE_INV]
+                if ps_charge[n] > 0:
+                    ps_charge[n] -= 1
+                    if ps_charge[n] == 0:
+                        # el timer dispara aunque ya no la tenga: la pelota queda cargada
+                        ps_comba[n] = True
+                        inv[0] = ps_par[PS_POWER_INV]
                         ps_charge[n] = -1
-                        ps_kick_out[n, p] = True
-            is_kicking = kick_pressed and not kick_cancel[n, p]
-            acc = p_kacc if is_kicking else p_acc
-            m = a % 9
-            vel[n, k, 0] += move_unit[m, 0] * acc
-            vel[n, k, 1] += move_unit[m, 1] * acc
-        # 2. integración: pos += v; v = (v + gravedad) * damping
-        bx0 = pos[n, 0, 0]
-        by0 = pos[n, 0, 1]
-        for k in range(K):
-            pos[n, k, 0] += vel[n, k, 0]
-            pos[n, k, 1] += vel[n, k, 1]
-            dmp = damping[k]
-            if k >= first_player:
-                p = k - first_player
-                if actions[n, p] >= 9 and not kick_cancel[n, p]:
-                    dmp = p_kdamp
-            if k == 0:
-                vel[n, 0, 0] += ball_grav[n, 0]
-                vel[n, 0, 1] += ball_grav[n, 1]
-            vel[n, k, 0] *= dmp
-            vel[n, k, 1] *= dmp
-        # 3. colisiones
-        _collide_env(pos[n], vel[n], mask[n], radius, inv, bcoef, group,
-                     v_pos, v_bcoef, v_group, v_mask,
-                     s_p0, s_p1, s_curved, s_center, s_radius, s_t0, s_t1, s_bias, s_bcoef, s_group, s_mask,
-                     p_normal, p_dist, p_bcoef, p_group, p_mask)
-        # 4. estado
-        if kickoff[n]:
-            if vel[n, 0, 0] != 0.0 or vel[n, 0, 1] != 0.0:
-                kickoff[n] = False
-                for p in range(P):
-                    mask[n, first_player + p] = PLAYER_MASK
-        else:
-            qx = pos[n, 0, 0]
-            qy = pos[n, 0, 1]
-            mvx = qx - bx0
-            mvy = qy - by0
-            for g in range(g_p0.shape[0]):
-                ax = g_p0[g, 0]
-                ay = g_p0[g, 1]
-                gx = g_p1[g, 0] - ax
-                gy = g_p1[g, 1] - ay
-                c1 = _cross(qx - ax, qy - ay, mvx, mvy) * _cross(qx - g_p1[g, 0], qy - g_p1[g, 1], mvx, mvy)
-                c2 = _cross(bx0 - ax, by0 - ay, gx, gy) * _cross(qx - ax, qy - ay, gx, gy)
-                if c1 <= 0.0 and c2 <= 0.0 and (mvx != 0.0 or mvy != 0.0):
-                    # entró en el arco de g_team -> anota el otro equipo
-                    goal_out[n] = -1 if g_team[g] == 0 else 1
-                    break
-        # 5. script de la sala (onGameTick), después de la física
-        if ps_on:
-            ps_gtick[n] += 1
-            if ps_has_pending[n]:  # runAfterGameTick: la curva arranca en el tick siguiente al tiro
-                ball_grav[n, 0] = ps_pending[n, 0]
-                ball_grav[n, 1] = ps_pending[n, 1]
-                ps_has_pending[n] = False
-            elif ps_grav_left[n] > 0:
-                ps_grav_left[n] -= 1
-                if ps_grav_left[n] == 0:
-                    ball_grav[n, 0] = 0.0
-                    ball_grav[n, 1] = 0.0
-            if ps_inv_left[n] > 0:
-                ps_inv_left[n] -= 1
-                if ps_inv_left[n] == 0:
-                    inv[0] = ps_par[PS_BASE_INV]
-            if ps_charge[n] > 0:
-                ps_charge[n] -= 1
-                if ps_charge[n] == 0:
-                    # el timer dispara aunque ya no la tenga: la pelota queda cargada
-                    ps_comba[n] = True
-                    inv[0] = ps_par[PS_POWER_INV]
-                    ps_charge[n] = -1
-            if ps_gtick[n] % int(ps_par[PS_EVERY]) == 0:
-                holder = -1
-                for p in range(P):  # el script se queda con el ÚLTIMO jugador que la toca
-                    k = first_player + p
-                    dx = pos[n, 0, 0] - pos[n, k, 0]
-                    dy = pos[n, 0, 1] - pos[n, k, 1]
-                    if math.sqrt(dx * dx + dy * dy) <= radius[k] + radius[0] + 0.1:
-                        holder = p
-                if holder >= 0:
-                    if ps_held[n] < 0:
-                        ps_held[n] = holder
+                if ps_gtick[n] % int(ps_par[PS_EVERY]) == 0:
+                    holder = -1
+                    for p in range(P):  # el script se queda con el ÚLTIMO jugador que la toca
+                        k = first_player + p
+                        dx = pos[n, 0, 0] - pos[n, k, 0]
+                        dy = pos[n, 0, 1] - pos[n, k, 1]
+                        if math.sqrt(dx * dx + dy * dy) <= radius[k] + radius[0] + 0.1:
+                            holder = p
+                    if holder >= 0:
+                        if ps_held[n] < 0:
+                            ps_held[n] = holder
+                            ps_comba[n] = False
+                            ps_charge[n] = int(ps_par[PS_CHARGE])
+                    elif ps_held[n] >= 0:
+                        # la perdió: se cancela la carga (ojo: si ya estaba cargada, invMass NO vuelve)
+                        ps_held[n] = -1
                         ps_comba[n] = False
-                        ps_charge[n] = int(ps_par[PS_CHARGE])
-                elif ps_held[n] >= 0:
-                    # la perdió: se cancela la carga (ojo: si ya estaba cargada, invMass NO vuelve)
-                    ps_held[n] = -1
-                    ps_comba[n] = False
-                    ps_charge[n] = -1
+                        ps_charge[n] = -1
+            if window_goal is not None and window_goal[n] == 0:
+                window_goal[n] = goal_out[n]
+            if window_kicked is not None:
+                for p in range(P):
+                    window_kicked[n, p] |= kick_out[n, p]
+            if last_touch is not None:
+                for p in range(P):
+                    if touch_out[n, p]:
+                        last_touch[n] = player_team[p]
 
 
 class BatchSim:
@@ -481,8 +500,19 @@ class BatchSim:
     # ------------------------------------------------------------------ step
     def step(self, actions: np.ndarray) -> np.ndarray:
         """actions: (N, P) enteros 0..17. Devuelve goal (N,) con +1 rojo / -1 azul / 0."""
+        step_batch(*self._step_args(actions))
+        return self.goal
+
+    def step_frames(self, actions, frames, last_touch):
+        """Sólo sin callbacks/reglas por tick ni cambios de acción dentro de la ventana."""
+        goal = np.empty(self.N, dtype=np.int64)
+        kicked = np.empty((self.N, self.P), dtype=np.bool_)
+        step_batch(*self._step_args(actions), frames, goal, kicked, last_touch)
+        return goal, kicked
+
+    def _step_args(self, actions):
         st, pl = self.st, self.st.player
-        step_batch(self.pos, self.vel, self.mask, self.kick_cancel, self.kickoff, self.kickoff_team,
+        return (self.pos, self.vel, self.mask, self.kick_cancel, self.kickoff, self.kickoff_team,
                    np.ascontiguousarray(actions, dtype=np.int64), MOVE_UNIT,
                    self.radius, self.inv_env, self.bcoef, self.damping, self.group,
                    self.first_player, self.player_team,
@@ -497,7 +527,6 @@ class BatchSim:
                    self.ball_grav, self.ps_on, self.ps_par, self.ps_held, self.ps_charge, self.ps_comba,
                    self.ps_grav_left, self.ps_inv_left, self.ps_gtick, self.ps_pending,
                    self.ps_has_pending, self.ps_kicked)
-        return self.goal
 
     # vistas cómodas
     @property

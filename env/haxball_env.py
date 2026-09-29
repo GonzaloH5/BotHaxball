@@ -67,7 +67,7 @@ class HaxballEnv:
                  seed: int | None = None, action_delay_max: int = 0,
                  kickoff_timeout: int = 0, powershot: bool | dict = False,
                  out_of_bounds: bool = False, obs_layout: str = "flat", max_entities: int = 0,
-                 rules: str | None = None):
+                 rules: str | None = None, optimize_rollout: bool = True):
         self.sim = BatchSim(n_envs, n_per_team, n_per_team, stadium, seed=seed, powershot=powershot)
         self.N = n_envs
         self.T = n_per_team
@@ -121,6 +121,7 @@ class HaxballEnv:
         self.rules = PegecheRules(self.sim, self.rng) if rules == "pegeche" else None
         if self.rules is not None:
             self.out_of_bounds = True
+        self.optimize_rollout = optimize_rollout
 
     # ----------------------------------------------------------------- reset
     def _reset_envs(self, idx, kickoff_team=None):
@@ -279,9 +280,16 @@ class HaxballEnv:
             ent = np.take_along_axis(ent, order[..., None], axis=2)
         return np.concatenate([own, ent.reshape(N, P, -1)], axis=-1).astype(np.float32)
 
-    def observe(self) -> np.ndarray:
+    def observe(self, indices=None) -> np.ndarray:
         if self.obs_layout == "universal":
+            if self.optimize_rollout:
+                from .observation import observe_universal
+                return observe_universal(self, indices)
+            if indices is not None:
+                return self._observe_universal()[indices]
             return self._observe_universal()
+        if indices is not None:
+            return self.observe()[indices]
         sim = self.sim
         N, P, T = self.N, self.P, self.T
         bp = np.broadcast_to(sim.ball_pos[:, None, :], (N, P, 2))
@@ -413,7 +421,10 @@ class HaxballEnv:
         rules = self.rules
         if rules is not None:
             rules.begin_step()
-        for k in range(self.frame_skip):
+        fused = self.optimize_rollout and rules is None and self.action_delay_max == 0
+        if fused:
+            goal, kicked = self.sim.step_frames(world_act, self.frame_skip, self.last_touch)
+        for k in range(0 if fused else self.frame_skip):
             if self.action_delay_max > 0:
                 # acción vigente en este tick: la decisión de hace ceil((d - k) / frame_skip) ventanas
                 lag = self.delay - k
@@ -499,8 +510,14 @@ class HaxballEnv:
             # tras un gol saca el que lo recibió (como en HaxBall); si no, al azar
             kt = np.where(goal[idx] == 1, 1, np.where(goal[idx] == -1, 0, self.rng.integers(0, 2, len(idx))))
             self._reset_envs(idx, kickoff_team=kt)
-        self._phi = self._potentials()
-        obs = self.observe() if len(idx) else final_obs
+        # Sin reset/set-piece, ya tenemos exactamente estos potenciales.
+        self._phi = (self._potentials() if len(idx) or out.any() or not self.optimize_rollout
+                     else (phi_ball, phi_near, phi_spread))
+        if len(idx) and self.optimize_rollout:
+            obs = final_obs.copy()
+            obs[idx] = self.observe(idx)
+        else:
+            obs = self.observe() if len(idx) else final_obs
         info = {"goal": goal, "truncated": truncated, "stall": stall, "out": out,
                 "ps_kicked": self.sim.ps_kicked.copy(), "final_obs": final_obs, "kicked": kicked}
         if rules is not None:

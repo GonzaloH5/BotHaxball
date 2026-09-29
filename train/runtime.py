@@ -62,16 +62,31 @@ class CudaRolloutTransfer:
     No se permite reutilizar los buffers mientras sus copias estén pendientes.
     """
 
-    def __init__(self, device):
+    def __init__(self, device, reuse_device=True):
         self.device = device
+        self.reuse_device = reuse_device
         self.obs = self.output = None
         self.ready = torch.cuda.Event()
+        self.device_obs = None
 
     def upload(self, flat):
-        if self.obs is None or tuple(self.obs.shape) != flat.shape:
-            self.obs = torch.empty(flat.shape, dtype=torch.float32, pin_memory=True)
-        np.copyto(self.obs.numpy(), flat)
-        return self.obs.to(self.device, non_blocking=True)
+        return self.upload_many([flat])
+
+    def upload_many(self, arrays):
+        """Copia cada tarea directamente al buffer pinned, sin concatenate intermedio."""
+        shape = (sum(a.shape[0] for a in arrays), arrays[0].shape[1])
+        if self.obs is None or tuple(self.obs.shape) != shape:
+            self.obs = torch.empty(shape, dtype=torch.float32, pin_memory=True)
+            if self.reuse_device:
+                self.device_obs = torch.empty(shape, dtype=torch.float32, device=self.device)
+        host, offset = self.obs.numpy(), 0
+        for array in arrays:
+            np.copyto(host[offset:offset + len(array)], array)
+            offset += len(array)
+        if not self.reuse_device:
+            return self.obs.to(self.device, non_blocking=True)
+        self.device_obs.copy_(self.obs, non_blocking=True)
+        return self.device_obs
 
     def enqueue_output(self, actions, logp, values):
         packed = torch.stack((actions.float(), logp, values))

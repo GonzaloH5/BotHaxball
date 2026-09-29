@@ -106,56 +106,58 @@ class StadiumRays:
         return out
 
 
+@njit(cache=True, inline="always")
+def ray_distance(ox, oy, dx, dy, geometry, radius, maxd):
+    seg_a, seg_b, circ_c, circ_r, pl_n, pl_d = geometry
+    best = maxd + radius
+    # segmentos: intersección rayo-segmento
+    for s in range(seg_a.shape[0]):
+        ax = seg_a[s, 0]
+        ay = seg_a[s, 1]
+        ex = seg_b[s, 0] - ax
+        ey = seg_b[s, 1] - ay
+        den = dx * ey - dy * ex
+        if abs(den) < 1e-12:
+            continue
+        wx = ax - ox
+        wy = ay - oy
+        t = (wx * ey - wy * ex) / den
+        u = (wx * dy - wy * dx) / den
+        if t > 0.0 and 0.0 <= u <= 1.0 and t < best:
+            best = t
+    # discos fijos y vértices: rayo contra círculo inflado por el radio del disco
+    for c in range(circ_c.shape[0]):
+        fx = ox - circ_c[c, 0]
+        fy = oy - circ_c[c, 1]
+        rr = circ_r[c] + radius
+        b = fx * dx + fy * dy
+        cc = fx * fx + fy * fy - rr * rr
+        disc = b * b - cc
+        if disc < 0.0:
+            continue
+        t = -b - math.sqrt(disc)
+        if t > 0.0 and t + radius < best:
+            best = t + radius  # se resta el radio al final como con las paredes
+    # planos: el disco queda del lado de la normal (dot(p, n) >= dist + radio)
+    for p in range(pl_n.shape[0]):
+        nx = pl_n[p, 0]
+        ny = pl_n[p, 1]
+        vn = dx * nx + dy * ny
+        if vn >= 0.0:
+            continue
+        t = (pl_d[p] - (ox * nx + oy * ny)) / vn
+        if t > 0.0 and t < best:
+            best = t
+    d = best - radius
+    return min(max(d, 0.0), maxd)
+
+
 @njit(cache=True, parallel=True)
 def _cast(orig, dirs, seg_a, seg_b, circ_c, circ_r, pl_n, pl_d, radius, maxd):
-    M = orig.shape[0]
-    R = dirs.shape[0]
-    out = np.full((M, R), maxd)
-    for m in prange(M):
-        ox = orig[m, 0]
-        oy = orig[m, 1]
-        for k in range(R):
-            dx = dirs[k, 0]
-            dy = dirs[k, 1]
-            best = maxd + radius
-            # segmentos: intersección rayo-segmento
-            for s in range(seg_a.shape[0]):
-                ax = seg_a[s, 0]
-                ay = seg_a[s, 1]
-                ex = seg_b[s, 0] - ax
-                ey = seg_b[s, 1] - ay
-                den = dx * ey - dy * ex
-                if abs(den) < 1e-12:
-                    continue
-                wx = ax - ox
-                wy = ay - oy
-                t = (wx * ey - wy * ex) / den
-                u = (wx * dy - wy * dx) / den
-                if t > 0.0 and 0.0 <= u <= 1.0 and t < best:
-                    best = t
-            # discos fijos y vértices: rayo contra círculo inflado por el radio del disco
-            for c in range(circ_c.shape[0]):
-                fx = ox - circ_c[c, 0]
-                fy = oy - circ_c[c, 1]
-                rr = circ_r[c] + radius
-                b = fx * dx + fy * dy
-                cc = fx * fx + fy * fy - rr * rr
-                disc = b * b - cc
-                if disc < 0.0:
-                    continue
-                t = -b - math.sqrt(disc)
-                if t > 0.0 and t + radius < best:
-                    best = t + radius  # se resta el radio al final como con las paredes
-            # planos: el disco queda del lado de la normal (dot(p, n) >= dist + radio)
-            for p in range(pl_n.shape[0]):
-                nx = pl_n[p, 0]
-                ny = pl_n[p, 1]
-                vn = dx * nx + dy * ny
-                if vn >= 0.0:
-                    continue
-                t = (pl_d[p] - (ox * nx + oy * ny)) / vn
-                if t > 0.0 and t < best:
-                    best = t
-            d = best - radius
-            out[m, k] = min(max(d, 0.0), maxd)
+    out = np.empty((orig.shape[0], dirs.shape[0]))
+    geometry = (seg_a, seg_b, circ_c, circ_r, pl_n, pl_d)
+    for m in prange(orig.shape[0]):
+        for k in range(dirs.shape[0]):
+            out[m, k] = ray_distance(orig[m, 0], orig[m, 1], dirs[k, 0], dirs[k, 1],
+                                     geometry, radius, maxd)
     return out

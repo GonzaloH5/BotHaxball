@@ -54,6 +54,14 @@ def test_opponents_grouped_across_tasks_and_learner_values_preserved(device):
     torch.testing.assert_close(values, flat[:, 0])
     torch.testing.assert_close(logp, torch.zeros_like(logp))
     assert opponent.calls == 1 and trainer.model.calls == 1
+    trainer._policy_decisions(flat)
+    assert opponent.calls == 2
+    trainer.slots[0].opp_id[:] = -1
+    trainer.slots[1].opp_id[:] = -1
+    trainer._prepare_policy_groups()  # cambia la asignación en la siguiente iteración
+    actions, _, _ = trainer._policy_decisions(flat)
+    torch.testing.assert_close(actions, torch.full((12,), 3, device=device))
+    assert opponent.calls == 2
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="Necesita CUDA: ejecutar en el Pod")
@@ -70,6 +78,11 @@ def test_cuda_rollout_transfer_reuse_and_batch_dtypes():
         np.testing.assert_array_equal(logp, obs[:, 1])
         np.testing.assert_array_equal(values, obs[:, 2])
         assert transfer.obs.is_pinned() and transfer.output.is_pinned()
+    host_pointer, device_pointer = transfer.obs.data_ptr(), transfer.device_obs.data_ptr()
+    tensor = transfer.upload_many([obs[:3], obs[3:7], obs[7:]])
+    np.testing.assert_array_equal(tensor.cpu().numpy(), obs)
+    assert transfer.obs.data_ptr() == host_pointer
+    assert transfer.device_obs.data_ptr() == device_pointer
     batch = batch_to_device({"obs": [obs], "act": [actions]}, device)
     assert batch["act"].dtype == torch.int64
     assert batch["obs"].device.type == "cuda"
@@ -112,6 +125,9 @@ def test_resume_cpu_checkpoint_and_update_with_bc_pool_and_timeouts(tmp_path, mo
         assert any(not torch.equal(old, new) for old, new in zip(before, resumed.model.parameters()))
         assert all(torch.isfinite(p).all() for p in resumed.model.parameters())
         assert resumed.league.members[0].model.pi.weight.device.type == device
+        cached = [s._buffer_cache["obs"] for s in resumed.slots]
+        resumed.iterate()
+        assert all(s._buffer_cache["obs"] is before for s, before in zip(resumed.slots, cached))
     finally:
         initial.writer.close()
         if resumed is not None:

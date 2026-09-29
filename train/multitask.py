@@ -72,6 +72,7 @@ class TaskSlot:
 class MultiTrainer:
     def __init__(self, cfg: dict, run: str, resume: bool, init_from: str | None = None):
         self.cfg = cfg
+        self.optimize_rollout = cfg.get("runtime", {}).get("optimize_rollout", True)
         self.run_dir = ROOT / "runs" / run
         self.run_dir.mkdir(parents=True, exist_ok=True)
         p, r = cfg["ppo"], cfg["reward"]
@@ -106,7 +107,8 @@ class MultiTrainer:
             raise RuntimeError("ppo.device=cuda requiere PyTorch con CUDA y una GPU NVIDIA disponible")
         print(f"runtime: {self.device} | torch {torch.get_num_threads()} hilos | física {get_num_threads()} hilos",
               flush=True)
-        self._rollout_transfer = CudaRolloutTransfer(self.device) if self.device.type == "cuda" else None
+        self._rollout_transfer = (CudaRolloutTransfer(self.device, reuse_device=self.optimize_rollout)
+                                  if self.device.type == "cuda" else None)
         from env.haxball_env import U_SELF_DIM
         mc = cfg["model"]
         model_cfg = dict(type=mc.get("type", "set"), self_dim=U_SELF_DIM, ent_dim=ENT_DIM,
@@ -208,7 +210,8 @@ class MultiTrainer:
             env = make_env(t, n_envs, self.max_entities, rcfg, seed=self.cfg["seed"] + 1000 * self.stage + i,
                            frame_skip=e["frame_skip"], max_ticks=e["max_ticks"],
                            random_reset_prob=e["random_reset_prob"], kickoff_timeout=e.get("kickoff_timeout", 180),
-                           action_delay_max=e.get("action_delay_max", 0))
+                           action_delay_max=e.get("action_delay_max", 0),
+                           optimize_rollout=getattr(self, "optimize_rollout", True))
             slot = TaskSlot(t, env)
             # intro_step: paso global en que la tarea entró. Tareas nuevas = ahora; estados guardados antes de
             # existir este campo = 0 (estaban desde el principio o se comportaban así hasta ahora)
@@ -223,6 +226,7 @@ class MultiTrainer:
             slot.set_regression_context(self.cfg["curriculum"][slot.opp_stage]["scripted_eps"])
             self.slots.append(slot)
         self.obs_dim = self.slots[0].env.obs_dim
+        self._policy_groups = None
         desc = ", ".join(f"{s.task.name}:{s.N}x{s.P}" for s in self.slots)
         print(f"etapa {self.stage} ({self.stages[self.stage].get('name', '')}): {desc} | entidades {self.max_entities}",
               flush=True)
@@ -293,6 +297,20 @@ class MultiTrainer:
         s.modes, s.opp_id, s.learner, s.scripted_eps = modes, opp_id, learner, st["scripted_eps"]
 
     # ------------------------------------------------------------ actuar
+    def _prepare_policy_groups(self):
+        """Los modos/rivales no cambian dentro del rollout: índices una vez, no 128 veces."""
+        grouped, offset = {}, 0
+        for slot in self.slots:
+            slot.scripted_rows = np.flatnonzero(slot.modes == SCRIPTED) if hasattr(slot, "modes") else None
+            for oid in np.unique(slot.opp_id[slot.opp_id >= 0]):
+                rows = np.where(slot.opp_id == oid)[0]
+                indices = (offset + rows[:, None] * slot.P + np.arange(slot.T, slot.P)).reshape(-1)
+                grouped.setdefault(int(oid), []).append(indices)
+            offset += slot.N * slot.P
+        self._policy_groups = [(oid, torch.as_tensor(np.concatenate(chunks), device=self.device))
+                               for oid, chunks in grouped.items()]
+        return self._policy_groups
+
     @torch.no_grad()
     def act(self, obs_list):
         """Una sola pasada de la red para los agentes de todas las tareas."""
@@ -316,7 +334,8 @@ class MultiTrainer:
                 acts[envs, blue] = torch.distributions.Categorical(logits=lg).sample().cpu().numpy().reshape(len(envs), s.T)
             sc = np.where(s.modes == SCRIPTED)[0]
             if len(sc):
-                acts[sc, blue] = scripted_actions(s.env, np.arange(s.T, s.P), s.scripted_eps, self.rng)[sc]
+                acts[sc, blue] = scripted_actions(s.env, np.arange(s.T, s.P), s.scripted_eps, self.rng,
+                                                 env_indices=sc)
             out.append((acts, logp[k:k + n].reshape(s.N, s.P), value[k:k + n].reshape(s.N, s.P)))
             k += n
         return out
@@ -328,28 +347,26 @@ class MultiTrainer:
         dist = torch.distributions.Categorical(logits=logits, validate_args=False)
         actions = dist.sample()
         logp = dist.log_prob(actions)
-        grouped, offset = {}, 0
-        for slot in self.slots:
-            for oid in np.unique(slot.opp_id[slot.opp_id >= 0]):
-                rows = np.where(slot.opp_id == oid)[0]
-                indices = (offset + rows[:, None] * slot.P + np.arange(slot.T, slot.P)).reshape(-1)
-                grouped.setdefault(int(oid), []).append(indices)
-            offset += slot.N * slot.P
-        for oid, chunks in grouped.items():
-            indices = torch.as_tensor(np.concatenate(chunks), device=self.device)
+        groups = getattr(self, "_policy_groups", None)
+        if groups is None or not getattr(self, "optimize_rollout", True):
+            groups = self._prepare_policy_groups()
+        for oid, indices in groups:
             logits = self.league.members[oid].model.logits(flat[indices])
             actions[indices] = torch.distributions.Categorical(logits=logits, validate_args=False).sample()
         return actions, logp, values
 
     def _act_cuda(self, obs_list):
-        flat = np.concatenate([o.reshape(-1, self.obs_dim) for o in obs_list])
         transfer = self._rollout_transfer
-        transfer.enqueue_output(*self._policy_decisions(transfer.upload(flat)))
+        arrays = [o.reshape(-1, self.obs_dim) for o in obs_list]
+        flat = (transfer.upload_many(arrays) if self.optimize_rollout
+                else transfer.upload(np.concatenate(arrays)))
+        transfer.enqueue_output(*self._policy_decisions(flat))
         # La copia GPU->CPU está en vuelo: calcular bots sobre los estados actuales, sin avanzar física.
         scripted = []
         for slot in self.slots:
-            rows = np.where(slot.modes == SCRIPTED)[0]
-            acts = (scripted_actions(slot.env, np.arange(slot.T, slot.P), slot.scripted_eps, self.rng)[rows]
+            rows = slot.scripted_rows if self.optimize_rollout else np.where(slot.modes == SCRIPTED)[0]
+            acts = (scripted_actions(slot.env, np.arange(slot.T, slot.P), slot.scripted_eps, self.rng,
+                                     env_indices=rows)
                     if len(rows) else None)
             scripted.append((rows, acts))
         actions, logp, values = transfer.wait_output()
@@ -368,6 +385,21 @@ class MultiTrainer:
     def values(self, obs: np.ndarray) -> np.ndarray:
         v = self.model(torch.from_numpy(obs.reshape(-1, self.obs_dim)).to(self.device))[1]
         return v.cpu().numpy().reshape(obs.shape[:2])
+
+    def values_many(self, observations):
+        """Un bootstrap para todas las tareas/timeouts, con una sola sincronización CUDA."""
+        if not observations:
+            return []
+        if not self.optimize_rollout or self.device.type != "cuda":
+            return [self.values(o) for o in observations]
+        flat = np.concatenate([o.reshape(-1, self.obs_dim) for o in observations])
+        values = self.values(flat[:, None, :]).reshape(-1)
+        result, offset = [], 0
+        for o in observations:
+            size = o.shape[0] * o.shape[1]
+            result.append(values[offset:offset + size].reshape(o.shape[:2]))
+            offset += size
+        return result
 
     # ------------------------------------------------------------ loop
     def train(self) -> None:
@@ -396,26 +428,36 @@ class MultiTrainer:
             s.env.rcfg.shaping_coef = self.shaping_for(s)
         for s in self.slots:
             self.assign_modes(s)
-            s.buf = {k: np.zeros((L, s.N, s.P) + sh, dt) for k, sh, dt in
-                     (("obs", (D,), np.float32), ("act", (), np.int64), ("logp", (), np.float32),
-                      ("val", (), np.float32), ("rew", (), np.float32))}
-            s.buf["done"] = np.zeros((L, s.N), np.float32)
+            cache = getattr(s, "_buffer_cache", None)
+            if not self.optimize_rollout or cache is None or cache["obs"].shape != (L, s.N, s.P, D):
+                allocate = np.empty if self.optimize_rollout else np.zeros
+                cache = {k: allocate((L, s.N, s.P) + sh, dt) for k, sh, dt in
+                         (("obs", (D,), np.float32), ("act", (), np.int64), ("logp", (), np.float32),
+                          ("val", (), np.float32), ("rew", (), np.float32))}
+                cache["done"] = allocate((L, s.N), np.float32)
+                if self.optimize_rollout:
+                    s._buffer_cache = cache
+            s.buf = cache
             s.pool_goals = {}
+        self._policy_groups = None
+        if self.optimize_rollout:
+            self._prepare_policy_groups()
         t0 = time.time()
         obs = self._obs
         for t in range(L):
             decisions = self.act(obs)
             new_obs = []
+            timeouts = []
             for s, o, (acts, logp, val) in zip(self.slots, obs, decisions):
                 b = s.buf
                 b["obs"][t], b["act"][t], b["logp"][t], b["val"][t] = o, acts, logp, val
                 o2, rew, done, info = s.env.step(acts)
                 if info["truncated"].any():
                     tr = np.where(info["truncated"])[0]
-                    rew[tr] += p["gamma"] * self.values(info["final_obs"][tr])
+                    timeouts.append((s, tr, info["final_obs"][tr]))
                 b["rew"][t], b["done"][t] = rew, done
                 g = info["goal"]
-                for m in (SELF, POOL, SCRIPTED):
+                for m in ((SELF, POOL, SCRIPTED) if g.any() else ()):
                     sel = s.modes == m
                     s.goals[m][0] += int((g[sel] == 1).sum())
                     s.goals[m][1] += int((g[sel] == -1).sum())
@@ -425,6 +467,8 @@ class MultiTrainer:
                 if sc.any():
                     self.league.record(None, int((g[sc] == 1).sum()), int((g[sc] == -1).sum()))
                 new_obs.append(o2)
+            for (slot, rows, _), bootstrap in zip(timeouts, self.values_many([x[2] for x in timeouts])):
+                slot.buf["rew"][t, rows] += p["gamma"] * bootstrap
             obs = new_obs
         self._obs = obs
         t_roll = time.time() - t0
@@ -432,11 +476,10 @@ class MultiTrainer:
         t_prepare = time.time()
         # GAE por tarea y muestras de los agentes que aprenden
         parts = {k: [] for k in ("obs", "act", "logp", "adv", "ret")}
-        for s, o in zip(self.slots, obs):
+        for s, last_v in zip(self.slots, self.values_many(obs)):
             for k_, (a_, b_) in s.pool_goals.items():
                 self.league.record(int(k_), a_, b_)
             b = s.buf
-            last_v = self.values(o)
             adv = np.zeros_like(b["rew"])
             gae = np.zeros((s.N, s.P), np.float32)
             for t in reversed(range(L)):

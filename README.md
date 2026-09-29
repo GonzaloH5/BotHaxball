@@ -152,4 +152,31 @@ siguen alternándose para recoger muestras con la política actual, sin agregar 
 `Ctrl+C` guarda `latest.pt`. Ejecutar una sola instancia por run y conservar `/workspace` en almacenamiento
 persistente. Las cifras de rendimiento deben medirse en la máquina alquilada.
 
+#### Rollout optimizado (31 hilos en este Pod)
+
+No cambia el checkpoint, red, PPO, recompensas, currículo ni número de muestras. Fusiona la observación
+universal y los rayos en un kernel; agrupa los ticks de física sólo sin callbacks ni lag; conserva los
+eventos de todos los ticks. Los resets recalculan sólo las observaciones afectadas. Los bots calculan
+sólo los partidos seleccionados y conservan los sorteos de ruido del rival. Reutiliza buffers e índices
+de snapshots; sube observaciones directamente a memoria pinned y agrupa los bootstrap de CUDA.
+Las reglas Pegeche y el retraso de acciones siguen ejecutándose tick por tick.
+
+Detener primero el entrenamiento con `Ctrl+C` y esperar el mensaje de guardado. Después:
+
+```bash
+git pull --ff-only
+python -m pytest tests/test_rollout_optimized.py tests/test_cuda_runtime.py -q
+python -m tools.benchmark_multitask --config train/config_runpod.yaml --numba-threads 31 --warmup 3 --iters 15 --baseline
+python -m tools.benchmark_multitask --config train/config_runpod.yaml --numba-threads 31 --warmup 3 --iters 15
+python -m train.multitask --config train/config_runpod.yaml --run multi --resume
+```
+
+Las dos mediciones parten del mismo archivo y descartan su aprendizaje temporal. Comparar
+`pasos/s reales` y `rollout`, preferiblemente repitiendo en orden inverso; no ejecutar entrenamiento,
+replays ni otros benchmarks a la vez. La primera compilación Numba puede tardar minutos y no representa
+la velocidad estable. Para localizar el cuello de botella restante, agregar `--profile-rollout`:
+los tiempos son inclusivos y hay solapamiento CPU/GPU, por lo que no deben sumarse.
+Para volver a la ruta de referencia: `--override runtime.optimize_rollout=false`. En otro host con menos
+de 31 hilos disponibles, usar `--override ppo.numba_threads=auto` al entrenar.
+
 Uso responsable: usar el bot sólo en salas propias o con permiso. En salas públicas o competitivas contra personas es hacer trampa.

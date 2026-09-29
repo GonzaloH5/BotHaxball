@@ -10,7 +10,10 @@ Estrategia:
 """
 from __future__ import annotations
 
+import math
+
 import numpy as np
+from numba import njit
 
 from sim.physics import MOVE_UNIT
 
@@ -24,7 +27,89 @@ def _dir_to_action(d: np.ndarray, stop_eps: float = 2.0) -> np.ndarray:
     return np.where(norm < stop_eps, 0, move)
 
 
-def scripted_actions(env, players: np.ndarray | None = None, eps: float = 0.0,
+def scripted_actions(env, players=None, eps=0.0, rng=None, env_indices=None):
+    """Calcula sólo partidos seleccionados; conserva los sorteos originales de ruido."""
+    if not getattr(env, "optimize_rollout", True):
+        actions = _scripted_reference(env, players, eps, rng)
+        return actions if env_indices is None else actions[env_indices]
+    sim = env.sim
+    players = np.arange(sim.P) if players is None else np.asarray(players, dtype=np.int64)
+    rows = np.arange(sim.N) if env_indices is None else np.asarray(env_indices, dtype=np.int64)
+    actions = _scripted_kernel(rows, players, sim.ball_pos, sim.ball_vel, sim.player_pos,
+                               sim.player_team, env.sign, env.goal_x, sim.st.field_half_h,
+                               float(sim.st.player["radius"] + sim.st.ball["radius"]))
+    if eps > 0:
+        rng = rng or np.random.default_rng()
+        # Antes se sorteaban N x jugadores y después se seleccionaban las filas.
+        # Mantener esos sorteos evita cambiar las semillas/currículo por esta optimización.
+        shape = (sim.N, len(players))
+        random_mask = (rng.random(shape) < eps)[rows]
+        random_actions = rng.integers(0, 18, shape)[rows]
+        actions = np.where(random_mask, random_actions, actions)
+    return actions
+
+
+@njit(cache=True, nogil=True)
+def _scripted_kernel(rows, players, ball_pos, ball_vel, pp, team, sign, gx, H, radii):
+    out = np.empty((len(rows), len(players)), dtype=np.int64)
+    for i in range(len(rows)):
+        n = rows[i]
+        distances = np.empty(pp.shape[1])
+        for q in range(pp.shape[1]):
+            dx, dy = pp[n, q, 0] - ball_pos[n, 0], pp[n, q, 1] - ball_pos[n, 1]
+            distances[q] = math.sqrt(dx * dx + dy * dy)
+        for j in range(len(players)):
+            p = players[j]
+            s = sign[p]
+            bx, by = ball_pos[n, 0] * s, ball_pos[n, 1]
+            fx = bx + ball_vel[n, 0] * s * 6.0
+            fy = by + ball_vel[n, 1] * 6.0
+            px, py = pp[n, p, 0] * s, pp[n, p, 1]
+            dx, dy = gx - fx, -fy
+            norm = max(math.sqrt(dx * dx + dy * dy), 1e-9)
+            tx, ty = dx / norm, dy / norm
+            dx, dy = fx - px, fy - py
+            distance = math.sqrt(dx * dx + dy * dy)
+            norm = max(distance, 1e-9)
+            aligned = (dx / norm) * tx + (dy / norm) * ty > 0.8
+            if aligned:
+                target_x, target_y = fx, fy
+            elif px > fx - 5.0:
+                delta = py - fy + 1e-6
+                side = 1.0 if delta > 0 else (-1.0 if delta < 0 else 0.0)
+                target_x, target_y = min(fx - 10.0, px), fy + side * (radii + 25.0)
+            else:
+                target_x, target_y = fx - tx * (radii + 6.0), fy - ty * (radii + 6.0)
+            opponent = math.inf
+            rank = 0
+            for q in range(pp.shape[1]):
+                if team[q] != team[p]:
+                    opponent = min(opponent, distances[q])
+                elif distances[q] < distances[p] or (distances[q] == distances[p] and q < p):
+                    rank += 1
+            if opponent + 20.0 < distance and bx < 0:
+                target_x, target_y = -gx + 30.0, by * 0.4
+            if rank == 1:
+                lateral = (-1.0 if by > 0 else 1.0) * 0.28 * H
+                target_x, target_y = bx - 0.18 * gx, by * 0.4 + lateral
+            elif rank >= 2:
+                target_x, target_y = min(bx - 0.25 * gx, -0.55 * gx), by * 0.35
+            dx, dy = target_x - px, target_y - py
+            norm = math.sqrt(dx * dx + dy * dy)
+            denominator = max(norm, 1e-9)
+            ux, uy = dx / denominator, dy / denominator
+            best, move = -math.inf, 1
+            for m in range(1, 9):
+                score = ux * MOVE_UNIT[m, 0] + uy * MOVE_UNIT[m, 1]
+                if score > best:
+                    best, move = score, m
+            if norm < 2.0:
+                move = 0
+            out[i, j] = move + 9 * (aligned and distance < radii + 8.0)
+    return out
+
+
+def _scripted_reference(env, players: np.ndarray | None = None, eps: float = 0.0,
                      rng: np.random.Generator | None = None) -> np.ndarray:
     """Acciones (N, len(players)) en marco propio para los jugadores `players` de `env`."""
     rng = rng or np.random.default_rng()

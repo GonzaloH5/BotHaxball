@@ -13,8 +13,53 @@ from pathlib import Path
 
 import torch
 
+from train import multitask
 from train.multitask import ROOT, MultiTrainer
 from train.runtime import load_config
+
+
+class RolloutProfile:
+    """Tiempos inclusivos opcionales; sin sincronizaciones CUDA adicionales.
+
+    act incluye bots/espera GPU, step incluye física/obs/potenciales. No sumar padres e hijos.
+    """
+    def __init__(self, trainer):
+        self.totals, self.calls, self.originals = {}, {}, []
+        self.wrap(trainer, "act", "decisiones (red+transferencia+bots)")
+        self.wrap(multitask, "scripted_actions", "bots CPU (dentro de decisiones)")
+        self.wrap(trainer, "values_many", "bootstrap de valores")
+        for slot in trainer.slots:
+            self.wrap(slot.env, "step", "entorno total")
+            self.wrap(slot.env, "observe", "observaciones (dentro de entorno)")
+            self.wrap(slot.env, "_potentials", "potenciales (dentro de entorno)")
+            self.wrap(slot.env.sim, "step", "física (dentro de entorno)")
+            self.wrap(slot.env.sim, "step_frames", "física (dentro de entorno)")
+
+    def wrap(self, owner, attr, label):
+        original = getattr(owner, attr)
+        self.originals.append((owner, attr, original))
+
+        def measured(*args, **kwargs):
+            start = time.perf_counter()
+            try:
+                return original(*args, **kwargs)
+            finally:
+                self.totals[label] = self.totals.get(label, 0.0) + time.perf_counter() - start
+                self.calls[label] = self.calls.get(label, 0) + 1
+        setattr(owner, attr, measured)
+
+    def reset(self):
+        self.totals.clear()
+        self.calls.clear()
+
+    def report(self, iters):
+        print("\nDesglose inclusivo (padres/hijos y CPU/GPU solapados NO se suman):")
+        for label, total in self.totals.items():
+            print(f"  {label}: {total / iters:.3f} s/iter | {self.calls[label] / iters:.0f} llamadas/iter")
+
+    def close(self):
+        for owner, attr, original in reversed(self.originals):
+            setattr(owner, attr, original)
 
 
 def main():
@@ -25,6 +70,8 @@ def main():
     ap.add_argument("--warmup", type=int, default=2)
     ap.add_argument("--device", choices=("cpu", "cuda"))
     ap.add_argument("--numba-threads", type=int)
+    ap.add_argument("--baseline", action="store_true", help="Ruta de referencia sin optimizaciones del rollout")
+    ap.add_argument("--profile-rollout", action="store_true", help="Desglose inclusivo por componente (añade overhead)")
     args = ap.parse_args()
     if args.iters < 1 or args.warmup < 1:
         ap.error("iters y warmup deben ser positivos (Numba necesita calentamiento)")
@@ -35,6 +82,7 @@ def main():
         cfg["ppo"]["device"] = args.device
     if args.numba_threads is not None:
         cfg["ppo"]["numba_threads"] = args.numba_threads
+    cfg.setdefault("runtime", {})["optimize_rollout"] = not args.baseline
     # Sin replays/procesos externos ni checkpoints periódicos durante la medición.
     cfg["log"].update(every=1, checkpoint_every=10**12, replay_every=0)
     cfg["league"]["snapshot_every"] = 10**12
@@ -43,6 +91,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="_benchmark_", dir=ROOT / "runs") as directory:
         shutil.copy2(args.checkpoint, Path(directory) / "latest.pt")
         trainer = MultiTrainer(cfg, Path(directory).name, resume=True)
+        profile = RolloutProfile(trainer) if args.profile_rollout else None
         records = []
         original_log = trainer.log
 
@@ -58,6 +107,8 @@ def main():
                     if trainer.device.type == "cuda":
                         torch.cuda.synchronize(trainer.device)
                         torch.cuda.reset_peak_memory_stats(trainer.device)
+                    if profile:
+                        profile.reset()
                     start = time.perf_counter()
                 trainer.iterate()
             elapsed = time.perf_counter() - start
@@ -68,7 +119,11 @@ def main():
                 print(f"{name}: {sum(row[index] for row in measured) / args.iters:.3f} s/iter")
             if trainer.device.type == "cuda":
                 print(f"VRAM máxima asignada: {torch.cuda.max_memory_allocated(trainer.device) / 2**30:.2f} GiB")
+            if profile:
+                profile.report(args.iters)
         finally:
+            if profile:
+                profile.close()
             trainer.writer.close()
 
 
