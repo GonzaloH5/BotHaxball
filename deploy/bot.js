@@ -85,7 +85,15 @@ function BotPlugin(session) {
     allowFlags: AllowFlags.CreateRoom | AllowFlags.JoinRoom,
   });
   const that = this;
-  let tick = 0, ticksSinceKickoff = 0, kickCancel = false, lastKey = { dirX: 0, dirY: 0, kick: false };
+  let tick = 0;
+  let ticksSinceKickoff = 0;
+  let kickCancel = false;
+  let lastKey = { dirX: 0, dirY: 0, kick: false };
+
+  // Estado manual del saque después de un gol.
+  let pendingKickoffTeam = -1;
+  let forcedKickoff = false;
+  let forcedKickoffTeam = -1;
   let busy = false;
   const policyMemory = new PolicyMemory(META);
   let policyActive = false;
@@ -207,19 +215,82 @@ function BotPlugin(session) {
         holder: chargeTicks > 0 ? 0 : -1
       };
     }
+    const ballSpeed = Math.hypot(bd.speed.x, bd.speed.y);
+
+    // Una vez que la pelota empieza a moverse,
+    // ya terminó nuestro override manual del saque.
+    if (forcedKickoff && ballSpeed > 0.05) {
+      forcedKickoff = false;
+      forcedKickoffTeam = -1;
+    }
+
+    const isKickoff = forcedKickoff || gs.state === 0;
+
+    const detectedKickoffTeam =
+      forcedKickoff
+        ? forcedKickoffTeam
+        : teamIdx(gs.goalConcedingTeam ? gs.goalConcedingTeam.id : 1);
+
     return {
       ball: { pos: bpos, vel: [bd.speed.x, bd.speed.y] },
       players, myTeam: teamIdx(me.team.id), ps,
-      kickoff: gs.state === 0,
-      kickoffTeam: teamIdx(gs.goalConcedingTeam ? gs.goalConcedingTeam.id : 1),
+      kickoff: isKickoff,
+      kickoffTeam: detectedKickoffTeam,
       tfrac: Math.min(ticksSinceKickoff / META.max_ticks, 1),
     };
   }
   this.onStadiumChange = () => { geom = null; geomFor = null; chargeTicks = 0; resetPolicy(); };
 
-  this.onGameStart = () => { ticksSinceKickoff = 0; kickCancel = false; resetPolicy(); };
-  this.onTeamGoal = () => { ticksSinceKickoff = 0; resetPolicy(); };
-  this.onPositionsReset = () => { ticksSinceKickoff = 0; resetPolicy(); };
+  const resetControls = () => {
+    kickCancel = false;
+    pendingInput = null;
+    lastKey = { dirX: 0, dirY: 0, kick: false };
+
+    try {
+      that.room.setKeyState(0);
+    } catch (_) { }
+  };
+
+  this.onGameStart = () => {
+    ticksSinceKickoff = 0;
+
+    pendingKickoffTeam = -1;
+    forcedKickoff = false;
+    forcedKickoffTeam = -1;
+
+    resetControls();
+    resetPolicy();
+  };
+
+  this.onTeamGoal = (teamId) => {
+    ticksSinceKickoff = 0;
+
+    // teamId 1 = red, 2 = blue.
+    // Saca el equipo que RECIBIÓ el gol.
+    const scorer = teamIdx(teamId);
+
+    if (scorer >= 0) {
+      pendingKickoffTeam = 1 - scorer;
+    }
+
+    resetControls();
+    resetPolicy();
+  };
+
+  this.onPositionsReset = () => {
+    ticksSinceKickoff = 0;
+
+    // Si venimos de un gol, éste es definitivamente un saque.
+    if (pendingKickoffTeam >= 0) {
+      forcedKickoff = true;
+      forcedKickoffTeam = pendingKickoffTeam;
+      pendingKickoffTeam = -1;
+    }
+
+    resetControls();
+    resetPolicy();
+  };
+
   this.onGameStop = () => {
     resetPolicy();
 
