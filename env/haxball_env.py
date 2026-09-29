@@ -267,14 +267,12 @@ class HaxballEnv:
         self.setpiece_ticks[active] += 1
 
         own = self.setpiece_team[:, None] == self.sim.player_team[None, :]
-
-        # El equipo encargado realmente pateó.
         kicked_by_taker = active & (self.sim.kicked & own).any(axis=1)
 
-        # Saque de arco = kind 3.
+        # Saque de arco = kind 3
         goal_kick = kicked_by_taker & (self.setpiece_kind == 3)
 
-        # Real Soccer ONE tiene un saque de arco mucho más potente que un kick normal.
+        # Fuerza extra del saque de arco de Real Soccer ONE
         if self.goal_kick_speed > 0 and goal_kick.any():
             v = self.sim.vel[goal_kick, 0]
             speed = np.linalg.norm(v, axis=1)
@@ -295,15 +293,16 @@ class HaxballEnv:
             | (goal != 0)
         )
 
-    self.setpiece_team[released] = -1
-    self.setpiece_kind[released] = 0
+        self.setpiece_team[released] = -1
+        self.setpiece_kind[released] = 0
 
-    waiting = active & ~released
+        waiting = active & ~released
 
-    self.sim.pos[waiting, 0] = self.setpiece_pos[waiting]
-    self.sim.vel[waiting, 0] = 0.0
+        # No sacar empujando ni robar la pelota durante la espera.
+        self.sim.pos[waiting, 0] = self.setpiece_pos[waiting]
+        self.sim.vel[waiting, 0] = 0.0
 
-    self._protect_setpieces()
+        self._protect_setpieces()
 
     def reset(self) -> np.ndarray:
         self._reset_envs(np.arange(self.N))
