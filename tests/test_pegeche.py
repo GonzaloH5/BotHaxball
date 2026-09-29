@@ -1,8 +1,10 @@
 """Reglas del script Pegeche (env/pegeche.py): escenarios armados a mano sobre el x6."""
 import numpy as np
+import pytest
 
 from env.haxball_env import U_ENT_DIM, U_SELF_DIM, HaxballEnv
-from env.pegeche import N_RULE_FEATS, CORNER, FREEKICK, FROZEN_INV, GOALKICK, NONE, PENALTY, THROW
+from env.pegeche import (N_RULE_FEATS, ANIM, CORNER, FREEKICK, FROZEN_INV, GOALKICK,
+                         NONE, PENALTY, SP_TIMEOUT, THROW, THROW_RETRY)
 
 STAY, KICK = 0, 9
 RIGHT = 3
@@ -99,6 +101,36 @@ def test_soft_throw_goes_to_the_other_team():
     sim.vel[0, 0] = (0.0, -2.0)                                # empujada sin patear
     _steps(env, [STAY, STAY], 12)
     assert r.status[0] == THROW and r.sp_team[0] == 0
+
+
+@pytest.mark.parametrize("team", [0, 1])
+@pytest.mark.parametrize("frame_skip", [1, 3])
+def test_expired_throw_alternates_valid_teams_and_unfreezes_taker(team, frame_skip):
+    env = _env(3, "x6_half")
+    env.frame_skip = frame_skip
+    r, sim, fp = env.rules, env.sim, env.sim.first_player
+    for p in range(env.P):
+        _put(env, p, -100 + 200 * sim.player_team[p], -100 + 20 * p)
+    origin = np.array([100.0, env.field_h + 20.0])
+    r._throw_in(0, team, origin)
+    actions = [STAY] * env.P
+    # Dos vencimientos sucesivos: rojo -> azul -> rojo (o al revés).
+    for _ in range(2):
+        remaining = SP_TIMEOUT - (r.clock[0] - r.sp_t0[0])
+        _steps(env, actions, int(remaining // frame_skip))
+        assert r.status[0] == NONE
+        assert r.throw_retry_team[0] == 1 - team
+        _steps(env, actions, THROW_RETRY // frame_skip)
+        team = 1 - team
+        assert r.status[0] == THROW and r.sp_team[0] == team
+        assert np.array_equal(r.throw_origin[0], origin)
+        assert r.throw_retry_at[0] == -1
+        _steps(env, actions, (ANIM + frame_skip - 1) // frame_skip)
+        own = sim.player_team == team
+        assert np.all(sim.inv_env[0, fp:][own] == r.base_inv_p)
+        assert np.all(sim.inv_env[0, fp:][~own] == FROZEN_INV)
+        assert np.all(r.features()[0, own, 5] == 1.0)
+        assert np.all(r.features()[0, ~own, 5] == -1.0)
 
 
 def test_corner_and_goal_kick():

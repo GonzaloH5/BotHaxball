@@ -678,11 +678,12 @@ class PegecheRules:
             self.circ_r[n, 0] = 0.0
         if st != NONE and t - self.sp_t0[n] == SP_TIMEOUT:
             if st == THROW:
+                other_team = 1 - self.sp_team[n]  # _clear_setpiece borra el equipo del saque
                 self._restore_players(n)
                 self._hide_circles(n)
                 self._clear_setpiece(n)
                 self.throw_retry_at[n] = t + THROW_RETRY
-                self.throw_retry_team[n] = 1 - self.sp_team[n]
+                self.throw_retry_team[n] = other_team
             elif st == CORNER and self.anim_until[n] < 0:
                 self._ball_normal(n)
                 self._hide_circles(n)
