@@ -193,7 +193,10 @@ class HaxballEnv:
                 else:                                             # saque de arco
                     kind = 3
                     taker = defender
-                    nb = (sx * (W - 0.07 * W), sy * GH * 0.8)
+                    nb = (
+                        sx * 1030.0,
+                        sy * 180.0
+                    )   
             sim.pos[n, 0] = nb
             sim.vel[n, 0] = 0.0
             sim._reset_ball_state([n])
