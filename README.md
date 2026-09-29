@@ -114,6 +114,10 @@ Antes del RL, el modelo aprende a imitar a jugadores de primera división. Así 
 
 1. **Replays** en `replays_real/stadiums/<carpeta>/*.hbr2`. Una carpeta por modalidad (bigx3, futsalx3, futsalx4, futsalx7, rfx7, rsx4, rsx6).
 2. **Dataset:** `python -m tools.build_bc_dataset`.
+   Para incorporar sólo recs nuevas de RS sin rehacer las anteriores: `python -m tools.build_bc_dataset --folders rsx6`.
+   Para revisar cobertura real, formatos, archivos excluidos y separación por replay de validación:
+   `python -m tools.audit_bc_dataset --out data/bc/coverage_report.json`.
+   El auditor valida observaciones finitas, filas y etiquetas; `pending` significa que falta un shard, no que el replay necesariamente tenga muestras válidas. No confundir el nombre de la carpeta con el mapa o el tamaño de equipo efectivos.
    - Reproduce cada replay y arma, con el mismo entorno del entrenamiento, la obs de cada jugador y la tecla que apretó.
    - Usa el estadio exacto de cada replay.
    - Descarta prácticas, mapas fuera del currículo y partidos con equipos desparejos.
