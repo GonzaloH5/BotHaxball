@@ -206,32 +206,67 @@ def _scripted_kernel(rows, players, ball_pos, ball_vel, pp, team, sign, gx, H, r
                         keeper = q
                         if q < p:
                             ordinal += 1
+
                 field_rank = 0
                 for q in range(pp.shape[1]):
                     if team[q] == team[p] and q != keeper:
                         if distances[q] < distances[p] or (distances[q] == distances[p] and q < p):
                             field_rank += 1
+
                 if p == keeper or field_rank > 0:
-                    target_x, target_y = _six_cover_target(ordinal, bx, by, gx, H, radii)
+                    target_x, target_y = _six_cover_target(
+                        ordinal, bx, by, gx, H, radii
+                    )
+
             elif opponent + 20.0 < distance and bx < 0:
                 target_x, target_y = -gx + 30.0, by * 0.4
-            if T != 6 and rank == 1:
+
+            if T == 4:
+                if rank == 0:
+                    # El más cercano mantiene la lógica ofensiva.
+                    pass
+
+                elif rank == 1:
+                    # Apoyo lateral.
+                    lateral = (-1.0 if by > 0 else 1.0) * 0.30 * H
+                    target_x = bx - 0.20 * gx
+                    target_y = by * 0.35 + lateral
+
+                elif rank == 2:
+                    # Defensor, sin hundirse hasta el arco.
+                    target_x = max(-0.55 * gx, bx - 0.35 * gx)
+                    target_y = by * 0.25
+
+                else:
+                    # Portero.
+                    target_x = -gx + 35.0
+                    target_y = min(max(by * 0.20, -0.22 * H), 0.22 * H)
+
+            elif T != 6 and rank == 1:
                 lateral = (-1.0 if by > 0 else 1.0) * 0.28 * H
-                target_x, target_y = bx - 0.18 * gx, by * 0.4 + lateral
+                target_x = bx - 0.18 * gx
+                target_y = by * 0.4 + lateral
+
             elif T != 6 and rank >= 2:
-                target_x, target_y = min(bx - 0.25 * gx, -0.55 * gx), by * 0.35
+                target_x = min(bx - 0.25 * gx, -0.55 * gx)
+                target_y = by * 0.35
+
             dx, dy = target_x - px, target_y - py
             norm = math.sqrt(dx * dx + dy * dy)
             denominator = max(norm, 1e-9)
             ux, uy = dx / denominator, dy / denominator
+
             best, move = -math.inf, 1
             for m in range(1, 9):
                 score = ux * MOVE_UNIT[m, 0] + uy * MOVE_UNIT[m, 1]
                 if score > best:
                     best, move = score, m
+
             if norm < 2.0:
                 move = 0
+
             out[i, j] = move + 9 * (aligned and distance < radii + 8.0)
+
     return out
 
 
