@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import os
+import time
 from pathlib import Path
 
 import numpy as np
@@ -105,7 +106,90 @@ class CudaRolloutTransfer:
         return actions.astype(np.int64), logp, values
 
 
-def batch_to_device(parts, device):
+class _BatchStorage:
+    def __init__(self, rows, trailing_shape, dtype, device):
+        self.capacity = 1 << max(0, (max(1, rows) - 1).bit_length())
+        shape = (self.capacity, *trailing_shape)
+        torch_dtype = torch.from_numpy(np.empty(0, dtype=dtype)).dtype
+        self.host = torch.empty(shape, dtype=torch_dtype, pin_memory=device.type == "cuda")
+        self.device = torch.empty(shape, dtype=torch_dtype, device=device)
+        self.array = self.host.numpy()
+
+
+class PpoBatchTransfer:
+    """Un par host/device persistente por campo del lote PPO, con capacidad creciente.
+
+    CUDA usa host pinned y H2D asíncrono; CPU existe para probar empaquetado/equivalencia.
+    Las salidas son vistas, válidas hasta el próximo upload. Tras encolar sus consumidores,
+    llamar a mark_consumed en ese stream antes de reutilizar, también si se cambia de stream.
+    No cambiar el host mientras H2D está pendiente. Nunca serializar estos buffers en el checkpoint.
+    """
+
+    def __init__(self, device):
+        self.device = torch.device(device)
+        self.buffers = {}
+        self.ready = torch.cuda.Event() if self.device.type == "cuda" else None
+        self.pending = False
+        self.allocations = 0
+        self.last_timings = {}
+        self.last_allocations = 0
+
+    def mark_consumed(self):
+        if self.ready is not None:
+            self.ready.record(torch.cuda.current_stream(self.device))
+            self.pending = True
+
+    @staticmethod
+    def _layout(arrays):
+        if not arrays or any(a.ndim < 1 for a in arrays):
+            raise ValueError("Cada campo PPO requiere una lista de arrays con eje de muestras")
+        trailing_shape = arrays[0].shape[1:]
+        if any(a.shape[1:] != trailing_shape for a in arrays):
+            raise ValueError("Formas incompatibles al empaquetar un campo PPO")
+        return (sum(len(a) for a in arrays), trailing_shape,
+                np.result_type(*(a.dtype for a in arrays)))
+
+    def upload(self, parts):
+        started = time.perf_counter()
+        if self.pending and not self.ready.query():
+            self.ready.synchronize()  # normalmente ya terminó: update descarga métricas antes de retornar
+        waited = time.perf_counter() - started
+        layouts = {key: self._layout(arrays) for key, arrays in parts.items()}
+        if len({layout[0] for layout in layouts.values()}) > 1:
+            raise ValueError("Todos los campos PPO deben tener el mismo número de muestras")
+        batch, allocated, packed, enqueued, reallocations = {}, 0.0, 0.0, 0.0, 0
+        for key, arrays in parts.items():
+            rows, trailing_shape, dtype = layouts[key]
+            start = time.perf_counter()
+            storage = self.buffers.get(key)
+            if (storage is None or storage.capacity < rows or storage.array.shape[1:] != trailing_shape
+                    or storage.array.dtype != dtype):
+                storage = _BatchStorage(rows, trailing_shape, dtype, self.device)
+                self.buffers[key] = storage
+                self.allocations += 1
+                reallocations += 1
+            allocated += time.perf_counter() - start
+            start, offset = time.perf_counter(), 0
+            for array in arrays:
+                np.copyto(storage.array[offset:offset + len(array)], array)
+                offset += len(array)
+            packed += time.perf_counter() - start
+            start = time.perf_counter()
+            output = storage.device[:rows]
+            output.copy_(storage.host[:rows], non_blocking=self.device.type == "cuda")
+            batch[key] = output
+            enqueued += time.perf_counter() - start
+        self.mark_consumed()  # protege el H2D incluso si aún no se llamó al update
+        self.last_allocations = reallocations
+        self.last_timings = dict(wait=waited, allocate=allocated, pack=packed, enqueue=enqueued)
+        return batch
+
+
+def batch_to_device(parts, device, transfer=None):
+    if transfer is not None:
+        if transfer.device != device:
+            raise ValueError("El cache PPO y el lote deben estar en el mismo dispositivo")
+        return transfer.upload(parts)
     batch = {}
     for key, arrays in parts.items():
         host = torch.from_numpy(np.concatenate(arrays))

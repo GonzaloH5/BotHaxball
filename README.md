@@ -223,6 +223,38 @@ python -m train.multitask --config train/config_runpod.yaml --run multi --resume
 Para desactivar sólo este retoque, conservando las optimizaciones anteriores y el checkpoint:
 `--override runtime.cuda_decisions=legacy`. CPU y el entrenador recurrente no usan este graph.
 
+#### Lote PPO persistente: preparación visible y menos asignaciones
+
+`runtime.reuse_ppo_batch=true` reutiliza un buffer host pinned y un buffer CUDA por campo (`obs`,
+`act`, `logp`, `adv`, `ret`). Copia cada tarea directamente al buffer host, sin concatenar y pinear
+un tensor grande nuevo en cada iteración. La capacidad crece por potencias de dos y sólo se reasigna
+si cambia el dtype, ancho de observación o supera la capacidad; se entregan únicamente las filas
+válidas, nunca la cola sobrante. Conserva orden, dtypes, valores, PPO, rivales y reparto de tareas.
+
+Un evento protege la memoria host y GPU antes de sobrescribirla, incluyendo consumidores pendientes
+del update. Normalmente no espera porque PPO ya descarga sus métricas antes de retornar. Los buffers
+no se guardan en el checkpoint. CPU mantiene su ruta anterior y el entrenador recurrente no usa este
+cache. Se reserva algo más de RAM/VRAM para evitar reasignaciones pequeñas entre lotes.
+
+La línea de entrenamiento ahora muestra `prep`, además de `rollout` y `upd`. Con `--profile-rollout`
+se separan también `lote PPO` y `normalización`. El benchmark imprime espera, asignación, empaquetado
+y envío del cache: el envío es tiempo host de encolado, no la duración completa de la copia GPU.
+Después del calentamiento, las asignaciones deberían ser cero si el lote cabe en los buffers.
+
+Guardar y detener con `Ctrl+C`, activar `.venv` y ejecutar desde la raíz del Pod:
+
+```bash
+git pull --ff-only
+python -m pytest tests/test_ppo_batch_transfer.py tests/test_cuda_runtime.py -q
+python -m tools.benchmark_multitask --config train/config_1v1_focus.yaml --warmup 3 --iters 15 --decision-backend graph --profile-rollout
+```
+
+Para una comparación justa con la preparación anterior, repetir el mismo benchmark agregando
+`--no-reuse-ppo-batch` (sin cambiar graph ni 50/10). Comparar `pasos/s reales` y `preparación/GAE`, no
+un pico individual. El benchmark descarta sus cambios en una copia temporal; no modifica `latest.pt`.
+No se promete una aceleración sin verificar los tiempos en el Pod. Para desactivar sólo este cache
+al entrenar, usar `--override runtime.reuse_ppo_batch=false`.
+
 #### Fase manual de técnica individual y posterior cooperación
 
 Para un checkpoint que todavía está en **etapa 0**, hay dos perfiles separados del currículo normal:

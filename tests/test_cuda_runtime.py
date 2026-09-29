@@ -138,6 +138,11 @@ def test_resume_cpu_checkpoint_and_update_with_bc_pool_and_timeouts(tmp_path, mo
         cached = [s._buffer_cache["obs"] for s in resumed.slots]
         resumed.iterate()
         assert all(s._buffer_cache["obs"] is before for s, before in zip(resumed.slots, cached))
+        if device == "cuda":
+            assert resumed._batch_transfer is not None
+            assert resumed._batch_transfer.allocations == 5
+            assert resumed._batch_transfer.last_allocations == 0
+            assert stats[-1]["runtime/ppo_batch_allocations"] == 0
         if backend == "graph":
             assert resumed._decision_graph.graph is None  # liberado antes de RunningNorm/Adam
             for values in stats:

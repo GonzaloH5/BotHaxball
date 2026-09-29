@@ -32,6 +32,8 @@ class RolloutProfile:
             self.wrap(trainer, "_sample_cuda", "host muestreo (dentro de decisiones)")
         self.wrap(multitask, "scripted_actions", "bots CPU (dentro de decisiones)")
         self.wrap(trainer, "values_many", "bootstrap de valores")
+        self.wrap(multitask, "batch_to_device", "lote PPO: empaquetado/transferencia (dentro de preparación)")
+        self.wrap(trainer.model, "update_norm", "normalización (dentro de preparación)")
         for slot in trainer.slots:
             self.wrap(slot.env, "step", "entorno total")
             self.wrap(slot.env, "observe", "observaciones (dentro de entorno)")
@@ -78,6 +80,7 @@ def main():
     ap.add_argument("--decision-backend", choices=DECISION_BACKENDS,
                     help="legacy: decisiones anteriores; eager: un muestreo; auto/graph: CUDA Graph (graph exige captura)")
     ap.add_argument("--profile-rollout", action="store_true", help="Desglose inclusivo por componente (añade overhead)")
+    ap.add_argument("--no-reuse-ppo-batch", action="store_true", help="Preparación anterior: asignar/pinear cada lote para comparar")
     args = ap.parse_args()
     if args.iters < 1 or args.warmup < 1:
         ap.error("iters y warmup deben ser positivos (Numba necesita calentamiento)")
@@ -91,6 +94,10 @@ def main():
     if args.numba_threads is not None:
         cfg["ppo"]["numba_threads"] = args.numba_threads
     cfg.setdefault("runtime", {})["optimize_rollout"] = not args.baseline
+    if args.baseline or args.no_reuse_ppo_batch:
+        cfg["runtime"]["reuse_ppo_batch"] = False
+    else:
+        cfg["runtime"].setdefault("reuse_ppo_batch", True)
     if args.baseline:
         cfg["runtime"]["cuda_decisions"] = "legacy"
     elif args.decision_backend:
@@ -108,6 +115,7 @@ def main():
                             if args.profile_rollout and trainer.device.type == "cuda" else None)
         trainer._decision_profile = decision_profile
         records = []
+        batch_stats = []
         original_log = trainer.log
 
         def log(stats, lr, n, rollout, update):
@@ -115,6 +123,8 @@ def main():
                             stats.get("timing/cuda_capture_seconds", 0.0),
                             stats.get("runtime/cuda_graph_captures", 0),
                             stats.get("runtime/cuda_graph_replays", 0)))
+            batch_stats.append({key: value for key, value in stats.items()
+                                if key.startswith("timing/ppo_batch_") or key == "runtime/ppo_batch_allocations"})
             original_log(stats, lr, n, rollout, update)
 
         trainer.log = log
@@ -144,6 +154,11 @@ def main():
                 print(f"preparación/captura graph: {sum(row[4] for row in measured) / args.iters:.3f} s/iter (incluida en rollout)")
                 if trainer._decision_graph is not None and trainer._decision_graph.disabled_reason is not None:
                     print(f"fallback eager: {trainer._decision_graph.disabled_reason}")
+                print(f"buffers PPO reutilizados: {trainer._batch_transfer is not None}")
+                if trainer._batch_transfer is not None:
+                    for key in batch_stats[-1]:
+                        average = sum(row[key] for row in batch_stats[args.warmup:]) / args.iters
+                        print(f"  {key}: {average:.4f}/iter")
             if profile:
                 profile.report(args.iters)
             if decision_profile:

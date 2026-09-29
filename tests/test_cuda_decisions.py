@@ -142,8 +142,8 @@ def test_invalid_graph_mode_and_cpu_input_fail():
         CudaDecisionGraph("cuda", "graph").run(lambda x: x, torch.ones(1))
 
 
-@pytest.mark.parametrize("baseline", [False, True])
-def test_benchmark_profile_and_baseline_use_disposable_checkpoint(tmp_path, monkeypatch, capsys, baseline):
+@pytest.mark.parametrize("baseline,no_reuse", [(False, False), (True, False), (False, True)])
+def test_benchmark_profile_and_baseline_use_disposable_checkpoint(tmp_path, monkeypatch, capsys, baseline, no_reuse):
     import sys
     from train import multitask
     from tools import benchmark_multitask as benchmark
@@ -175,11 +175,14 @@ def test_benchmark_profile_and_baseline_use_disposable_checkpoint(tmp_path, monk
     argv = ["benchmark", "--checkpoint", str(checkpoint), "--warmup", "1", "--iters", "1", "--profile-rollout"]
     if baseline:
         argv.append("--baseline")
+    if no_reuse:
+        argv.append("--no-reuse-ppo-batch")
     monkeypatch.setattr(sys, "argv", argv)
     benchmark.main()
     output = capsys.readouterr().out
     assert "pasos/s reales" in output and "Desglose inclusivo" in output
     assert trainers[0].cuda_decisions == ("legacy" if baseline else "auto")
+    assert trainers[0].cfg["runtime"]["reuse_ppo_batch"] == (not (baseline or no_reuse))
     assert trainers[0]._decision_profile is None
     assert checkpoint.read_bytes() == before
     assert not list((tmp_path / "runs").glob("_benchmark_*"))

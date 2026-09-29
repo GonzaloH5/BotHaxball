@@ -34,7 +34,7 @@ from .league import League
 from .cuda_decisions import DECISION_BACKENDS, CudaDecisionGraph, sample_decisions
 from .model import SetActorCritic, build_model
 from .ppo_selfplay import lerp, resolve_device
-from .runtime import CudaRolloutTransfer, batch_to_device, cpu_budget, load_config
+from .runtime import CudaRolloutTransfer, PpoBatchTransfer, batch_to_device, cpu_budget, load_config
 
 ROOT = Path(__file__).resolve().parent.parent
 SELF, POOL, SCRIPTED = 0, 1, 2
@@ -114,6 +114,9 @@ class MultiTrainer:
               flush=True)
         self._rollout_transfer = (CudaRolloutTransfer(self.device, reuse_device=self.optimize_rollout)
                                   if self.device.type == "cuda" else None)
+        self._batch_transfer = (PpoBatchTransfer(self.device)
+                                if self.device.type == "cuda" and cfg.get("runtime", {}).get("reuse_ppo_batch", True)
+                                else None)
         self._decision_graph = (CudaDecisionGraph(self.device, self.cuda_decisions)
                                 if self.device.type == "cuda" and self.cuda_decisions in ("auto", "graph") else None)
         if self.device.type == "cuda":
@@ -583,7 +586,7 @@ class MultiTrainer:
             s.steps += int(m.sum())
             s.buf = None
         dev = self.device
-        batch = batch_to_device(parts, dev)
+        batch = batch_to_device(parts, dev, self._batch_transfer)
         self.model.update_norm(batch["obs"])
         n = len(batch["act"])
         self.steps += n
@@ -591,6 +594,8 @@ class MultiTrainer:
         t1 = time.time()
         self.bc_coef = lerp(p.get("bc_kl_coef", 0.0), p.get("bc_kl_final", 0.0), frac) if self.bc_model is not None else 0.0
         stats = self.update(batch, ent_coef)
+        if self._batch_transfer is not None:
+            self._batch_transfer.mark_consumed()  # proteger también cualquier lector PPO pendiente
         t_upd = time.time() - t1
         stats["timing/prepare_seconds"] = t1 - t_prepare
         stats["timing/rollout_seconds"] = t_roll
@@ -598,6 +603,10 @@ class MultiTrainer:
         stats["timing/cuda_capture_seconds"] = capture_seconds
         stats["runtime/cuda_graph_captures"] = captures
         stats["runtime/cuda_graph_replays"] = replays
+        if self._batch_transfer is not None:
+            for phase, seconds in self._batch_transfer.last_timings.items():
+                stats[f"timing/ppo_batch_{phase}_seconds"] = seconds
+            stats["runtime/ppo_batch_allocations"] = self._batch_transfer.last_allocations
         self.iteration += 1
 
         self.opponent_curriculum()
@@ -710,7 +719,7 @@ class MultiTrainer:
             w.add_scalar(f"task/{s.task.name}/shaping", s.env.rcfg.shaping_coef, self.steps)
         if self.iteration % self.cfg["log"]["every"] == 0:
             print(f"it {self.iteration:5d} | etapa {self.stage} | pasos {self.steps / 1e6:7.1f}M | {sps:6.0f}/s "
-                  f"(rollout {t_roll:.1f}s upd {t_upd:.1f}s) | elo por goles {self.league.learner_elo:5.0f} | "
+                  f"(rollout {t_roll:.1f}s prep {stats.get('timing/prepare_seconds', 0.0):.2f}s upd {t_upd:.1f}s) | elo por goles {self.league.learner_elo:5.0f} | "
                   f"ent {stats['entropy']:.2f} | shaping {self.rcfg.shaping_coef:.2f}", flush=True)
             cells = []
             for s in self.slots:
