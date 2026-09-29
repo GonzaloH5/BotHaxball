@@ -144,10 +144,15 @@ class HaxballEnv:
             kt = kickoff_team[~rnd]
         self.sim.reset_kickoff(ko, kickoff_team=kt)
         self.kickoff_limit[idx] = self.kickoff_timeout
-        if self.out_of_bounds and self.kickoff_timeout > 0:
+        if self.kickoff_timeout > 0:
             for n in ko:
-                travel = self._restart_travel_ticks(n, self.sim.kickoff_team[n])
-                self.kickoff_limit[n] = max(self.kickoff_timeout, travel + self.kickoff_timeout)
+                travel = self._restart_travel_ticks(
+                    n, self.sim.kickoff_team[n]
+                )
+                self.kickoff_limit[n] = max(
+                    self.kickoff_timeout,
+                    travel + self.kickoff_timeout
+                )
         self.ticks[idx] = 0
         self.kickoff_ticks[idx] = 0
         self.last_touch[idx] = -1
