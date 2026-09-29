@@ -2,6 +2,41 @@
 
 Bot de HaxBall entrenado con aprendizaje por refuerzo: PPO, self-play, liga de rivales (PFSP) y currículo.
 
+### Guía defensiva de JJRS 6v6
+
+`config_multi.yaml` (heredado por RunPod) habilita **sólo en `jjrs_6v6`**
+`task_reward_overrides.jjrs_6v6: {w_defense_support: 0.35, defense_shaping_floor: 0.5}`.
+Cuando la pelota avanza hacia el arco propio, un potencial geométrico valora al
+arquero y tres coberturas distintas entre pelota y arco. Excluye de esas coberturas
+al arquero más cercano al arco y al presionante más cercano a la pelota; deja un
+jugador libre. No fuerza acciones, identidades ni una formación permanente.
+
+El premio es `peso * max(shaping_tarea, piso) * (gamma * Phi_siguiente - Phi_actual)`:
+quedarse quieto no genera un bonus positivo por tick, ni un ciclo de ida y vuelta
+genera retorno descontado positivo. Se anula el potencial durante saques y en
+estados terminales de gol. Es una heurística para explorar defensa colectiva,
+no una garantía de mejor juego; durante ataque no da guía defensiva.
+No añade estados privados del host a la observación ni cambia scripted, física,
+arquitectura, reparto de modalidades o recompensas de otros mapas.
+
+Detener el entrenamiento con **Ctrl+C una vez** y esperar `guardado`, luego:
+
+```bash
+git pull --ff-only
+python -m pytest tests/test_defensive_support.py tests/test_multitask.py tests/test_rollout_optimized.py tests/test_simple_setpieces.py -q
+python -m train.multitask --config train/config_runpod.yaml --run multi --resume
+```
+
+Si ya se usaba `--override bc_reference=...`, conservar exactamente esa opción
+al reanudar. No usar `--init-from` para este retoque. El checkpoint, optimizador,
+liga y métricas se conservan; no se reinicia el aprendizaje. No incorpora las
+nuevas recs ni entrena un nuevo imitador.
+Comparar varios partidos/semillas de JJRS contra **el mismo rival** antes y
+después, revisando coberturas, goles recibidos y capacidad de contraatacar.
+Para desactivar sin perder progreso, quitar el bloque `task_reward_overrides`
+o poner `w_defense_support: 0` y reanudar. Validar velocidad con el benchmark
+del Pod; las pruebas locales no miden CUDA.
+
 ## Piezas
 
 | Carpeta | Qué hace |

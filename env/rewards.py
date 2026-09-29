@@ -10,8 +10,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from itertools import permutations
 
 import numpy as np
+
+_COVER_ASSIGNMENTS = np.array(list(permutations(range(4), 3)))
 
 
 @dataclass
@@ -27,6 +30,8 @@ class RewardConfig:
     kickoff_approach: float = 1.0   # durante el saque propio: premio por acercarse a la pelota
                                     # (progreso en fracción de spawnDistance; llegar ~ +1). No decae.
     gamma: float = 0.995
+    w_defense_support: float = 0.0  # opt-in por tarea; cobertura, no persecución colectiva
+    defense_shaping_floor: float = 0.0
 
 
 def potentials(ball_x_own, ball_y_own, player_ball_dist, goal_x: float, field_w: float):
@@ -37,3 +42,41 @@ def potentials(ball_x_own, ball_y_own, player_ball_dist, goal_x: float, field_w:
     phi_ball = (d_own - d_opp) / (2 * goal_x)
     phi_near = -player_ball_dist / (2 * field_w)
     return phi_ball, phi_near
+
+
+def defense_support_potential(players, ball, goal_x, field_h):
+    """Cobertura 6v6 en coordenadas propias (+x ataca), en [0,1].
+
+    Reserva al más cercano al arco como arquero y al siguiente más cercano a
+    la pelota como presionante. Tres jugadores DIFERENTES cubren carriles entre
+    pelota y arco; queda un jugador libre. No fija identidades ni usa posesión
+    privada. Es una guía geométrica, no una táctica óptima demostrada.
+    """
+    n, team_size, _ = players.shape
+    if team_size != 6:
+        return np.zeros(n)
+    danger = np.clip((-ball[:, 0] / goal_x - 0.10) / 0.45, 0.0, 1.0)
+    keeper_dist = np.linalg.norm(players - np.array([-goal_x, 0.0]), axis=-1)
+    keeper = keeper_dist.argmin(axis=1)
+    ball_dist = np.linalg.norm(players - ball[:, None], axis=-1)
+    rows = np.arange(n)
+    ball_dist[rows, keeper] = np.inf
+    pressure = ball_dist.argmin(axis=1)
+    available = (np.arange(6)[None, :] != keeper[:, None]) & (
+        np.arange(6)[None, :] != pressure[:, None])
+    cover = players[available].reshape(n, 4, 2)
+    targets = np.zeros((n, 3, 2))
+    targets[..., 0] = np.clip((ball[:, 0] - goal_x) * 0.5,
+                            -0.78 * goal_x, -0.20 * goal_x)[:, None]
+    targets[..., 1] = np.clip(0.35 * ball[:, None, 1] +
+                             field_h * np.array([-0.28, 0.0, 0.28]),
+                             -0.75 * field_h, 0.75 * field_h)
+    distance = np.linalg.norm(cover[:, :, None] - targets[:, None], axis=-1)
+    # 4P3 = 24 asignaciones: un único jugador nunca llena los tres carriles.
+    costs = distance[:, _COVER_ASSIGNMENTS, np.arange(3)].mean(axis=-1).min(axis=1)
+    support = np.exp(-costs / (0.25 * goal_x))
+    keeper_target = np.column_stack((np.full(n, -0.92 * goal_x),
+                                    np.clip(0.25 * ball[:, 1], -0.16 * field_h, 0.16 * field_h)))
+    keeper_score = np.exp(-np.linalg.norm(players[rows, keeper] - keeper_target, axis=-1)
+                          / (0.18 * goal_x))
+    return danger * (0.75 * support + 0.25 * keeper_score)

@@ -54,6 +54,11 @@ reward:
   kickoff_approach: 1.0
   shaping_decay_steps: 400_000_000
 
+# Retoque SOLO JJRS. Diferencias de potencial: permanecer colocado no paga
+# un bonus por tick. Conserva guía defensiva cuando decae el shaping general.
+task_reward_overrides:
+  jjrs_6v6: {w_defense_support: 0.35, defense_shaping_floor: 0.5}
+
 # Currículo por AMPLITUD con repaso. Cada etapa suma tareas; las de etapas anteriores siguen con
 # `rehearsal_weight` (relativo a 1 de las nuevas) y nunca bajan de `min_share` de las muestras.
 # Se pasa de etapa cuando todas las tareas activas llegaron a la liga y se cumplió min_steps (o max_steps).

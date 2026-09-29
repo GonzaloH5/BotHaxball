@@ -231,6 +231,13 @@ class MultiTrainer:
             # cada tarea tiene su propia config de recompensa: el shaping decae según cuánto lleva ESA tarea
             # en el entrenamiento (ver shaping_for), así un mapa que entra tarde arranca con guía completa
             rcfg = copy.copy(self.rcfg)
+            overrides = self.cfg.get("task_reward_overrides", {}).get(n, {})
+            for key, value in overrides.items():
+                if key not in ("w_defense_support", "defense_shaping_floor"):
+                    raise ValueError(f"Recompensa por tarea desconocida: {n}.{key}")
+                if not np.isfinite(value) or not 0 <= value <= 1:
+                    raise ValueError(f"{n}.{key} debe estar entre 0 y 1")
+                setattr(rcfg, key, float(value))
             env = make_env(t, n_envs, self.max_entities, rcfg, seed=self.cfg["seed"] + 1000 * self.stage + i,
                            frame_skip=e["frame_skip"], max_ticks=e["max_ticks"],
                            random_reset_prob=e["random_reset_prob"], kickoff_timeout=e.get("kickoff_timeout", 180),

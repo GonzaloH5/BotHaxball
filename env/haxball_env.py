@@ -16,7 +16,7 @@ import numpy as np
 from sim.physics import N_ACTIONS, BatchSim
 
 from .pegeche import N_RULE_FEATS, PegecheRules
-from .rewards import RewardConfig, potentials
+from .rewards import RewardConfig, potentials, defense_support_potential
 
 # espejo en x de las 9 direcciones de movimiento (ver MOVE_DIRS en sim/physics.py)
 _MIRROR_MOVE = np.array([0, 1, 8, 7, 6, 5, 4, 3, 2])
@@ -449,7 +449,22 @@ class HaxballEnv:
         by = np.broadcast_to(sim.ball_pos[:, None, 1], bx.shape)
         d = self._team_ball_dist()
         phi_ball, phi_near = potentials(bx, by, d, self.goal_x, self.field_w)
-        return phi_ball, phi_near, self._spread_potential()
+        return phi_ball, phi_near, self._spread_potential(), self._defense_potential()
+
+    def _defense_potential(self):
+        out = np.zeros((self.N, self.P))
+        if self.rcfg.w_defense_support == 0 or self.T != 6:
+            return out
+        for team, sign in ((0, 1.0), (1, -1.0)):
+            sel = self.sim.player_team == team
+            players = self.sim.player_pos[:, sel].copy()
+            ball = self.sim.ball_pos.copy()
+            players[..., 0] *= sign
+            ball[..., 0] *= sign
+            out[:, sel] = defense_support_potential(players, ball, self.goal_x, self.field_h)[:, None]
+        # No pagar colocación en saques: están protegidos por reglas distintas.
+        out[self.sim.kickoff | (self.setpiece_team >= 0)] = 0.0
+        return out
 
     def _spread_potential(self):
         """Φ de separación: distancia media al compañero más cercano (tope 25% del ancho), en [0,1].
@@ -532,8 +547,8 @@ class HaxballEnv:
         rew = rc.goal * goal[:, None] * team_sign       # gol del rojo = +1 rojo / -1 azul
 
         # shaping por potencial (sólo si no hubo gol: el estado terminal tiene Φ = 0)
-        phi_ball, phi_near, phi_spread = self._potentials()
-        phi0_ball, phi0_near, phi0_spread = self._phi
+        phi_ball, phi_near, phi_spread, phi_defense = self._potentials()
+        phi0_ball, phi0_near, phi0_spread, phi0_defense = self._phi
         scored = goal != 0
         g = rc.gamma
         sh = rc.w_ball_progress * (np.where(scored[:, None], 0.0, g * phi_ball) - phi0_ball)
@@ -543,6 +558,8 @@ class HaxballEnv:
         bvx_own = self.sim.ball_vel[:, None, 0] * team_sign
         sh += rc.kick_to_goal * (kicked & (bvx_own > 1.0))
         rew = rew + rc.shaping_coef * sh
+        defense_delta = np.where(scored[:, None], 0.0, g * phi_defense) - phi0_defense
+        rew += rc.w_defense_support * max(rc.shaping_coef, rc.defense_shaping_floor) * defense_delta
 
         # saque propio: premio por progreso hacia la pelota. No es de potencial a propósito: si el saque
         # se corta por tiempo no hay "reembolso", así que trabar queda neto negativo frente a sacar.
@@ -597,7 +614,7 @@ class HaxballEnv:
             self._reset_envs(idx, kickoff_team=kt)
         # Sin reset/set-piece, ya tenemos exactamente estos potenciales.
         self._phi = (self._potentials() if len(idx) or out.any() or not self.optimize_rollout
-                     else (phi_ball, phi_near, phi_spread))
+                     else (phi_ball, phi_near, phi_spread, phi_defense))
         if len(idx) and self.optimize_rollout:
             obs = final_obs.copy()
             obs[idx] = self.observe(idx)
