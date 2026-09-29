@@ -88,6 +88,8 @@ class HaxballEnv:
         st = self.sim.st
         self.goal_x = st.goal_x
         self.field_w = st.field_half_w
+        # Real Soccer ONE: el saque de arco real tiene impulso extra.
+        self.goal_kick_speed = 10.5 if stadium == "rs_one" else 0.0
         # signo de x por jugador: +1 rojo (ataca a +x), -1 azul
         self.sign = np.where(self.sim.player_team == 0, 1.0, -1.0)
         self.ticks = np.zeros(self.N, dtype=np.int64)
@@ -263,16 +265,45 @@ class HaxballEnv:
     def _setpiece_post_tick(self, goal):
         active = self.setpiece_team >= 0
         self.setpiece_ticks[active] += 1
+
         own = self.setpiece_team[:, None] == self.sim.player_team[None, :]
-        released = active & ((self.sim.kicked & own).any(axis=1)
-                             | (self.setpiece_ticks >= self.setpiece_limit) | (goal != 0))
-        self.setpiece_team[released] = -1
-        self.setpiece_kind[released] = 0
-        waiting = active & ~released
-        # No sacar empujando ni robar la pelota por una colisión durante la espera.
-        self.sim.pos[waiting, 0] = self.setpiece_pos[waiting]
-        self.sim.vel[waiting, 0] = 0.0
-        self._protect_setpieces()
+
+        # El equipo encargado realmente pateó.
+        kicked_by_taker = active & (self.sim.kicked & own).any(axis=1)
+
+        # Saque de arco = kind 3.
+        goal_kick = kicked_by_taker & (self.setpiece_kind == 3)
+
+        # Real Soccer ONE tiene un saque de arco mucho más potente que un kick normal.
+        if self.goal_kick_speed > 0 and goal_kick.any():
+            v = self.sim.vel[goal_kick, 0]
+            speed = np.linalg.norm(v, axis=1)
+
+            scale = np.ones_like(speed)
+            valid = speed > 1e-6
+
+            scale[valid] = np.maximum(
+                1.0,
+                self.goal_kick_speed / speed[valid]
+            )
+
+            self.sim.vel[goal_kick, 0] *= scale[:, None]
+
+        released = active & (
+            kicked_by_taker
+            | (self.setpiece_ticks >= self.setpiece_limit)
+            | (goal != 0)
+        )
+
+    self.setpiece_team[released] = -1
+    self.setpiece_kind[released] = 0
+
+    waiting = active & ~released
+
+    self.sim.pos[waiting, 0] = self.setpiece_pos[waiting]
+    self.sim.vel[waiting, 0] = 0.0
+
+    self._protect_setpieces()
 
     def reset(self) -> np.ndarray:
         self._reset_envs(np.arange(self.N))
