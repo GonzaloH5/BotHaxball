@@ -177,12 +177,16 @@ class MultiTrainer:
 
     def task_shares(self) -> dict[str, float]:
         """Fracción de MUESTRAS de agente por tarea: pesos de la etapa (1 por defecto), las tareas de etapas
-        anteriores con su peso de repaso, x boost por regresión, y nunca menos de min_share."""
+        anteriores con su peso de repaso, x boost por regresión, y nunca menos de min_share.
+        fixed_weights ignora boosts, también los guardados en un checkpoint anterior.
+        El presupuesto incluye agentes rivales: la fracción final de PPO depende del modo de rival.
+        """
         st = self.stages[self.stage]
         w = {}
         for n in self.active_tasks():
             base = st.get("weights", {}).get(n, 1.0 if n in st["tasks"] else self.cfg["schedule"].get("rehearsal_weight", 0.5))
-            w[n] = base * self.task_state.get(n, {}).get("boost", 1.0)
+            boost = 1.0 if st.get("fixed_weights", False) else self.task_state.get(n, {}).get("boost", 1.0)
+            w[n] = base * boost
         tot = sum(w.values())
         share = {n: v / tot for n, v in w.items()}
         floor = self.cfg["schedule"].get("min_share", 0.05)
@@ -240,6 +244,10 @@ class MultiTrainer:
         desc = ", ".join(f"{s.task.name}:{s.N}x{s.P}" for s in self.slots)
         print(f"etapa {self.stage} ({self.stages[self.stage].get('name', '')}): {desc} | entidades {self.max_entities}",
               flush=True)
+        if self.stages[self.stage].get("fixed_weights", False):
+            total = sum(s.N * s.P for s in self.slots)
+            actual = " | ".join(f"{s.task.name} {100 * s.N * s.P / total:.1f}%" for s in self.slots)
+            print(f"reparto fijo de agentes: {actual} (PPO usa sólo las filas que aprenden)", flush=True)
 
     def shaping_for(self, s) -> float:
         """Guía (shaping) de una tarea: baja de 1 a 0 en `shaping_decay_steps` pasos GLOBALES contados desde que
@@ -274,6 +282,10 @@ class MultiTrainer:
             raise ValueError("El checkpoint usa rule_observation=" + saved_mode +
                              ". Para reanudar sin cambiar la política, configurar model.rule_observation=" +
                              saved_mode + "; para adaptar a masked, usar --init-from en un run nuevo.")
+        if not 0 <= ck["stage"] < len(self.stages):
+            raise ValueError(f"El checkpoint está en etapa {ck['stage']}, pero este perfil sólo define "
+                             f"{len(self.stages)} etapas. Usar una configuración compatible; "
+                             "no se reinicia ni cambia de etapa automáticamente.")
         self.model.load_state_dict(ck["model"])
         self.opt.load_state_dict(ck["opt"])
         self.steps, self.iteration, self.stage = ck["steps"], ck["iteration"], ck["stage"]
@@ -650,8 +662,11 @@ class MultiTrainer:
         if self.iteration % sch.get("rebalance_every", 25):
             return
         changed = False
+        st = self.stages[self.stage]
         # regresiones: una tarea que cayó respecto de su mejor marca recibe más peso hasta recuperarse
-        for s in self.slots:
+        # Un perfil fijo conserva las métricas/boosts previos, pero no cambia el reparto ni reinicia entornos.
+        rebalance_slots = [] if st.get("fixed_weights", False) else self.slots
+        for s in rebalance_slots:
             wr, n = s.winrate()
             if n < 200:
                 continue
@@ -664,7 +679,6 @@ class MultiTrainer:
                 s.boost = new_boost
                 changed = True
         # avance de etapa
-        st = self.stages[self.stage]
         last_opp = len(self.cfg["curriculum"]) - 1
         ready = all(s.opp_stage >= last_opp for s in self.slots)
         if self.stage < len(self.stages) - 1 and (

@@ -223,4 +223,43 @@ python -m train.multitask --config train/config_runpod.yaml --run multi --resume
 Para desactivar sólo este retoque, conservando las optimizaciones anteriores y el checkpoint:
 `--override runtime.cuda_decisions=legacy`. CPU y el entrenador recurrente no usan este graph.
 
+#### Fase manual de técnica individual y posterior cooperación
+
+Para un checkpoint que todavía está en **etapa 0**, hay dos perfiles separados del currículo normal:
+
+| Perfil | `x1_1v1` | Cada una de las otras cinco tareas |
+|---|---:|---:|
+| `train/config_1v1_focus.yaml` | 50% | 10% |
+| `train/config_cooperation.yaml` | 20% | 16% |
+
+Son porcentajes del **presupuesto de agentes del entorno**, no multiplicadores de recompensa ni
+pesos extra de la pérdida PPO. El número de partidos se ajusta por tamaño de equipo. Hay pequeños
+redondeos, y la fracción efectiva de muestras PPO depende también de qué jugadores aprenden
+(self-play, liga o bot). Con 1152 agentes, la fase de técnica asigna 288 partidos simultáneos al 1v1:
+`big_2v2:29x4, big_3v3:19x6, futsal_2v2:29x4, futsal_3v3:19x6, x1_1v1:288x2, aha_3v3:19x6`.
+
+`fixed_weights: true` impide que los boosts por regresión alteren este reparto, incluso si el checkpoint
+ya trae boosts. Las métricas y el currículo de rivales siguen activos. Los perfiles normales conservan
+su control adaptativo. No se cambian PPO, recompensas, 31 hilos ni las optimizaciones CUDA.
+
+Detener con `Ctrl+C`, esperar el guardado y comenzar la fase individual desde el mismo checkpoint:
+
+```bash
+git pull --ff-only
+python -m pytest tests/test_focus_profiles.py -q
+python -m train.multitask --config train/config_1v1_focus.yaml --run multi --resume
+```
+
+Estas fases **no pasan automáticamente a B/C ni cambian al 20% por tiempo**: no se ha fijado un plazo
+de práctica. Cuando se quiera priorizar cooperación, volver a guardar con `Ctrl+C` y ejecutar:
+
+```bash
+python -m train.multitask --config train/config_cooperation.yaml --run multi --resume
+```
+
+Se conservan pesos, optimizador, pasos, liga, dificultad de rivales, historial y decaimiento del shaping.
+Para recuperar el currículo automático original, reanudar con `train/config_runpod.yaml`; sus umbrales
+usan los pasos de etapa acumulados, incluidos los entrenados en estos perfiles. No usar estos perfiles
+de una sola etapa para un checkpoint que ya avanzó a etapa 1 o superior.
+
 Uso responsable: usar el bot sólo en salas propias o con permiso. En salas públicas o competitivas contra personas es hacer trampa.
