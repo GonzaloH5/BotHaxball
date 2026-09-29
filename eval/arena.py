@@ -26,11 +26,14 @@ def play(agent_red, agent_blue, n_games=128, minutes=3.0, n_per_team=1, stadium=
     ticks = int(minutes * 60 * 60)
     if n_games < 1 or frame_skip < 1 or ticks < frame_skip:
         raise ValueError("Se requiere al menos un partido y una decisión por partido")
-    env = HaxballEnv(n_games, n_per_team, stadium, frame_skip, max_ticks=10**9,
+    kwargs = dict(env_kw or {})
+    kwargs.setdefault("kickoff_timeout", 180)
+    env = HaxballEnv(n_games, n_per_team, stadium, frame_skip, max_ticks=7200,
                      random_reset_prob=0.0, reward=RewardConfig(shaping_coef=0.0), seed=seed,
-                     **(env_kw or {}))
+                     **kwargs)
     obs = env.reset()
-    env.sim.reset_kickoff(np.arange(n_games), kickoff_team=0)
+    env._reset_envs(np.arange(n_games), kickoff_team=np.zeros(n_games, dtype=np.int64))
+    env._phi = env._potentials()
     obs = env.observe()
     reset_agents((agent_red, agent_blue), env)
     red = np.arange(env.T)

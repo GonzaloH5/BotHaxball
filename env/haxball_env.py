@@ -101,6 +101,7 @@ class HaxballEnv:
         # queda quieta, el rival no puede entrar al círculo y no le pueden hacer gol.
         self.kickoff_timeout = kickoff_timeout
         self.kickoff_ticks = np.zeros(self.N, dtype=np.int64)
+        self.kickoff_limit = np.full(self.N, kickoff_timeout, dtype=np.int64)
         self.delay = np.zeros(self.N, dtype=np.int64)
         n_hist = 1 + -(-action_delay_max // frame_skip)  # ceil
         self.act_hist = np.zeros((n_hist, self.N, self.P), dtype=np.int64)  # [0] = la más nueva
@@ -118,6 +119,7 @@ class HaxballEnv:
         self.setpiece_ticks = np.zeros(self.N, dtype=np.int64)
         self.setpiece_pos = np.zeros((self.N, 2))
         self.setpiece_timeout = 420    # protección finita (7 s); no réplica del script de cada sala
+        self.setpiece_limit = np.full(self.N, self.setpiece_timeout, dtype=np.int64)
         # Script completo de la sala (rules="pegeche", env/pegeche.py): reemplaza las pelotas paradas
         # simplificadas de arriba por las reales y suma slide, faltas, penales y tarjetas.
         if rules not in (None, "pegeche"):
@@ -141,6 +143,11 @@ class HaxballEnv:
         else:
             kt = kickoff_team[~rnd]
         self.sim.reset_kickoff(ko, kickoff_team=kt)
+        self.kickoff_limit[idx] = self.kickoff_timeout
+        if self.out_of_bounds and self.kickoff_timeout > 0:
+            for n in ko:
+                travel = self._restart_travel_ticks(n, self.sim.kickoff_team[n])
+                self.kickoff_limit[n] = max(self.kickoff_timeout, travel + self.kickoff_timeout)
         self.ticks[idx] = 0
         self.kickoff_ticks[idx] = 0
         self.last_touch[idx] = -1
@@ -148,6 +155,7 @@ class HaxballEnv:
         self.setpiece_team[idx] = -1
         self.setpiece_kind[idx] = 0
         self.setpiece_ticks[idx] = 0
+        self.setpiece_limit[idx] = self.setpiece_timeout
         self.act_hist[:, idx] = 0
         if self.rules is not None:
             self.rules.reset(idx)
@@ -189,9 +197,21 @@ class HaxballEnv:
             self.setpiece_kind[n] = kind
             self.setpiece_ticks[n] = 0
             self.setpiece_pos[n] = nb
+            # En mapas grandes el ejecutor puede necesitar más de 7 s sólo para llegar.
+            self.setpiece_limit[n] = max(self.setpiece_timeout,
+                                         self._restart_travel_ticks(n, taker) + 180)
             self.last_touch[n] = -1
             self.stuck_ticks[n] = 0
         self._protect_setpieces()
+
+    def _restart_travel_ticks(self, n, team):
+        st = self.sim.st
+        eligible = self.sim.player_team == team
+        distance = np.linalg.norm(self.sim.player_pos[n, eligible] - self.sim.ball_pos[n], axis=1)
+        if not len(distance):
+            return 0
+        speed = st.player["acceleration"] * st.player["damping"] / max(1.0 - st.player["damping"], 1e-6)
+        return int(np.ceil(distance.min() / max(speed, 0.1))) + 30
 
     def _protect_setpieces(self):
         """Aplica barreras antes/después de cada tick, no sólo al colocar la pelota.
@@ -237,7 +257,7 @@ class HaxballEnv:
         self.setpiece_ticks[active] += 1
         own = self.setpiece_team[:, None] == self.sim.player_team[None, :]
         released = active & ((self.sim.kicked & own).any(axis=1)
-                             | (self.setpiece_ticks >= self.setpiece_timeout) | (goal != 0))
+                             | (self.setpiece_ticks >= self.setpiece_limit) | (goal != 0))
         self.setpiece_team[released] = -1
         self.setpiece_kind[released] = 0
         waiting = active & ~released
@@ -533,7 +553,7 @@ class HaxballEnv:
         self.kickoff_ticks = np.where(self.sim.kickoff, self.kickoff_ticks + self.frame_skip, 0)
         stall = np.zeros(self.N, dtype=bool)
         if self.kickoff_timeout > 0:
-            stall = self.sim.kickoff & (self.kickoff_ticks >= self.kickoff_timeout)
+            stall = self.sim.kickoff & (self.kickoff_ticks >= self.kickoff_limit)
             staller = self.sim.kickoff_team[:, None] == self.sim.player_team[None, :]
             rew = rew - rc.kickoff_stall * (stall[:, None] & staller)
 

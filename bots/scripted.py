@@ -38,6 +38,7 @@ def scripted_actions(env, players=None, eps=0.0, rng=None, env_indices=None):
     actions = _scripted_kernel(rows, players, sim.ball_pos, sim.ball_vel, sim.player_pos,
                                sim.player_team, env.sign, env.goal_x, sim.st.field_half_h,
                                float(sim.st.player["radius"] + sim.st.ball["radius"]))
+    actions = _restart_actions(env, rows, players, actions)
     if eps > 0:
         rng = rng or np.random.default_rng()
         # Antes se sorteaban N x jugadores y después se seleccionaban las filas.
@@ -46,6 +47,95 @@ def scripted_actions(env, players=None, eps=0.0, rng=None, env_indices=None):
         random_mask = (rng.random(shape) < eps)[rows]
         random_actions = rng.integers(0, 18, shape)[rows]
         actions = np.where(random_mask, random_actions, actions)
+    return actions
+
+
+def _restart_actions(env, rows, players, actions):
+    """Árbitro disponible sólo para el baseline: no añade entradas a la política RL.
+
+    Un único ejecutor por equipo; en lateral patea hacia adentro, no hacia el arco.
+    Sustituye roles/defensa de juego abierto únicamente mientras espera un saque.
+    """
+    sim = env.sim
+    owner = np.where(sim.kickoff, sim.kickoff_team, -1).astype(np.int64)
+    kind = np.where(sim.kickoff, 6, 0).astype(np.int64)
+    excluded = np.zeros((sim.N, sim.P), dtype=np.bool_)
+    forced = np.full(sim.N, -1, dtype=np.int64)
+    rules = env.rules
+    if rules is not None:
+        waiting = ((rules.status == 1) & ~rules.throw_kicked) | rules.sp_waiting
+        active = waiting & (rules.sp_team >= 0)
+        owner[active], kind[active] = rules.sp_team[active], rules.status[active]
+        excluded = rules.expelled
+        forced = np.where(rules.status == 5, rules.pen_kicker, -1)
+    elif env.out_of_bounds:
+        active = env.setpiece_team >= 0
+        owner[active], kind[active] = env.setpiece_team[active], env.setpiece_kind[active]
+    if not (owner[rows] >= 0).any():
+        return actions
+    return _restart_kernel(rows, players, actions, sim.ball_pos, sim.player_pos,
+                           sim.player_team, env.sign, owner, kind, excluded, forced,
+                           env.goal_x, float(sim.st.player["radius"] + sim.st.ball["radius"]))
+
+
+@njit(cache=True, nogil=True)
+def _restart_kernel(rows, players, actions, bp, pp, team, sign, owner, kind, excluded, forced, gx, radii):
+    for i in range(len(rows)):
+        n = rows[i]
+        if owner[n] < 0:
+            continue
+        taker, best = -1, math.inf
+        for q in range(pp.shape[1]):
+            if team[q] != owner[n] or excluded[n, q]:
+                continue
+            d = (pp[n, q, 0] - bp[n, 0]) ** 2 + (pp[n, q, 1] - bp[n, 1]) ** 2
+            if d < best:
+                taker, best = q, d
+        if forced[n] >= 0 and not excluded[n, forced[n]]:
+            taker = forced[n]
+        for j in range(len(players)):
+            p = players[j]
+            if excluded[n, p]:
+                actions[i, j] = 0
+                continue
+            if team[p] != owner[n]:
+                actions[i, j] = 0 if kind[n] == 6 else actions[i, j] % 9
+                continue
+            if p != taker:
+                actions[i, j] %= 9
+                continue
+            bx, by = bp[n, 0] * sign[p], bp[n, 1]
+            px, py = pp[n, p, 0] * sign[p], pp[n, p, 1]
+            tx, ty = gx - bx, -by
+            if kind[n] == 1:  # lateral: tiro perpendicular a la banda hacia adentro
+                tx, ty = 0.0, -1.0 if by > 0 else 1.0
+            elif kind[n] == 2:  # córner: hacia la cancha, no hacia afuera del fondo
+                tx, ty = -bx, -by
+            length = max(math.hypot(tx, ty), 1e-9)
+            tx, ty = tx / length, ty / length
+            dx, dy = bx - px, by - py
+            distance = math.hypot(dx, dy)
+            alignment = (dx * tx + dy * ty) / max(distance, 1e-9)
+            target_x, target_y = bx - tx * (radii + 2), by - ty * (radii + 2)
+            if alignment > 0.8:
+                target_x, target_y = bx, by
+            elif alignment < 0 and distance < radii * 2.5:
+                # Rodear, sin atravesar/push-ear la pelota desde el lado incorrecto.
+                side = 1.0 if (px - bx) * -ty + (py - by) * tx >= 0 else -1.0
+                target_x += -ty * side * (radii + 12)
+                target_y += tx * side * (radii + 12)
+            dx, dy = target_x - px, target_y - py
+            norm = max(math.hypot(dx, dy), 1e-9)
+            move, score = 0, -math.inf
+            if norm >= 1.0:
+                for m in range(1, 9):
+                    candidate = (dx * MOVE_UNIT[m, 0] + dy * MOVE_UNIT[m, 1]) / norm
+                    if candidate > score:
+                        move, score = m, candidate
+            # Mantener X antes del contacto: frame_skip puede cruzar el alcance de
+            # patada entre decisiones; el motor decide cuándo el tiro es posible.
+            kick = alignment > 0.65 and distance < radii + 8.0
+            actions[i, j] = move + 9 * kick
     return actions
 
 
@@ -174,6 +264,7 @@ def _scripted_reference(env, players: np.ndarray | None = None, eps: float = 0.0
     move = _dir_to_action(target - me)
     kick = aligned & (dist_ball < r_p + r_b + 8.0)
     act = move + 9 * kick
+    act = _restart_actions(env, np.arange(sim.N), players, act)
 
     if eps > 0:
         rnd = rng.random(act.shape) < eps

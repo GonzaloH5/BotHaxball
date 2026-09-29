@@ -104,7 +104,8 @@ def env_config(specs, stadium=None, n_per_team=None, task=None) -> dict:
 def env_kwargs(cfg: dict) -> dict:
     return {"powershot": cfg.get("powershot", False), "out_of_bounds": cfg.get("out_of_bounds", False),
             "obs_layout": cfg.get("obs_layout", "flat"),  # universal: max_entities = 2T-1 (el modelo acepta cualquiera)
-            "rules": cfg.get("rules") if cfg.get("obs_layout") == "universal" else None}
+            "rules": cfg.get("rules") if cfg.get("obs_layout") == "universal" else None,
+            "kickoff_timeout": cfg.get("kickoff_timeout", 180)}
 
 
 def make_agent(spec: str, greedy: bool = False):

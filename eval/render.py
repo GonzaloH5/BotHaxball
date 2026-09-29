@@ -48,21 +48,26 @@ def record(agent_red, agent_blue, minutes=2.0, n_per_team=1, stadium="classic", 
            env_kw=None):
     """Graba tick a tick. Usa el mismo entorno que el entrenamiento (con frame_skip=1 y la
     acción repetida `frame_skip` ticks), así goles, pelota afuera y saques se comportan igual."""
-    env = HaxballEnv(1, n_per_team, stadium, 1, max_ticks=10**9, random_reset_prob=0.0,
-                     reward=RewardConfig(shaping_coef=0.0), seed=seed, **(env_kw or {}))
+    kwargs = dict(env_kw or {})
+    kwargs.setdefault("kickoff_timeout", 180)
+    env = HaxballEnv(1, n_per_team, stadium, 1, max_ticks=7200, random_reset_prob=0.0,
+                     reward=RewardConfig(shaping_coef=0.0), seed=seed, **kwargs)
     env.reset()
-    env.sim.reset_kickoff([0], kickoff_team=0)
+    env._reset_envs(np.array([0]), kickoff_team=np.array([0]))
+    env._phi = env._potentials()
     obs = env.observe()
     reset_agents((agent_red, agent_blue), env)
     red, blue = np.arange(env.T), np.arange(env.T, env.P)
     frames = []
     a = np.zeros((1, env.P), dtype=np.int64)
     s = env.sim
+    stalls = 0
     for t in range(int(minutes * 3600)):
         if t % frame_skip == 0:
             a[:, red] = agent_red(env, obs, red)
             a[:, blue] = agent_blue(env, obs, blue)
-        obs, _, done, _ = env.step(a)
+        obs, _, done, info = env.step(a)
+        stalls += int(info["stall"].sum())
         if done.any():
             reset_agents((agent_red, agent_blue), env, done)
             a[done] = 0
@@ -75,7 +80,8 @@ def record(agent_red, agent_blue, minutes=2.0, n_per_team=1, stadium="classic", 
             "P": env.P, "T": env.T, "r_player": st.player["radius"], "r_ball": st.ball["radius"],
             "W": W, "H": st.height, "fw": st.field_half_w, "fh": st.field_half_h,
             "ko": st.kickoff_radius, "S": min(1.6, 1100 / (2 * W + 20)),
-            "red": getattr(agent_red, "name", "rojo"), "blue": getattr(agent_blue, "name", "azul")}
+            "red": getattr(agent_red, "name", "rojo"), "blue": getattr(agent_blue, "name", "azul"),
+            "kickoff_stalls": stalls}
     return meta, frames
 
 
@@ -94,12 +100,14 @@ small{color:var(--muted)}
 <canvas id="c"></canvas>
 <div class="bar"><button id="play">⏸</button><select id="spd"><option value="0.5">0.5x</option><option value="1" selected>1x</option><option value="2">2x</option><option value="4">4x</option></select>
 <input type="range" id="seek" min="0" value="0"><small id="time"></small></div>
+<small id="restart-note"></small>
 <script>
 const M=__META__, F=__FRAMES__;
 const c=document.getElementById('c'),x=c.getContext('2d'),S=M.S||1.6;
 c.width=(M.W*2+20)*S;c.height=(M.H*2+20)*S;
 const seek=document.getElementById('seek');seek.max=F.length-1;
 document.getElementById('rn').textContent=M.red;document.getElementById('bn').textContent=M.blue;
+document.getElementById('restart-note').textContent=M.kickoff_stalls?`Esta grabación contiene ${M.kickoff_stalls} saques centrales vencidos (reinicios sin gol).`:'';
 let i=0,playing=true,acc=0,last=performance.now();
 const tx=v=>(v+M.W+10)*S, ty=v=>(v+M.H+10)*S;
 function disc(px,py,r,fill,stroke,w){x.beginPath();x.arc(tx(px),ty(py),r*S,0,7);x.fillStyle=fill;x.fill();x.lineWidth=w*S;x.strokeStyle=stroke;x.stroke();}
@@ -139,6 +147,8 @@ def main():
     html = HTML.replace("__META__", json.dumps(meta)).replace("__FRAMES__", json.dumps(frames, separators=(",", ":")))
     Path(args.out).write_text(html, encoding="utf-8")
     print(f"{args.out}: {len(frames)} ticks, resultado {frames[-1][-2]}-{frames[-1][-1]}")
+    if meta["kickoff_stalls"]:
+        print(f"Aviso: {meta['kickoff_stalls']} saques centrales vencidos; se reiniciaron episodios sin sumar goles.")
 
 
 if __name__ == "__main__":

@@ -82,10 +82,11 @@ def test_own_kick_releases_protection_and_rival_can_then_kick(team, kind, optimi
 def test_timeout_releases_without_permanent_wait_or_out_reset_loop(kind):
     env = setup_piece(kind=kind)
     actions = np.zeros((1, env.P), dtype=np.int64)
-    for _ in range(env.setpiece_timeout // env.frame_skip):
+    limit = int(env.setpiece_limit[0])
+    for _ in range((limit + env.frame_skip - 1) // env.frame_skip):
         env.step(actions)
     assert env.setpiece_team[0] == -1
-    assert env.setpiece_ticks[0] == env.setpiece_timeout
+    assert limit <= env.setpiece_ticks[0] < limit + env.frame_skip
 
 
 @pytest.mark.parametrize("team", [0, 1])
