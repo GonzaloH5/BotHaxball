@@ -88,6 +88,7 @@ def test_task_metrics_survive_rebuild_and_checkpoint_state(monkeypatch):
     slot = make_slot()
     slot.task = trainer.catalog["classic_1v1"]
     slot.best_wr, slot.boost, slot.wr_window = 0.9, 2, [(90, 10)]
+    slot.mode_context, slot.mode_carry = (.45, .5, .05), np.array([.2, -.4, .2])
     trainer.slots, trainer.task_state = [slot], {}
     trainer.sync_task_state()
     # Simular también la serialización de tuplas a listas.
@@ -96,9 +97,15 @@ def test_task_metrics_survive_rebuild_and_checkpoint_state(monkeypatch):
     trainer.build_envs()
     assert trainer.slots[0].wr_window == [(90, 10)]
     assert trainer.slots[0].best_wr == 0.9 and trainer.slots[0].boost == 2
+    assert trainer.slots[0].mode_context == (.45, .5, .05)
+    np.testing.assert_allclose(trainer.slots[0].mode_carry, [.2, -.4, .2])
     del trainer.task_state["classic_1v1"]["regression_context"]
+    del trainer.task_state["classic_1v1"]["mode_context"]
+    del trainer.task_state["classic_1v1"]["mode_carry"]
     trainer.build_envs()
     assert trainer.slots[0].best_wr == 0 and trainer.slots[0].boost == 1
+    assert trainer.slots[0].mode_context is None
+    np.testing.assert_array_equal(trainer.slots[0].mode_carry, np.zeros(3))
 
 
 def test_evaluation_counts_games_draws_and_both_colours(monkeypatch):

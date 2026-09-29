@@ -55,6 +55,8 @@ class TaskSlot:
         self.steps = 0
         self.intro_step = 0   # paso global en que la tarea entró al entrenamiento (decaimiento del shaping)
         self.regression_context = None
+        self.mode_context = None
+        self.mode_carry = np.zeros(3, dtype=np.float64)
 
     def set_regression_context(self, scripted_eps):
         """Una marca sólo es comparable contra la misma dificultad de rival."""
@@ -241,6 +243,9 @@ class MultiTrainer:
             slot.regression_context = tuple(context) if context is not None else None
             slot.wr_window = [tuple(pair) for pair in s.get("wr_window", [])][-400:]  # ventana por goles
             slot.set_regression_context(self.cfg["curriculum"][slot.opp_stage]["scripted_eps"])
+            context = s.get("mode_context")
+            slot.mode_context = tuple(context) if context is not None else None
+            slot.mode_carry = np.array(s.get("mode_carry", [0.0, 0.0, 0.0]), dtype=np.float64)
             self.slots.append(slot)
         self.obs_dim = self.slots[0].env.obs_dim
         self._policy_groups = None
@@ -263,7 +268,9 @@ class MultiTrainer:
             self.task_state[s.task.name] = {"opp_stage": s.opp_stage, "best_wr": s.best_wr, "boost": s.boost,
                                             "steps": s.steps, "intro_step": s.intro_step,
                                             "regression_context": s.regression_context,
-                                            "wr_window": list(s.wr_window)}
+                                            "wr_window": list(s.wr_window),
+                                            "mode_context": s.mode_context,
+                                            "mode_carry": s.mode_carry.tolist()}
 
     # ------------------------------------------------------------ checkpoints
     def save(self, path: Path) -> None:
@@ -307,8 +314,21 @@ class MultiTrainer:
         st = self.cfg["curriculum"][s.opp_stage]
         fr = np.array([st["selfplay"], st["pool"] if self.league.members else 0.0, st["scripted"]])
         fr = fr / fr.sum()
-        counts = np.floor(fr * s.N).astype(int)
-        counts[0] += s.N - counts.sum()
+        # Reparto compensado: las fracciones pequeñas reciben entornos a lo
+        # largo de los rollouts, sin imponer un mínimo que distorsione el 5%.
+        # Se conserva el saldo por tarea al reconstruir entornos y reanudar.
+        context = tuple(fr)
+        if s.mode_context != context:
+            s.mode_carry = np.zeros(3, dtype=np.float64)
+            s.mode_context = context
+        quota = fr * s.N
+        counts = np.floor(quota).astype(int)
+        debt = s.mode_carry + quota - counts
+        for _ in range(s.N - int(counts.sum())):
+            mode = int(np.argmax(np.where(fr > 0, debt, -np.inf)))
+            counts[mode] += 1
+            debt[mode] -= 1
+        s.mode_carry = debt
         modes = np.concatenate([np.full(c, m) for m, c in zip((SELF, POOL, SCRIPTED), counts)])
         self.rng.shuffle(modes)
         opp_id = np.full(s.N, -1)
@@ -713,7 +733,7 @@ class MultiTrainer:
         w.add_scalar("shaping_coef", self.rcfg.shaping_coef, self.steps)
         for s in self.slots:
             wr, goals = s.winrate()
-            w.add_scalar(f"task/{s.task.name}/goal_share_vs_scripted", wr, self.steps)
+            w.add_scalar(f"task/{s.task.name}/goal_share_vs_scripted", wr if goals else float("nan"), self.steps)
             w.add_scalar(f"task/{s.task.name}/goals_in_window", goals, self.steps)
             w.add_scalar(f"task/{s.task.name}/opp_stage", s.opp_stage, self.steps)
             w.add_scalar(f"task/{s.task.name}/shaping", s.env.rcfg.shaping_coef, self.steps)
@@ -724,7 +744,8 @@ class MultiTrainer:
             cells = []
             for s in self.slots:
                 wr, ng = s.winrate()
-                cells.append(f"{s.task.name} r{s.opp_stage} {wr:.2f}({ng})")
+                result = f"{wr:.2f}({ng})" if ng else "sin datos(0)"
+                cells.append(f"{s.task.name} r{s.opp_stage} {result}")
             print("      proporción de goles vs bot: " + " | ".join(cells), flush=True)
 
     def update(self, b, ent_coef):

@@ -139,6 +139,14 @@ Rendimiento medido en esta PC (sólo CPU): la red se lleva ~90% del tiempo (`pyt
 
 ### Entrenamiento CPU + GPU en Runpod
 
+El reparto de rivales compensa las fracciones entre rollouts: un 5% de scripted
+en una tarea de 13 entornos no se redondea permanentemente a cero ni se fuerza
+un entorno en todos los rollouts. El saldo por tarea se guarda en el checkpoint
+y se conserva al reconstruir entornos; los checkpoints anteriores siguen siendo
+compatibles. Cuando la ventana no contiene goles contra scripted, el log muestra
+`sin datos(0)` y TensorBoard registra NaN, no una proporción falsa de 0%.
+Pruebas: `python -m pytest tests/test_opponent_allocation.py tests/test_validation_fixes.py -q`.
+
 En una imagen de PyTorch con CUDA, crear el entorno con `python3 -m venv .venv --system-site-packages`
 y activarlo con `source .venv/bin/activate`. Instalar las dependencias de arriba sin instalar el wheel
 CPU de PyTorch. Verificar `python -c "import torch; print(torch.cuda.is_available())"` (debe ser `True`).
