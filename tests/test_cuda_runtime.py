@@ -140,7 +140,13 @@ def test_resume_cpu_checkpoint_and_update_with_bc_pool_and_timeouts(tmp_path, mo
         assert all(s._buffer_cache["obs"] is before for s, before in zip(resumed.slots, cached))
         if device == "cuda":
             assert resumed._batch_transfer is not None
-            assert resumed._batch_transfer.allocations == 5
+            # El reparto compensado de modos puede hacer que el segundo lote pase
+            # el siguiente umbral de capacidad (p. ej. 60 -> 68 filas, 64 -> 128).
+            # Esa ampliación única es válida; después debe reutilizarse.
+            allocations_after_growth = resumed._batch_transfer.allocations
+            assert allocations_after_growth in (5, 10)
+            resumed.iterate()
+            assert resumed._batch_transfer.allocations == allocations_after_growth
             assert resumed._batch_transfer.last_allocations == 0
             assert stats[-1]["runtime/ppo_batch_allocations"] == 0
         if backend == "graph":
@@ -149,8 +155,9 @@ def test_resume_cpu_checkpoint_and_update_with_bc_pool_and_timeouts(tmp_path, mo
                 assert values["runtime/cuda_graph_captures"] == 1
                 assert values["runtime/cuda_graph_replays"] == cfg["ppo"]["rollout_len"]
             profile = resumed._decision_profile
-            assert profile.captures == 2
-            assert profile.replays == profile.calls == 2 * cfg["ppo"]["rollout_len"]
+            expected_iterations = 3 if device == "cuda" else 2
+            assert profile.captures == expected_iterations
+            assert profile.replays == profile.calls == expected_iterations * cfg["ppo"]["rollout_len"]
             assert all(np.isfinite(value) and value >= 0 for value in profile.totals.values())
     finally:
         initial.writer.close()
