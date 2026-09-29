@@ -74,6 +74,8 @@ def catalog_by_name() -> dict[str, dict]:
 
 
 ALIASES = {
+    "AF Official 3v3 by Vitão ®": "af_futsalx3",
+    "AF Official 3v3 by Vit�o �": "af_futsalx3",
     "Futsal x3 by Bazinga": "futsalx3",
     "Futsal x3  by Bazinga": "futsalx3",
     "Futsal X3 by Bazinga": "futsalx3",

@@ -10,7 +10,20 @@ from train.multitask import MultiTrainer
 from train.runtime import load_config
 
 
-PROFILES = [("config_1v1_focus.yaml", 0.5, 0.1), ("config_cooperation.yaml", 0.2, 0.16)]
+PROFILES = [
+    ("config_1v1_focus.yaml", 0.5, 0.5 / 6),
+    ("config_cooperation.yaml", 0.2, 0.8 / 6),
+]
+
+
+def test_balanced_profile_gives_every_stage_a_task_the_same_share():
+    cfg = load_config(multitask.ROOT / "train/config_balanced.yaml")
+    trainer = MultiTrainer.__new__(MultiTrainer)
+    trainer.cfg, trainer.stages, trainer.stage = cfg, cfg["stages"], 0
+    trainer.task_state = {n: {"boost": 9.0} for n in trainer.active_tasks()}
+    shares = trainer.task_shares()
+    assert set(shares) == set(cfg["stages"][0]["tasks"])
+    assert all(value == pytest.approx(1 / len(shares)) for value in shares.values())
 
 
 @pytest.mark.parametrize("profile,one,other", PROFILES)

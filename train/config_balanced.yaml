@@ -1,8 +1,8 @@
-# Fase manual posterior: 20% 1v1 y ~16% en cada otra tarea, sin reiniciar el aprendizaje.
-# 1.5/(1.5+1+1+1+1+1+1) = 20%; mismos siete mapas/formatos de la etapa 0.
+# Perfil actual: mismo presupuesto de agentes para cada escenario de la etapa A.
+# Mantiene checkpoint, PPO, liga y shaping al reanudar; sólo fija el reparto.
 extends: config_runpod.yaml
 stages:
-  - name: A_cooperacion_20pct_1v1
+  - name: A_equilibrada
     tasks: [big_2v2, big_3v3, futsal_2v2, futsal_3v3, futsal_af_3v3, x1_1v1, aha_3v3]
     fixed_weights: true
     weights:
@@ -11,5 +11,5 @@ stages:
       futsal_2v2: 1.0
       futsal_3v3: 1.0
       futsal_af_3v3: 1.0
-      x1_1v1: 1.5
+      x1_1v1: 1.0
       aha_3v3: 1.0

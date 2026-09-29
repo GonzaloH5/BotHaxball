@@ -11,6 +11,7 @@
 #   sanguchito_x1 SANGUCHITO X1        (carpeta futsalx1)  1v1; el script sólo esconde discos y ubica jugadores
 #                (saque real en ±356 fijado en "haxballrl": el mapa declara una zona de espera)
 #   futsalx3     Futsal x3 Bazinga     (carpeta futsalx3)  sin script
+#   af_futsalx3  AF Official 3v3       (carpeta futsalx3)  sin script
 #   futsal_x4    Futsal x4 Bazinga     (carpeta futsalx4)  sin script
 #   liga_x7      HAXARG LIGA X7        (carpeta futsalx7)  sin script, cancha 1200x600
 #   lhl_x7       Estadio oficial LHL   (carpeta futsalx7)  sin script, cancha 1200x600
@@ -44,6 +45,7 @@ tasks:
   big_4v4:     {stadium: haxarg_big,     n_per_team: 4,  rules: plain}
   futsal_2v2:  {stadium: futsal_x1x2,    n_per_team: 2,  rules: plain}
   futsal_3v3:  {stadium: futsalx3,       n_per_team: 3,  rules: plain}
+  futsal_af_3v3: {stadium: af_futsalx3,  n_per_team: 3,  rules: plain}
   futsal_4v4:  {stadium: futsal_x4,      n_per_team: 4,  rules: plain}
   futsal_5v5:  {stadium: liga_x7,        n_per_team: 5,  rules: plain}
   futsal_7v7:  {stadium: liga_x7,        n_per_team: 7,  rules: plain}

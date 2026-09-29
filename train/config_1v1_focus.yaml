@@ -1,15 +1,16 @@
 # Fase manual para el checkpoint actual en etapa 0. Conserva modelo, PPO, liga y shaping.
-# 5/(5+1+1+1+1+1) = 50% del presupuesto de agentes; ~10% por otra tarea.
+# 6/(6+1+1+1+1+1+1) = 50% del presupuesto de agentes; ~8,3% por otra tarea.
 # No avanza automáticamente a B/C: cambiar de perfil cuando se quiera terminar esta fase.
 extends: config_runpod.yaml
 stages:
   - name: A_tecnica_individual_50pct_1v1
-    tasks: [big_2v2, big_3v3, futsal_2v2, futsal_3v3, x1_1v1, aha_3v3]
+    tasks: [big_2v2, big_3v3, futsal_2v2, futsal_3v3, futsal_af_3v3, x1_1v1, aha_3v3]
     fixed_weights: true
     weights:
       big_2v2: 1.0
       big_3v3: 1.0
       futsal_2v2: 1.0
       futsal_3v3: 1.0
-      x1_1v1: 5.0
+      futsal_af_3v3: 1.0
+      x1_1v1: 6.0
       aha_3v3: 1.0

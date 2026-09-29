@@ -148,6 +148,22 @@ Mapas nuevos:
 Antes del RL, el modelo aprende a imitar a jugadores de primera división. Así sale con costumbres humanas (posiciones, esperar el saque, pelotas paradas), en vez de las convenciones que inventa jugando contra sí mismo.
 
 1. **Replays** en `replays_real/stadiums/<carpeta>/*.hbr2`. Una carpeta por modalidad (bigx3, futsalx3, futsalx4, futsalx7, rfx7, rsx4, rsx6).
+
+Los replays públicos de MrREPLAY se pueden buscar y descargar directamente. `--query` usa el mismo
+texto que la barra de búsqueda pública; `--team-size 3` además abre cada grabación y exige al menos un
+tramo 3 contra 3. `--folder` selecciona la modalidad y evita mezclar estadios incompatibles:
+
+```bash
+python -m tools.fetch_mrhost_replays --query 3v3 --team-size 3 --folder futsalx3
+python -m tools.fetch_mrhost_replays --query 3v3 --team-size 3 --folder futsalx3 --stadium af_futsalx3
+python -m tools.fetch_mrhost_replays --query 3v3 --team-size 3 --folder futsalx3 --max-results 2 --dry-run
+```
+
+También acepta `--min-duration`, `--max-duration` (segundos), `--country`, `--continent`, `--sort` y
+`--max-results`. Las descargas válidas quedan como `.hbr2` en la carpeta elegida y
+`_mrhost_manifest.jsonl` registra descargados, duplicados y descartes para poder reanudar. El catálogo
+público no forma parte de la API v1 autenticada: el comando descubre y usa la interfaz interna de la
+web, por lo que puede requerir ajustes si MrREPLAY cambia su implementación.
 2. **Dataset:** `python -m tools.build_bc_dataset`.
    Para incorporar sólo recs nuevas de RS sin rehacer las anteriores: `python -m tools.build_bc_dataset --folders rsx6`.
    Para preparar RS4 normal y corregir shards antiguos creados con powershot:
@@ -346,14 +362,24 @@ un pico individual. El benchmark descarta sus cambios en una copia temporal; no 
 No se promete una aceleración sin verificar los tiempos en el Pod. Para desactivar sólo este cache
 al entrenar, usar `--override runtime.reuse_ppo_batch=false`.
 
-#### Fase manual de técnica individual y posterior cooperación
+#### Reparto equilibrado actual y perfiles históricos de 1v1
+
+El perfil recomendado actualmente reparte el presupuesto por igual entre las siete tareas de la
+etapa A (incluidos ambos estadios futsal 3v3). `fixed_weights` evita que los boosts guardados de una
+fase anterior vuelvan a sesgar el reparto hacia 1v1:
+
+```bash
+python -m train.multitask --config train/config_balanced.yaml --run multi --resume
+```
+
+Los dos perfiles siguientes se conservan solamente para reproducir fases históricas:
 
 Para un checkpoint que todavía está en **etapa 0**, hay dos perfiles separados del currículo normal:
 
-| Perfil | `x1_1v1` | Cada una de las otras cinco tareas |
+| Perfil | `x1_1v1` | Cada una de las otras seis tareas |
 |---|---:|---:|
-| `train/config_1v1_focus.yaml` | 50% | 10% |
-| `train/config_cooperation.yaml` | 20% | 16% |
+| `train/config_1v1_focus.yaml` | 50% | 8,33% |
+| `train/config_cooperation.yaml` | 20% | 13,33% |
 
 Son porcentajes del **presupuesto de agentes del entorno**, no multiplicadores de recompensa ni
 pesos extra de la pérdida PPO. El número de partidos se ajusta por tamaño de equipo. Hay pequeños
