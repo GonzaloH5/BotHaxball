@@ -15,6 +15,7 @@ from pathlib import Path
 import numpy as np
 
 from .build_bc_dataset import OUT, ROOT, SKIP, SRC, catalog_by_name, node
+from .replay_files import duplicate_recordings
 
 
 def summarize_folder(folder, recordings, val_frac=.12):
@@ -22,6 +23,7 @@ def summarize_folder(folder, recordings, val_frac=.12):
               "datasets": 0, "samples": 0, "train_replays": 0, "val_replays": 0,
               "train_samples": 0, "val_samples": 0, "team_sizes": {}, "pending": [], "excluded": []}
     cat = catalog_by_name()
+    duplicates = duplicate_recordings(recordings)
     maps, sizes = Counter(), Counter()
     for r in recordings:
         if "error" in r:
@@ -31,7 +33,9 @@ def summarize_folder(folder, recordings, val_frac=.12):
         maps[r["stadium"]] += 1
         meta = cat.get(r["stadium"].strip())
         reason = None
-        if any(s in r["stadium"].lower() for s in SKIP):
+        if r["name"] in duplicates:
+            reason = "byte-identical duplicate of " + duplicates[r["name"]]
+        elif any(s in r["stadium"].lower() for s in SKIP):
             reason = "training/penalties"
         elif any(str(n).upper().startswith("[BOT]") for n in r.get("names", [])):
             reason = "bot in recording"

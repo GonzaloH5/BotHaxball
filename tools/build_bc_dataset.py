@@ -28,6 +28,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+from tools.replay_files import duplicate_recordings  # noqa: E402
 from env.haxball_env import MIRROR_ACTION, HaxballEnv  # noqa: E402
 from sim.physics import KICK_REACH, MOVE_DIRS  # noqa: E402
 from sim.stadium import BLUEKO, PLAYER_MASK, REDKO, STADIUM_DIR, load_stadium  # noqa: E402
@@ -277,8 +278,12 @@ def main():
     try:
         for folder in folders:
             reps = json.loads(node("bridge/replays_by_map.js", SRC / folder))
+            duplicates = duplicate_recordings(reps)
             done = 0
             for r in reps:
+                if r["name"] in duplicates:
+                    print(f"  salteo {folder}/{r['name']}: copia idéntica de {duplicates[r['name']]}", flush=True)
+                    continue
                 if "error" in r or any(s in r["stadium"].lower() for s in SKIP):
                     continue
                 if any(str(n).upper().startswith("[BOT]") for n in r.get("names", [])):

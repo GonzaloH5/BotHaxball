@@ -115,6 +115,13 @@ Antes del RL, el modelo aprende a imitar a jugadores de primera división. Así 
 1. **Replays** en `replays_real/stadiums/<carpeta>/*.hbr2`. Una carpeta por modalidad (bigx3, futsalx3, futsalx4, futsalx7, rfx7, rsx4, rsx6).
 2. **Dataset:** `python -m tools.build_bc_dataset`.
    Para incorporar sólo recs nuevas de RS sin rehacer las anteriores: `python -m tools.build_bc_dataset --folders rsx6`.
+   Para preparar RS4 normal y corregir shards antiguos creados con powershot:
+   `python -m tools.build_bc_dataset --folders rsx4 --overwrite` (respaldar los shards anteriores antes).
+   Los duplicados byte por byte se identifican con SHA-256 y se omiten, conservando
+   todos los `.hbr2` originales. Esto evita crear dos shards del mismo archivo
+   con nombres distintos y repartir esas copias entre entrenamiento y validación.
+   Los shards duplicados que ya existieran deben apartarse de `data/bc`;
+   omitir una rec no elimina automáticamente un shard antiguo.
    Para revisar cobertura real, formatos, archivos excluidos y separación por replay de validación:
    `python -m tools.audit_bc_dataset --out data/bc/coverage_report.json`.
    El auditor valida observaciones finitas, filas y etiquetas; `pending` significa que falta un shard, no que el replay necesariamente tenga muestras válidas. No confundir el nombre de la carpeta con el mapa o el tamaño de equipo efectivos.
