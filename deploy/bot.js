@@ -37,7 +37,7 @@ const args = process.argv.slice(2);
 const arg = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
 const MODEL = arg("--model", path.join(__dirname, "model.onnx"));
 const META = JSON.parse(fs.readFileSync(MODEL.replace(/\.onnx$/, ".json"), "utf8"));
-let temperature = parseFloat(arg("--temp", "1.0"));
+let temperature = parseFloat(arg("--temp", "0.0"));
 const joinId = arg("--join", null);
 // ms de extrapolación como cliente; por defecto se mide en vivo (ver inputDelayTicks)
 const extrapMs = arg("--extrap", null) != null ? parseFloat(arg("--extrap")) : null;
@@ -220,7 +220,17 @@ function BotPlugin(session) {
   this.onGameStart = () => { ticksSinceKickoff = 0; kickCancel = false; resetPolicy(); };
   this.onTeamGoal = () => { ticksSinceKickoff = 0; resetPolicy(); };
   this.onPositionsReset = () => { ticksSinceKickoff = 0; resetPolicy(); };
-  this.onGameStop = resetPolicy;
+  this.onGameStop = () => {
+    resetPolicy();
+
+    if (that.room.isHost) {
+      setTimeout(() => {
+        if (!that.room.gameState) {
+          that.room.startGame();
+        }
+      }, 1500);
+    }
+  };
   this.onPlayerTeamChange = resetPolicy;
   this.onPlayerLeave = resetPolicy;
 
