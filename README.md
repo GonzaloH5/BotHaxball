@@ -147,6 +147,25 @@ compatibles. Cuando la ventana no contiene goles contra scripted, el log muestra
 `sin datos(0)` y TensorBoard registra NaN, no una proporción falsa de 0%.
 Pruebas: `python -m pytest tests/test_opponent_allocation.py tests/test_validation_fixes.py -q`.
 
+El currículo RS usa desde la etapa B `rs4_4v4` (RS One normal) y `jjrs_6v6`
+(JJRS de las recs), con laterales/córners/saques de arco simplificados, sin
+powershot, slide ni faltas. Las tareas reducidas RS y Pegeche permanecen en el
+catálogo para evaluaciones antiguas, pero no se entrenan en este perfil. Se
+mantienen las tres etapas para reanudar checkpoints existentes; no se reinician
+la política, el optimizador, la liga ni los pasos. Sólo se invalidan una vez las
+marcas/ventana de goles de RS4 medidas con las reglas anteriores. JJRS entra como
+tarea nueva, con su propio inicio del shaping. Real Futsal conserva sus reglas.
+
+Los checkpoints multitarea se escriben a un temporal del mismo directorio, se
+sincronizan y se publican por reemplazo atómico: un fallo/interrupción durante
+la escritura no trunca el archivo anterior. Si un `latest.pt` antiguo está
+dañado, detener todos los procesos de ese run y ejecutar, por ejemplo:
+`python -m tools.restore_checkpoint --run multi --checkpoint runs/multi/ckpt_002975.pt`.
+La herramienta carga primero el checkpoint completo; si falla, no cambia latest.
+Si es válido, respalda los bytes del latest anterior en un archivo de nombre único
+y restaura por reemplazo atómico. Retomar con `--resume` (no `--init-from`).
+Pruebas: `python -m pytest tests/test_atomic_checkpoints.py tests/test_soccer_curriculum.py -q`.
+
 En una imagen de PyTorch con CUDA, crear el entorno con `python3 -m venv .venv --system-site-packages`
 y activarlo con `source .venv/bin/activate`. Instalar las dependencias de arriba sin instalar el wheel
 CPU de PyTorch. Verificar `python -c "import torch; print(torch.cuda.is_available())"` (debe ser `True`).

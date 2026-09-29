@@ -31,6 +31,7 @@ from env.rewards import RewardConfig
 from env.tasks import load_catalog, make_env
 
 from .league import League
+from .checkpoints import atomic_torch_save
 from .cuda_decisions import DECISION_BACKENDS, CudaDecisionGraph, sample_decisions
 from .model import SetActorCritic, build_model
 from .ppo_selfplay import lerp, resolve_device
@@ -57,6 +58,7 @@ class TaskSlot:
         self.regression_context = None
         self.mode_context = None
         self.mode_carry = np.zeros(3, dtype=np.float64)
+        self.metric_version = 0
 
     def set_regression_context(self, scripted_eps):
         """Una marca sólo es comparable contra la misma dificultad de rival."""
@@ -213,6 +215,9 @@ class MultiTrainer:
         for n in names:
             state = self.task_state.get(n)
             if state:
+                version = self.cfg.get("task_metric_versions", {}).get(n, 0)
+                if state.get("metric_version", 0) != version:
+                    state.update(best_wr=0.0, boost=1.0, wr_window=[], metric_version=version)
                 expected = (state["opp_stage"], float(self.cfg["curriculum"][state["opp_stage"]]["scripted_eps"]))
                 if tuple(state.get("regression_context") or ()) != expected:
                     state.update(best_wr=0.0, boost=1.0, wr_window=[], regression_context=expected)
@@ -239,6 +244,7 @@ class MultiTrainer:
             s.setdefault("intro_step", 0)
             slot.opp_stage, slot.best_wr, slot.boost, slot.steps = s["opp_stage"], s["best_wr"], s["boost"], s["steps"]
             slot.intro_step = s["intro_step"]
+            slot.metric_version = self.cfg.get("task_metric_versions", {}).get(n, 0)
             context = s.get("regression_context")
             slot.regression_context = tuple(context) if context is not None else None
             slot.wr_window = [tuple(pair) for pair in s.get("wr_window", [])][-400:]  # ventana por goles
@@ -270,12 +276,13 @@ class MultiTrainer:
                                             "regression_context": s.regression_context,
                                             "wr_window": list(s.wr_window),
                                             "mode_context": s.mode_context,
-                                            "mode_carry": s.mode_carry.tolist()}
+                                            "mode_carry": s.mode_carry.tolist(),
+                                            "metric_version": s.metric_version}
 
     # ------------------------------------------------------------ checkpoints
     def save(self, path: Path) -> None:
         self.sync_task_state()
-        torch.save({
+        atomic_torch_save({
             "model": self.model.state_dict(), "model_config": self.model.config(), "opt": self.opt.state_dict(),
             "steps": self.steps, "iteration": self.iteration, "stage": self.stage, "stage_steps": self.stage_steps,
             "task_state": self.task_state, "learner_elo": self.league.learner_elo,

@@ -24,12 +24,14 @@
 #
 # Perfiles de reglas (lo que agrega el script de la sala):
 #   plain: física pura del mapa, sin script
+#   soccer: pelotas paradas simplificadas, SIN powershot/slide/faltas (RS normal)
 #   real:  powershot con curva + pelotas paradas simplificadas (laterales/córners/saque de arco)
 #   pegeche: el script completo de la sala Pegeche (env/pegeche.py): powershot + laterales, córners,
 #            saques de arco, slide, faltas, tiros libres, penales y tarjetas, como en la sala real
 
 rules:
   plain: {powershot: false, out_of_bounds: false}
+  soccer: {powershot: false, out_of_bounds: true}
   real:  {powershot: true,  out_of_bounds: true}
   pegeche: {powershot: true, out_of_bounds: true, script: pegeche}
 
@@ -48,8 +50,8 @@ tasks:
   lhl_7v7:     {stadium: lhl_x7,         n_per_team: 7,  rules: plain}
   # --- ligas: Real Soccer y Real Futsal (con script de sala)
   rs4_3v3:     {stadium: rs_one,         n_per_team: 3,  rules: real}
-  rs4_4v4:     {stadium: rs_one,         n_per_team: 4,  rules: real}
-  jjrs_6v6:    {stadium: jjrs_x6,        n_per_team: 6,  rules: real}
+  rs4_4v4:     {stadium: rs_one,         n_per_team: 4,  rules: soccer}
+  jjrs_6v6:    {stadium: jjrs_x6,        n_per_team: 6,  rules: soccer}
   rf_5v5:      {stadium: real_futsal_x7, n_per_team: 5,  rules: real}
   rf_7v7:      {stadium: real_futsal_x7, n_per_team: 7,  rules: real}
   # --- sala Pegeche (script completo)

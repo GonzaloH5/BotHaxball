@@ -3,6 +3,8 @@
 run_name: multi
 seed: 0
 tasks_file: train/tasks.yaml
+# Las marcas históricas de RS4 con powershot no son comparables con RS normal.
+task_metric_versions: {rs4_4v4: 1}
 
 env:
   agents: 1152            # agentes simultáneos en total (se reparten entre tareas según su peso)
@@ -61,11 +63,11 @@ stages:
     min_steps: 60_000_000
     max_steps: 250_000_000
   - name: B_equipos_chicos_y_reales
-    tasks: [big_4v4, futsal_4v4, rs4_3v3, rs4_4v4, rs_2v2, rs_3v3, rs_4v4]
+    tasks: [big_4v4, futsal_4v4, rs4_4v4, jjrs_6v6]
     min_steps: 150_000_000
     max_steps: 600_000_000
   - name: C_equipos_medianos
-    tasks: [futsal_5v5, futsal_7v7, lhl_7v7, rf_5v5, rf_7v7, jjrs_6v6, rs_6v6]
+    tasks: [futsal_5v5, futsal_7v7, lhl_7v7, rf_5v5, rf_7v7]
     min_steps: 200_000_000
     max_steps: 800_000_000
   # D_haxeleven (h11_11v11) queda fuera por ahora: con 21 entidades el update es ~4x más caro en CPU.

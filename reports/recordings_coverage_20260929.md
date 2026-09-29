@@ -52,12 +52,13 @@ bot domine una modalidad. Priorizar errores concretos y evaluar en partidos.
   dos compatibles que no produjeron muestras válidas al intentar convertirlas.
 - Las recs de JJRS x6 no sustituyen ejemplos específicos de RS One o del mapa
   Pegeche, ni corrigen por sí solas errores de reglas, física o scripted.
-- El currículo actual contiene tareas artificiales de equipos pequeños:
+- El currículo al realizar esta auditoría contenía tareas artificiales de equipos pequeños:
   `rs4_3v3` usa `rs_one`; `rs_2v2`, `rs_3v3` y `rs_4v4` usan `x6_half` con el
   árbitro Pegeche. `jjrs_6v6` y `rs_6v6` usan `jjrs_x6` y `x6`, respectivamente,
-  con seis jugadores por equipo. No se cambió ese currículo en esta auditoría:
-  las tareas pequeñas son pasos de entrenamiento, no prueba de modalidades
-  reales que haya que completar con grabaciones.
+  con seis jugadores por equipo. En la actualización posterior se retiraron
+  las variantes pequeñas del currículo y se incorporó `jjrs_6v6` desde la etapa
+  B junto a `rs4_4v4`. Ambas usan saques simplificados sin powershot/slide/faltas.
+  Las tareas Pegeche siguen en el catálogo pero fuera del perfil multitarea.
 - Incorporar recs al dataset no modifica una política PPO ya guardada. Hace
   falta entrenar un imitador con estos datos y, si se decide usarlo, cargarlo
   como referencia de imitación o como inicialización de una corrida nueva.
