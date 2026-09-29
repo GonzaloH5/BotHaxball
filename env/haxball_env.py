@@ -112,6 +112,12 @@ class HaxballEnv:
         self.stuck_ticks = np.zeros(self.N, dtype=np.int64)  # pelota casi quieta pegada a una línea
         self.setpiece_dist = 50.0      # los rivales del que saca se corren a esta distancia
         self.stuck_limit = 180         # 3 s trabada contra una línea => se cobra como salida
+        # Estado privado del árbitro simplificado: nunca se añade a las observaciones.
+        self.setpiece_team = np.full(self.N, -1, dtype=np.int64)
+        self.setpiece_kind = np.zeros(self.N, dtype=np.int64)  # 1 lateral, 2 córner, 3 saque de arco
+        self.setpiece_ticks = np.zeros(self.N, dtype=np.int64)
+        self.setpiece_pos = np.zeros((self.N, 2))
+        self.setpiece_timeout = 420    # protección finita (7 s); no réplica del script de cada sala
         # Script completo de la sala (rules="pegeche", env/pegeche.py): reemplaza las pelotas paradas
         # simplificadas de arriba por las reales y suma slide, faltas, penales y tarjetas.
         if rules not in (None, "pegeche"):
@@ -139,6 +145,9 @@ class HaxballEnv:
         self.kickoff_ticks[idx] = 0
         self.last_touch[idx] = -1
         self.stuck_ticks[idx] = 0
+        self.setpiece_team[idx] = -1
+        self.setpiece_kind[idx] = 0
+        self.setpiece_ticks[idx] = 0
         self.act_hist[:, idx] = 0
         if self.rules is not None:
             self.rules.reset(idx)
@@ -146,12 +155,11 @@ class HaxballEnv:
             self.delay[idx] = self.rng.integers(0, self.action_delay_max + 1, len(idx))
 
     def _set_piece(self, idx) -> None:
-        """Pelota parada simplificada (lateral / córner / saque de arco), como ref.js:
-        saca el equipo contrario al que la tocó último; los rivales se corren `setpiece_dist`."""
+        """Pelota parada simplificada (lateral / córner / saque de arco).
+        Protección hasta la patada del equipo que saca o el timeout; no expone estado privado."""
         sim = self.sim
         r = sim.st.ball["radius"]
         W, H, GH = self.field_w, self.field_h, sim.st.goal_half_height
-        fp = sim.first_player
         for n in idx:
             bx, by = sim.pos[n, 0]
             lt = self.last_touch[n]
@@ -160,32 +168,83 @@ class HaxballEnv:
             sx = 1.0 if bx >= 0 else -1.0
             sy = 1.0 if by >= 0 else -1.0
             if abs(by) > H - r - 12 and abs(bx) < W - 2 * r:      # lateral
+                kind = 1
                 taker = 1 - lt
                 nb = (np.clip(bx, -W + 2 * r, W - 2 * r), sy * (H - r - 1))
             else:                                                 # línea de fondo
                 defender = 1 if sx > 0 else 0                     # el arco de +x es del azul
                 if lt == defender:                                # la tocó el que defiende: córner
+                    kind = 2
                     taker = 1 - defender
                     nb = (sx * (W - r - 1), sy * (H - r - 1))
                 else:                                             # saque de arco
+                    kind = 3
                     taker = defender
                     nb = (sx * (W - 0.07 * W), sy * GH * 0.8)
             sim.pos[n, 0] = nb
             sim.vel[n, 0] = 0.0
             sim._reset_ball_state([n])
             sim.kick_cancel[n] = False
-            # rivales del que saca: a distancia mínima
-            for p in range(self.P):
-                if sim.player_team[p] == taker:
-                    continue
-                d = sim.pos[n, fp + p] - sim.pos[n, 0]
-                dist = float(np.hypot(*d))
-                if dist < self.setpiece_dist:
-                    u = d / dist if dist > 1e-6 else np.array([-sx, 0.0])
-                    sim.pos[n, fp + p] = sim.pos[n, 0] + u * self.setpiece_dist
-                    sim.vel[n, fp + p] = 0.0
+            self.setpiece_team[n] = taker
+            self.setpiece_kind[n] = kind
+            self.setpiece_ticks[n] = 0
+            self.setpiece_pos[n] = nb
             self.last_touch[n] = -1
             self.stuck_ticks[n] = 0
+        self._protect_setpieces()
+
+    def _protect_setpieces(self):
+        """Aplica barreras antes/después de cada tick, no sólo al colocar la pelota.
+
+        Área rectangular aproximada para el perfil real (no se conoce su script):
+        proporciones 840/1150 y 320/600, como la geometría RS de referencia.
+        """
+        sim = self.sim
+        pp, pv = sim.player_pos, sim.player_vel
+        active = self.setpiece_team >= 0
+        if not active.any():
+            return
+        rp = sim.st.player["radius"]
+        distance = max(self.setpiece_dist, rp + sim.st.ball["radius"] + 5.0)
+        rival = active[:, None] & (sim.player_team[None, :] != self.setpiece_team[:, None])
+        sx = np.where(self.setpiece_pos[:, 0] >= 0, 1.0, -1.0)
+        front = self.field_w * (840.0 / 1150) - rp
+        side = self.field_h * (320.0 / 600) + rp
+        invaded = (rival & (self.setpiece_kind[:, None] == 3)
+                   & (sx[:, None] * pp[..., 0] > front) & (np.abs(pp[..., 1]) < side))
+        rows, players = np.nonzero(invaded)
+        pp[rows, players, 0] = sx[rows] * front
+        pv[invaded] = 0.0
+        d = pp - self.setpiece_pos[:, None, :]
+        norm = np.hypot(d[..., 0], d[..., 1])
+        near = rival & (norm < distance)
+        rows, players = np.nonzero(near)
+        u = d[near] / np.maximum(norm[near], 1e-9)[:, None]
+        coincident = norm[near] <= 1e-6
+        u[coincident, 0] = -sx[rows[coincident]]
+        u[coincident, 1] = 0.0
+        pp[near] = self.setpiece_pos[rows] + u * distance
+        pv[near] = 0.0
+
+    def _setpiece_pre_tick(self, actions):
+        self._protect_setpieces()
+        blocked = ((self.setpiece_team[:, None] >= 0)
+                   & (self.setpiece_team[:, None] != self.sim.player_team[None, :]))
+        return np.where(blocked, actions % 9, actions)
+
+    def _setpiece_post_tick(self, goal):
+        active = self.setpiece_team >= 0
+        self.setpiece_ticks[active] += 1
+        own = self.setpiece_team[:, None] == self.sim.player_team[None, :]
+        released = active & ((self.sim.kicked & own).any(axis=1)
+                             | (self.setpiece_ticks >= self.setpiece_timeout) | (goal != 0))
+        self.setpiece_team[released] = -1
+        self.setpiece_kind[released] = 0
+        waiting = active & ~released
+        # No sacar empujando ni robar la pelota por una colisión durante la espera.
+        self.sim.pos[waiting, 0] = self.setpiece_pos[waiting]
+        self.sim.vel[waiting, 0] = 0.0
+        self._protect_setpieces()
 
     def reset(self) -> np.ndarray:
         self._reset_envs(np.arange(self.N))
@@ -421,7 +480,9 @@ class HaxballEnv:
         rules = self.rules
         if rules is not None:
             rules.begin_step()
-        fused = self.optimize_rollout and rules is None and self.action_delay_max == 0
+        simplified = self.out_of_bounds and rules is None
+        fused = (self.optimize_rollout and rules is None and self.action_delay_max == 0
+                 and not (simplified and (self.setpiece_team >= 0).any()))
         if fused:
             goal, kicked = self.sim.step_frames(world_act, self.frame_skip, self.last_touch)
         for k in range(0 if fused else self.frame_skip):
@@ -432,10 +493,13 @@ class HaxballEnv:
                 world_act = self.act_hist[h, np.arange(self.N)]
             if rules is not None:
                 world_act = rules.pre_tick(world_act)
-            g = self.sim.step(world_act)
+            tick_act = self._setpiece_pre_tick(world_act) if simplified else world_act
+            g = self.sim.step(tick_act)
             goal = np.where(goal == 0, g, goal)
             if rules is not None:
                 rules.post_tick(world_act, goal)
+            elif simplified:
+                self._setpiece_post_tick(g)
             kicked |= self.sim.kicked
             tch = self.sim.touch
             if tch.any():
@@ -489,7 +553,8 @@ class HaxballEnv:
             # anti-traba: casi quieta y pegada a una línea (esquinas, banderín) => se cobra salida
             near = (np.abs(b[:, 1]) > H - r - 12) | ((np.abs(b[:, 0]) > W - r - 12) & (np.abs(b[:, 1]) > GH))
             slow = np.linalg.norm(self.sim.ball_vel, axis=1) < 0.3
-            self.stuck_ticks = np.where(near & slow & ~scored, self.stuck_ticks + self.frame_skip, 0)
+            self.stuck_ticks = np.where(near & slow & ~scored & (self.setpiece_team < 0),
+                                        self.stuck_ticks + self.frame_skip, 0)
             stuck = self.stuck_ticks >= self.stuck_limit
             out = ~scored & (side | end | stuck)
             loser = (self.last_touch[:, None] == self.sim.player_team[None, :]) & out[:, None]
