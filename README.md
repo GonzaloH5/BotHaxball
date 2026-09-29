@@ -128,6 +128,13 @@ Antes del RL, el modelo aprende a imitar a jugadores de primera división. Así 
 
 Para ver cómo juega el imitador: `python -m eval.render runs/bc/bc.pt runs/bc/bc.pt --task futsal_3v3 --out replays/bc.html`.
 
+La incorporación de recs RS del 29/09/2026 y su cobertura se documentan en
+`reports/recordings_coverage_20260929.md`. El imitador nuevo se publica por separado
+en `runs/bc_rsx6_20260929/bc.pt`; no reemplaza `bc2` ni el PPO existente.
+Para probarlo como referencia del entrenamiento actual, sin reiniciar la política:
+`python -m train.multitask --config train/config_runpod.yaml --run multi --resume --override bc_reference=runs/bc_rsx6_20260929/bc.pt`.
+El acierto de imitación no es una tasa de victorias; evaluar también juego y saques.
+
 Rendimiento medido en esta PC (sólo CPU): la red se lleva ~90% del tiempo (`python -m tools.profile_train`). 8 hilos de torch es lo óptimo.
 
 ### Entrenamiento CPU + GPU en Runpod

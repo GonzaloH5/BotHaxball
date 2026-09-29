@@ -23,3 +23,5 @@ runs/**
 !runs/multi/latest.pt
 !runs/bc2/
 !runs/bc2/bc.pt
+!runs/bc_rsx6_20260929/
+!runs/bc_rsx6_20260929/bc.pt
