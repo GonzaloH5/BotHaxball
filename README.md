@@ -124,4 +124,32 @@ Para ver cómo juega el imitador: `python -m eval.render runs/bc/bc.pt runs/bc/b
 
 Rendimiento medido en esta PC (sólo CPU): la red se lleva ~90% del tiempo (`python -m tools.profile_train`). 8 hilos de torch es lo óptimo.
 
+### Entrenamiento CPU + GPU en Runpod
+
+En una imagen de PyTorch con CUDA, crear el entorno con `python3 -m venv .venv --system-site-packages`
+y activarlo con `source .venv/bin/activate`. Instalar las dependencias de arriba sin instalar el wheel
+CPU de PyTorch. Verificar `python -c "import torch; print(torch.cuda.is_available())"` (debe ser `True`).
+
+Desde la raíz del proyecto, con `runs/multi/latest.pt` y `runs/bc2/bc.pt` presentes:
+
+```bash
+python -m pytest tests/test_cuda_runtime.py -q
+python -m tools.benchmark_multitask --config train/config_runpod.yaml --iters 5
+python -m train.multitask --config train/config_runpod.yaml --run multi --resume
+```
+
+El benchmark usa una copia temporal del checkpoint. Descarta el calentamiento de Numba/CUDA y muestra
+pasos/s reales, rollout, GAE/preparación, update y VRAM. Para comparar el CPU del mismo Pod, repetir
+con `--device cpu`. Para medir el mejor número de hilos de física, usar `--numba-threads 4`, `8`, `12`, etc.
+Más hilos no siempre ayudan cuando cada tarea tiene pocos partidos.
+
+La configuración Runpod hereda recompensas, modelo y currículo del run multi. Usa CUDA para la red y
+dos hilos de PyTorch CPU como máximo; Numba respeta el cupo de CPU del contenedor. En CUDA se reutilizan
+buffers pinned, se agrupan rivales por snapshot entre tareas, y el cálculo CPU de bots coincide con la
+bajada de decisiones de la GPU. Las métricas PPO se descargan una vez por update. Rollout y update
+siguen alternándose para recoger muestras con la política actual, sin agregar retraso de política.
+
+`Ctrl+C` guarda `latest.pt`. Ejecutar una sola instancia por run y conservar `/workspace` en almacenamiento
+persistente. Las cifras de rendimiento deben medirse en la máquina alquilada.
+
 Uso responsable: usar el bot sólo en salas propias o con permiso. En salas públicas o competitivas contra personas es hacer trampa.

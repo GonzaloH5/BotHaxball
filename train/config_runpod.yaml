@@ -1,0 +1,7 @@
+# CPU para física/bots y CUDA para inferencia/PPO, con el mismo algoritmo del run multi.
+extends: config_multi.yaml
+bc_reference: runs/bc2/bc.pt
+ppo:
+  device: cuda
+  torch_threads: auto
+  numba_threads: auto

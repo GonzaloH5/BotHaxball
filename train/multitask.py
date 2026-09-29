@@ -33,6 +33,7 @@ from env.tasks import load_catalog, make_env
 from .league import League
 from .model import SetActorCritic, build_model
 from .ppo_selfplay import lerp, resolve_device
+from .runtime import CudaRolloutTransfer, batch_to_device, cpu_budget, load_config
 
 ROOT = Path(__file__).resolve().parent.parent
 SELF, POOL, SCRIPTED = 0, 1, 2
@@ -74,7 +75,15 @@ class MultiTrainer:
         self.run_dir = ROOT / "runs" / run
         self.run_dir.mkdir(parents=True, exist_ok=True)
         p, r = cfg["ppo"], cfg["reward"]
-        torch.set_num_threads(p["torch_threads"])
+        budget = cpu_budget()
+        threads = p.get("torch_threads", 8)
+        auto_threads = 2 if resolve_device(p.get("device")).type == "cuda" else 8
+        torch.set_num_threads(min(budget, auto_threads) if threads == "auto" else int(threads))
+        from numba import config as numba_config, set_num_threads, get_num_threads
+        physics_threads = p.get("numba_threads")
+        if physics_threads is not None:
+            set_num_threads(min(budget, numba_config.NUMBA_NUM_THREADS) if physics_threads == "auto"
+                            else int(physics_threads))
         torch.manual_seed(cfg["seed"])
         self.rng = np.random.default_rng(cfg["seed"])
         self.rcfg = RewardConfig(goal=r["goal"], w_ball_progress=r["w_ball_progress"], w_near_ball=r["w_near_ball"],
@@ -93,6 +102,11 @@ class MultiTrainer:
         self.iteration = 0
         self.task_state: dict[str, dict] = {}  # estado persistente por tarea (sobrevive a reconstruir entornos)
         self.device = resolve_device(p.get("device"))
+        if self.device.type == "cuda" and not torch.cuda.is_available():
+            raise RuntimeError("ppo.device=cuda requiere PyTorch con CUDA y una GPU NVIDIA disponible")
+        print(f"runtime: {self.device} | torch {torch.get_num_threads()} hilos | física {get_num_threads()} hilos",
+              flush=True)
+        self._rollout_transfer = CudaRolloutTransfer(self.device) if self.device.type == "cuda" else None
         from env.haxball_env import U_SELF_DIM
         mc = cfg["model"]
         model_cfg = dict(type=mc.get("type", "set"), self_dim=U_SELF_DIM, ent_dim=ENT_DIM,
@@ -113,6 +127,9 @@ class MultiTrainer:
         self.bc_model = None
         ref = cfg.get("bc_reference")
         if ref:
+            # Los YAML de Windows también deben poder reanudarse en Linux.
+            ref_path = Path(str(ref).replace("\\", "/"))
+            ref = str(ref_path if ref_path.is_absolute() else ROOT / ref_path)
             ck = torch.load(ref, map_location="cpu", weights_only=False)
             if p.get("bc_kl_coef", 0.0) > 0:
                 self.bc_model = build_model(ck["model_config"])
@@ -279,6 +296,8 @@ class MultiTrainer:
     @torch.no_grad()
     def act(self, obs_list):
         """Una sola pasada de la red para los agentes de todas las tareas."""
+        if self.device.type == "cuda":
+            return self._act_cuda(obs_list)
         dev = self.device
         flat = np.concatenate([o.reshape(-1, self.obs_dim) for o in obs_list])
         logits, value = self.model(torch.from_numpy(flat).to(dev))
@@ -300,6 +319,49 @@ class MultiTrainer:
                 acts[sc, blue] = scripted_actions(s.env, np.arange(s.T, s.P), s.scripted_eps, self.rng)[sc]
             out.append((acts, logp[k:k + n].reshape(s.N, s.P), value[k:k + n].reshape(s.N, s.P)))
             k += n
+        return out
+
+    @torch.no_grad()
+    def _policy_decisions(self, flat):
+        """Agrupa por snapshot los rivales de todas las tareas en una pasada por rival."""
+        logits, values = self.model(flat)
+        dist = torch.distributions.Categorical(logits=logits, validate_args=False)
+        actions = dist.sample()
+        logp = dist.log_prob(actions)
+        grouped, offset = {}, 0
+        for slot in self.slots:
+            for oid in np.unique(slot.opp_id[slot.opp_id >= 0]):
+                rows = np.where(slot.opp_id == oid)[0]
+                indices = (offset + rows[:, None] * slot.P + np.arange(slot.T, slot.P)).reshape(-1)
+                grouped.setdefault(int(oid), []).append(indices)
+            offset += slot.N * slot.P
+        for oid, chunks in grouped.items():
+            indices = torch.as_tensor(np.concatenate(chunks), device=self.device)
+            logits = self.league.members[oid].model.logits(flat[indices])
+            actions[indices] = torch.distributions.Categorical(logits=logits, validate_args=False).sample()
+        return actions, logp, values
+
+    def _act_cuda(self, obs_list):
+        flat = np.concatenate([o.reshape(-1, self.obs_dim) for o in obs_list])
+        transfer = self._rollout_transfer
+        transfer.enqueue_output(*self._policy_decisions(transfer.upload(flat)))
+        # La copia GPU->CPU está en vuelo: calcular bots sobre los estados actuales, sin avanzar física.
+        scripted = []
+        for slot in self.slots:
+            rows = np.where(slot.modes == SCRIPTED)[0]
+            acts = (scripted_actions(slot.env, np.arange(slot.T, slot.P), slot.scripted_eps, self.rng)[rows]
+                    if len(rows) else None)
+            scripted.append((rows, acts))
+        actions, logp, values = transfer.wait_output()
+        out, offset = [], 0
+        for slot, (rows, bot_actions) in zip(self.slots, scripted):
+            size = slot.N * slot.P
+            acts = actions[offset:offset + size].reshape(slot.N, slot.P)
+            if len(rows):
+                acts[rows, slot.T:] = bot_actions
+            out.append((acts, logp[offset:offset + size].reshape(slot.N, slot.P),
+                        values[offset:offset + size].reshape(slot.N, slot.P)))
+            offset += size
         return out
 
     @torch.no_grad()
@@ -367,6 +429,7 @@ class MultiTrainer:
         self._obs = obs
         t_roll = time.time() - t0
 
+        t_prepare = time.time()
         # GAE por tarea y muestras de los agentes que aprenden
         parts = {k: [] for k in ("obs", "act", "logp", "adv", "ret")}
         for s, o in zip(self.slots, obs):
@@ -391,7 +454,7 @@ class MultiTrainer:
             s.steps += int(m.sum())
             s.buf = None
         dev = self.device
-        batch = {k: torch.from_numpy(np.concatenate(v)).to(dev) for k, v in parts.items()}
+        batch = batch_to_device(parts, dev)
         self.model.update_norm(batch["obs"])
         n = len(batch["act"])
         self.steps += n
@@ -400,6 +463,9 @@ class MultiTrainer:
         self.bc_coef = lerp(p.get("bc_kl_coef", 0.0), p.get("bc_kl_final", 0.0), frac) if self.bc_model is not None else 0.0
         stats = self.update(batch, ent_coef)
         t_upd = time.time() - t1
+        stats["timing/prepare_seconds"] = t1 - t_prepare
+        stats["timing/rollout_seconds"] = t_roll
+        stats["timing/update_seconds"] = t_upd
         self.iteration += 1
 
         self.opponent_curriculum()
@@ -494,7 +560,7 @@ class MultiTrainer:
             del self._obs
 
     def log(self, stats, lr, n, t_roll, t_upd) -> None:
-        sps = n / max(t_roll + t_upd, 1e-9)
+        sps = n / max(t_roll + t_upd + stats.get("timing/prepare_seconds", 0.0), 1e-9)
         w = self.writer
         for k, v in stats.items():
             w.add_scalar(k, v, self.steps)
@@ -523,7 +589,8 @@ class MultiTrainer:
         n = len(b["act"])
         adv = (b["adv"] - b["adv"].mean()) / (b["adv"].std() + 1e-8)
         mb = min(p["minibatch"], n)
-        agg = {"pg_loss": 0.0, "v_loss": 0.0, "entropy": 0.0, "approx_kl": 0.0, "clipfrac": 0.0, "bc_kl": 0.0}
+        keys = ("pg_loss", "v_loss", "entropy", "approx_kl", "clipfrac", "bc_kl")
+        agg = torch.zeros(len(keys), device=b["obs"].device)
         cnt = 0
         bc_coef = getattr(self, "bc_coef", 0.0)
         for _ in range(p["epochs"]):
@@ -531,31 +598,29 @@ class MultiTrainer:
             for s in range(0, n - mb + 1, mb):
                 i = perm[s:s + mb]
                 logits, v = self.model(b["obs"][i])
-                dist = torch.distributions.Categorical(logits=logits)
+                dist = torch.distributions.Categorical(logits=logits, validate_args=False)
                 ratio = torch.exp(dist.log_prob(b["act"][i]) - b["logp"][i])
                 a = adv[i]
                 pg = -torch.min(ratio * a, ratio.clamp(1 - p["clip"], 1 + p["clip"]) * a).mean()
                 vl = 0.5 * (v - b["ret"][i]).pow(2).mean()
                 ent = dist.entropy().mean()
                 loss = pg + p["vf_coef"] * vl - ent_coef * ent
+                bc_kl = loss.new_zeros(())
                 if bc_coef > 0:
                     with torch.no_grad():
                         lb = torch.log_softmax(self.bc_model.logits(b["obs"][i]), -1)
                     bc_kl = (lb.exp() * (lb - torch.log_softmax(logits, -1))).sum(-1).mean()
                     loss = loss + bc_coef * bc_kl
-                    agg["bc_kl"] += bc_kl.item()
                 self.opt.zero_grad(set_to_none=True)
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), p["max_grad_norm"])
                 self.opt.step()
                 with torch.no_grad():
-                    agg["pg_loss"] += pg.item()
-                    agg["v_loss"] += vl.item()
-                    agg["entropy"] += ent.item()
-                    agg["approx_kl"] += ((ratio - 1) - torch.log(ratio)).mean().item()
-                    agg["clipfrac"] += ((ratio - 1).abs() > p["clip"]).float().mean().item()
+                    agg += torch.stack((pg, vl, ent, ((ratio - 1) - torch.log(ratio)).mean(),
+                                        ((ratio - 1).abs() > p["clip"]).float().mean(), bc_kl))
                 cnt += 1
-        return {k: v / max(cnt, 1) for k, v in agg.items()}
+        # Una sola sincronización para estadísticas al terminar todos los minibatches.
+        return dict(zip(keys, (agg / max(cnt, 1)).cpu().tolist()))
 
 
 def main():
@@ -566,7 +631,7 @@ def main():
     ap.add_argument("--init-from", default=None, help="checkpoint de imitación (train/bc.py) para arrancar")
     ap.add_argument("--override", nargs="*", default=[], help="clave.sub=valor, ej. env.agents=256")
     args = ap.parse_args()
-    cfg = yaml.safe_load(Path(args.config).read_text(encoding="utf-8"))
+    cfg = load_config(args.config)
     for ov in args.override:
         k, v = ov.split("=", 1)
         d = cfg
