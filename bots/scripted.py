@@ -218,7 +218,7 @@ def _scripted_kernel(rows, players, ball_pos, ball_vel, pp, team, sign, gx, H, r
                         ordinal, bx, by, gx, H, radii
                     )
 
-            elif opponent + 20.0 < distance and bx < 0:
+            elif T != 4 and opponent + 20.0 < distance and bx < 0:
                 target_x, target_y = -gx + 30.0, by * 0.4
 
             if T == 4:
