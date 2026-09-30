@@ -111,6 +111,12 @@ class HaxballEnv:
         # último recibe -out_penalty (en la sala real pierde la posesión).
         self.out_of_bounds = out_of_bounds
         self.last_touch = np.full(self.N, -1, dtype=np.int64)  # equipo que tocó último (-1 nadie)
+        # Estado para detectar juego colectivo.
+        self.last_touch_player = np.full(self.N, -1, dtype=np.int64)
+        self.last_touch_pos = np.zeros((self.N, 2), dtype=np.float64)
+
+        self.last_pass_sender = np.full(self.N, -1, dtype=np.int64)
+        self.last_pass_receiver = np.full(self.N, -1, dtype=np.int64)
         self.field_h = st.field_half_h
         self.stuck_ticks = np.zeros(self.N, dtype=np.int64)  # pelota casi quieta pegada a una línea
         self.setpiece_dist = 50.0      # los rivales del que saca se corren a esta distancia
@@ -158,6 +164,10 @@ class HaxballEnv:
         self.ticks[idx] = 0
         self.kickoff_ticks[idx] = 0
         self.last_touch[idx] = -1
+        self.last_touch_player[idx] = -1
+        self.last_touch_pos[idx] = 0.0
+        self.last_pass_sender[idx] = -1
+        self.last_pass_receiver[idx] = -1
         self.stuck_ticks[idx] = 0
         self.setpiece_team[idx] = -1
         self.setpiece_kind[idx] = 0
@@ -211,6 +221,13 @@ class HaxballEnv:
             self.setpiece_limit[n] = max(self.setpiece_timeout,
                                          self._restart_travel_ticks(n, taker) + 180)
             self.last_touch[n] = -1
+
+            # Una pelota parada corta cualquier cadena de pases anterior.
+            self.last_touch_player[n] = -1
+            self.last_touch_pos[n] = nb
+            self.last_pass_sender[n] = -1
+            self.last_pass_receiver[n] = -1
+
             self.stuck_ticks[n] = 0
         self._protect_setpieces()
 
@@ -534,6 +551,145 @@ class HaxballEnv:
                 d[:, sel] = d[:, sel].min(axis=1, keepdims=True)
         return d
 
+    def _cooperation_touch_reward(self, tch, touch_ball_pos=None):
+        """Reward por transferencias útiles entre compañeros."""
+        bonus = np.zeros((self.N, self.P), dtype=np.float64)
+
+        if self.T <= 1:
+            return bonus
+
+        sim = self.sim
+        rc = self.rcfg
+        teams = sim.player_team
+
+        min_travel = rc.team_pass_min_dist_frac * self.field_w
+        envs = np.where(tch.any(axis=1))[0]
+
+        for n in envs:
+            touched = np.flatnonzero(tch[n])
+
+            event_pos = (
+                sim.ball_pos[n].copy()
+                if touch_ball_pos is None
+                else touch_ball_pos[n].copy()
+            )
+
+            # Choque simultáneo: no intentar decidir quién ganó la pelota.
+            if len(touched) != 1:
+                prev = self.last_touch_player[n]
+                if prev >= 0 and prev in touched:
+                    self.last_touch_pos[n] = event_pos
+                continue
+
+            p = int(touched[0])
+            prev = int(self.last_touch_player[n])
+
+
+            # El mismo jugador continúa conduciendo.
+            # Actualizamos el último punto real de contacto.
+            if prev == p:
+                self.last_touch_pos[n] = event_pos
+                continue
+
+            if prev >= 0:
+                prev_team = int(teams[prev])
+                team = int(teams[p])
+
+                if team == prev_team:
+                    travel = np.linalg.norm(
+                        event_pos - self.last_touch_pos[n]
+                    )
+
+                    valid_phase = (
+                        not sim.kickoff[n]
+                        and self.setpiece_team[n] < 0
+                    )
+
+                    if travel >= min_travel and valid_phase:
+                        sign = 1.0 if team == 0 else -1.0
+
+                        # Progreso longitudinal.
+                        progress = sign * (
+                            event_pos[0] - self.last_touch_pos[n, 0]
+                        )
+
+                        progress = np.clip(
+                            progress / (0.25 * self.field_w),
+                            0.0,
+                            1.0,
+                        )
+
+                        # ¿El receptor tiene más espacio que el pasador?
+                        opp_mask = teams != team
+
+                        if opp_mask.any():
+                            opp_pos = sim.player_pos[n, opp_mask]
+
+                            recv_space = np.linalg.norm(
+                                opp_pos - sim.player_pos[n, p],
+                                axis=1,
+                            ).min()
+
+                            sender_space = np.linalg.norm(
+                                opp_pos - sim.player_pos[n, prev],
+                                axis=1,
+                            ).min()
+
+                            space_gain = np.clip(
+                                (recv_space - sender_space)
+                                / (0.15 * self.field_w),
+                                0.0,
+                                1.0,
+                            )
+                        else:
+                            space_gain = 0.0
+
+                        usefulness = (
+                            0.65 * progress
+                            + 0.35 * space_gain
+                        )
+
+                        # A -> B -> A sigue siendo útil (pared),
+                        # pero reducimos el reward base para evitar farmear.
+                        immediate_return = (
+                            self.last_pass_sender[n] == p
+                            and self.last_pass_receiver[n] == prev
+                        )
+
+                        base = rc.team_pass_success
+                        if immediate_return:
+                            base *= 0.5
+
+                        pass_reward = (
+                            base
+                            + rc.team_pass_value * usefulness
+                        )
+
+                        team_players = teams == team
+                        bonus[n, team_players] += pass_reward
+
+                        # A -> B -> C con tres jugadores distintos.
+                        chain = (
+                            self.last_pass_receiver[n] == prev
+                            and self.last_pass_sender[n] >= 0
+                            and self.last_pass_sender[n] != p
+                        )
+
+                        if chain and usefulness > 0.10:
+                            bonus[n, team_players] += rc.team_pass_chain
+
+                        self.last_pass_sender[n] = prev
+                        self.last_pass_receiver[n] = p
+
+                else:
+                    # Rival interceptó: corta cualquier cadena.
+                    self.last_pass_sender[n] = -1
+                    self.last_pass_receiver[n] = -1
+
+            self.last_touch_player[n] = p
+            self.last_touch_pos[n] = event_pos
+        return bonus
+
     def step(self, actions: np.ndarray):
         actions = np.asarray(actions, dtype=np.int64)
         world_act = actions.copy()
@@ -554,36 +710,104 @@ class HaxballEnv:
         if rules is not None:
             rules.begin_step()
         simplified = self.out_of_bounds and rules is None
-        fused = (self.optimize_rollout and rules is None and self.action_delay_max == 0
-                 and not (simplified and (self.setpiece_team >= 0).any()))
+
+        fused = (
+            self.optimize_rollout
+            and rules is None
+            and self.action_delay_max == 0
+            and not (
+                simplified
+                and (self.setpiece_team >= 0).any()
+            )
+        )
+        
+
+        fused_touches = None
+        fused_touch_pos = None
+
         if fused:
-            goal, kicked = self.sim.step_frames(world_act, self.frame_skip, self.last_touch)
+            if self.T > 1:
+                (
+                    goal,
+                    kicked,
+                    fused_touches,
+                    fused_touch_pos,
+                ) = self.sim.step_frames_with_touches(
+                    world_act,
+                    self.frame_skip,
+                    self.last_touch,
+                )
+            else:
+                goal, kicked = self.sim.step_frames(
+                    world_act,
+                    self.frame_skip,
+                    self.last_touch,
+                )
+
+        cooperation_reward = np.zeros(
+            (self.N, self.P),
+            dtype=np.float64,
+        )
+
+        if fused and self.T > 1:
+            for k in range(self.frame_skip):
+                tch = fused_touches[:, k]
+
+                if tch.any():
+                    cooperation_reward += self._cooperation_touch_reward(
+                        tch,
+                        fused_touch_pos[:, k],
+                    )
+
         for k in range(0 if fused else self.frame_skip):
             if self.action_delay_max > 0:
-                # acción vigente en este tick: la decisión de hace ceil((d - k) / frame_skip) ventanas
                 lag = self.delay - k
-                h = np.where(lag <= 0, 0, -(-lag // self.frame_skip))
-                world_act = self.act_hist[h, np.arange(self.N)]
+                h = np.where(
+                    lag <= 0,
+                    0,
+                    -(-lag // self.frame_skip),
+                )
+                world_act = self.act_hist[
+                    h,
+                    np.arange(self.N),
+                ]
+
             if rules is not None:
                 world_act = rules.pre_tick(world_act)
-            tick_act = self._setpiece_pre_tick(world_act) if simplified else world_act
+
+            tick_act = (
+                self._setpiece_pre_tick(world_act)
+                if simplified
+                else world_act
+            )
+
             g = self.sim.step(tick_act)
             goal = np.where(goal == 0, g, goal)
+
             if rules is not None:
                 rules.post_tick(world_act, goal)
             elif simplified:
                 self._setpiece_post_tick(g)
+
             kicked |= self.sim.kicked
             tch = self.sim.touch
+
             if tch.any():
+                cooperation_reward += self._cooperation_touch_reward(tch)
+
                 for t in (0, 1):
-                    self.last_touch[tch[:, self.sim.player_team == t].any(axis=1)] = t
+                    self.last_touch[
+                        tch[
+                            :,
+                            self.sim.player_team == t,
+                        ].any(axis=1)
+                    ] = t
         self.ticks += self.frame_skip
 
         rc = self.rcfg
         team_sign = self.sign[None, :]                  # +1 rojo, -1 azul
         rew = rc.goal * goal[:, None] * team_sign       # gol del rojo = +1 rojo / -1 azul
-
+        rew += cooperation_reward
         # shaping por potencial (sólo si no hubo gol: el estado terminal tiene Φ = 0)
         phi_ball, phi_near, phi_spread, phi_defense = self._potentials()
         phi0_ball, phi0_near, phi0_spread, phi0_defense = self._phi
@@ -591,11 +815,31 @@ class HaxballEnv:
         g = rc.gamma
         sh = rc.w_ball_progress * (np.where(scored[:, None], 0.0, g * phi_ball) - phi0_ball)
         sh += rc.w_near_ball * (np.where(scored[:, None], 0.0, g * phi_near) - phi0_near)
-        sh += rc.w_spread * (np.where(scored[:, None], 0.0, g * phi_spread) - phi0_spread)
+        spread_delta = (
+            np.where(scored[:, None], 0.0, g * phi_spread)
+            - phi0_spread
+        )
+
+        sh += rc.w_spread * spread_delta
         # bonus: patada que manda la pelota hacia el arco rival
         bvx_own = self.sim.ball_vel[:, None, 0] * team_sign
         sh += rc.kick_to_goal * (kicked & (bvx_own > 1.0))
         rew = rew + rc.shaping_coef * sh
+
+        # Mantener una guía mínima para ocupar espacios incluso
+        # cuando el shaping general ya llegó prácticamente a cero.
+        if self.T > 1:
+            extra_spread_coef = max(
+                0.0,
+                rc.team_spread_floor - rc.shaping_coef,
+            )
+
+            rew += (
+                rc.w_spread
+                * extra_spread_coef
+                * spread_delta
+            )
+
         defense_delta = np.where(scored[:, None], 0.0, g * phi_defense) - phi0_defense
         rew += rc.w_defense_support * max(rc.shaping_coef, rc.defense_shaping_floor) * defense_delta
 

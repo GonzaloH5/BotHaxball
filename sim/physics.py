@@ -186,7 +186,8 @@ def step_batch(pos, vel, mask, kick_cancel, kickoff, kickoff_team, actions, move
                goal_out, touch_out, kick_out,
                ball_grav, ps_on, ps_par, ps_held, ps_charge, ps_comba, ps_grav_left, ps_inv_left,
                ps_gtick, ps_pending, ps_has_pending, ps_kick_out,
-               frames=1, window_goal=None, window_kicked=None, last_touch=None):
+               frames=1, window_goal=None, window_kicked=None, last_touch=None,
+                window_touches=None, window_ball_pos=None):
     """Avanza frames ticks por partido con una única barrera paralela.
 
     goal_out[n]: +1 si anotó rojo, -1 si anotó azul, 0 nada.
@@ -208,7 +209,7 @@ def step_batch(pos, vel, mask, kick_cancel, kickoff, kickoff_team, actions, move
         if window_kicked is not None:
             for p in range(P):
                 window_kicked[n, p] = False
-        for _ in range(frames):
+        for frame in range(frames):
             goal_out[n] = 0
             inv = inv_env[n]
             # 1. inputs
@@ -358,7 +359,13 @@ def step_batch(pos, vel, mask, kick_cancel, kickoff, kickoff_team, actions, move
                 for p in range(P):
                     if touch_out[n, p]:
                         last_touch[n] = player_team[p]
+            if window_touches is not None:
+                            for p in range(P):
+                                window_touches[n, frame, p] = touch_out[n, p]
 
+            if window_ball_pos is not None:
+                window_ball_pos[n, frame, 0] = pos[n, 0, 0]
+                window_ball_pos[n, frame, 1] = pos[n, 0, 1]
 
 class BatchSim:
     """N partidos simultáneos de `n_red` vs `n_blue` en un estadio."""
@@ -397,6 +404,8 @@ class BatchSim:
         self.goal = np.zeros(n_envs, dtype=np.int64)
         self.touch = np.zeros((n_envs, self.P), dtype=np.bool_)
         self.kicked = np.zeros((n_envs, self.P), dtype=np.bool_)
+        self._coop_touch_window = None
+        self._coop_ball_pos_window = None
         # invMass por partido (la de la pelota cambia con el powershot) y gravedad de la pelota
         self.inv_env = np.tile(self.invmass, (n_envs, 1))
         self.ball_grav = np.zeros((n_envs, 2))
@@ -509,6 +518,45 @@ class BatchSim:
         kicked = np.empty((self.N, self.P), dtype=np.bool_)
         step_batch(*self._step_args(actions), frames, goal, kicked, last_touch)
         return goal, kicked
+
+    def step_frames_with_touches(self, actions, frames, last_touch):
+        """Ruta fused que además conserva los toques de cada tick para rewards cooperativos."""
+        goal = np.empty(self.N, dtype=np.int64)
+        kicked = np.empty((self.N, self.P), dtype=np.bool_)
+
+        touch_shape = (self.N, frames, self.P)
+        pos_shape = (self.N, frames, 2)
+
+        if (
+            self._coop_touch_window is None
+            or self._coop_touch_window.shape != touch_shape
+        ):
+            self._coop_touch_window = np.empty(
+                touch_shape,
+                dtype=np.bool_,
+            )
+
+            self._coop_ball_pos_window = np.empty(
+                pos_shape,
+                dtype=np.float64,
+            )
+
+        step_batch(
+            *self._step_args(actions),
+            frames,
+            goal,
+            kicked,
+            last_touch,
+            self._coop_touch_window,
+            self._coop_ball_pos_window,
+        )
+
+        return (
+            goal,
+            kicked,
+            self._coop_touch_window,
+            self._coop_ball_pos_window,
+        )
 
     def _step_args(self, actions):
         st, pl = self.st, self.st.player

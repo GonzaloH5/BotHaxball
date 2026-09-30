@@ -33,6 +33,12 @@ class RewardConfig:
     w_defense_support: float = 0.0  # opt-in por tarea; cobertura, no persecución colectiva
     defense_shaping_floor: float = 0.0
 
+    # Cooperación global: sólo se usa con equipos de 2+ jugadores.
+    team_pass_success: float = 0.0015
+    team_pass_value: float = 0.003
+    team_pass_chain: float = 0.0015
+    team_pass_min_dist_frac: float = 0.04
+    team_spread_floor: float = 0.05
 
 def potentials(ball_x_own, ball_y_own, player_ball_dist, goal_x: float, field_w: float):
     """Φ por agente. `ball_*_own` en coords del equipo del agente (ataca hacia +x)."""
