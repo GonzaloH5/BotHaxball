@@ -52,7 +52,8 @@ tasks:
   lhl_7v7:     {stadium: lhl_x7,         n_per_team: 7,  rules: plain}
   # --- ligas: Real Soccer y Real Futsal (con script de sala)
   rs4_3v3:     {stadium: rs_one,         n_per_team: 3,  rules: real}
-  rs4_4v4: {stadium: rs_one, n_per_team: 4, rules: soccer, corner_reset_prob: 0.05, corner_execute_reward: 0.003}  jjrs_6v6:    {stadium: jjrs_x6,        n_per_team: 6,  rules: soccer}
+  rs4_4v4:     {stadium: rs_one,         n_per_team: 4,  rules: soccer, corner_reset_prob: 0.05, corner_execute_reward: 0.003}
+  jjrs_6v6:    {stadium: jjrs_x6,        n_per_team: 6,  rules: soccer}
   rf_5v5:      {stadium: real_futsal_x7, n_per_team: 5,  rules: real}
   rf_7v7:      {stadium: real_futsal_x7, n_per_team: 7,  rules: real}
   # --- sala Pegeche (script completo)
