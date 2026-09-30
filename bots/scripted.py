@@ -203,8 +203,8 @@ def _support_target(
     else:
         rel = support_rank / float(support_count - 1)
 
-    # El apoyo más cercano queda relativamente cerca de la jugada.
-    # Los siguientes forman líneas progresivamente más profundas.
+    # El apoyo más cercano queda cerca de la jugada.
+    # Los demás forman profundidades progresivamente mayores.
     depth = 0.18 + 0.28 * rel
 
     if defending:
@@ -212,8 +212,16 @@ def _support_target(
 
     target_x = bx - depth * gx
 
-    # Los jugadores de campo nunca deben hundirse hasta el arco.
-    min_x = -0.72 * gx
+    if defending:
+        # IMPORTANTE:
+        # cada apoyo tiene un límite defensivo diferente.
+        # Evita que todos colapsen en la misma línea vertical
+        # cuando la pelota está cerca del arco.
+        min_depth = 0.52 + 0.22 * rel
+        min_x = -min_depth * gx
+    else:
+        min_x = -0.72 * gx
+
     max_x = gx - max(50.0, radii + 20.0)
     target_x = _clamp(target_x, min_x, max_x)
 
