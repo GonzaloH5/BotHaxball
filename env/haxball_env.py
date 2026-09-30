@@ -67,7 +67,8 @@ class HaxballEnv:
                  seed: int | None = None, action_delay_max: int = 0,
                  kickoff_timeout: int = 0, powershot: bool | dict = False,
                  out_of_bounds: bool = False, obs_layout: str = "flat", max_entities: int = 0,
-                 rules: str | None = None, optimize_rollout: bool = True):
+                 rules: str | None = None, optimize_rollout: bool = True,
+                 corner_reset_prob: float = 0.0):
         self.sim = BatchSim(n_envs, n_per_team, n_per_team, stadium, seed=seed, powershot=powershot)
         self.N = n_envs
         self.T = n_per_team
@@ -75,6 +76,12 @@ class HaxballEnv:
         self.frame_skip = frame_skip
         self.max_ticks = max_ticks
         self.random_reset_prob = random_reset_prob
+        self.corner_reset_prob = float(corner_reset_prob)
+
+        if not 0.0 <= self.corner_reset_prob <= 1.0:
+            raise ValueError(
+                "corner_reset_prob debe estar entre 0 y 1"
+            )
         self.rcfg = reward or RewardConfig()
         self.rng = np.random.default_rng(seed)
         self.obs_layout = obs_layout
@@ -137,47 +144,188 @@ class HaxballEnv:
         self.rules = PegecheRules(self.sim, self.rng) if rules == "pegeche" else None
         if self.rules is not None:
             self.out_of_bounds = True
+
+        if (
+            self.corner_reset_prob > 0
+            and (not self.out_of_bounds or self.rules is not None)
+        ):
+            raise ValueError(
+                "corner_reset_prob requiere pelotas paradas "
+                "simplificadas (out_of_bounds=True, rules=None)"
+            )
+
         self.optimize_rollout = optimize_rollout
 
     # ----------------------------------------------------------------- reset
     def _reset_envs(self, idx, kickoff_team=None):
         if len(idx) == 0:
             return
-        rnd = self.rng.random(len(idx)) < self.random_reset_prob
-        self.sim.reset_random(idx[rnd])
-        ko = idx[~rnd]
+
+        idx = np.asarray(idx, dtype=np.int64)
+
+        # Algunos resets empiezan directamente en un córner.
+        corner_mask = np.zeros(len(idx), dtype=bool)
+
+        if self.corner_reset_prob > 0:
+            corner_mask = (
+                self.rng.random(len(idx))
+                < self.corner_reset_prob
+            )
+
+        corner_idx = idx[corner_mask]
+        normal_idx = idx[~corner_mask]
+
+        rnd = (
+            self.rng.random(len(normal_idx))
+            < self.random_reset_prob
+        )
+
+        random_idx = np.concatenate(
+            (corner_idx, normal_idx[rnd])
+        )
+
+        if len(random_idx):
+            self.sim.reset_random(random_idx)
+
+        ko = normal_idx[~rnd]
+
         if kickoff_team is None:
             kt = self.rng.integers(0, 2, len(ko))
         else:
-            kt = kickoff_team[~rnd]
-        self.sim.reset_kickoff(ko, kickoff_team=kt)
+            supplied = np.asarray(
+                kickoff_team,
+                dtype=np.int64,
+            )
+
+            if supplied.ndim == 0:
+                supplied = np.full(
+                    len(idx),
+                    int(supplied),
+                    dtype=np.int64,
+                )
+
+            kt = supplied[~corner_mask][~rnd]
+
+        if len(ko):
+            self.sim.reset_kickoff(
+                ko,
+                kickoff_team=kt,
+            )
+
         self.kickoff_limit[idx] = self.kickoff_timeout
+
         if self.kickoff_timeout > 0:
             for n in ko:
                 travel = self._restart_travel_ticks(
-                    n, self.sim.kickoff_team[n]
+                    n,
+                    self.sim.kickoff_team[n],
                 )
+
                 self.kickoff_limit[n] = max(
                     self.kickoff_timeout,
-                    travel + self.kickoff_timeout
+                    travel + self.kickoff_timeout,
                 )
+
         self.ticks[idx] = 0
         self.kickoff_ticks[idx] = 0
+
         self.last_touch[idx] = -1
         self.last_touch_player[idx] = -1
         self.last_touch_pos[idx] = 0.0
+
         self.last_pass_sender[idx] = -1
         self.last_pass_receiver[idx] = -1
+
         self.stuck_ticks[idx] = 0
+
         self.setpiece_team[idx] = -1
         self.setpiece_kind[idx] = 0
         self.setpiece_ticks[idx] = 0
         self.setpiece_limit[idx] = self.setpiece_timeout
+
         self.act_hist[:, idx] = 0
+
         if self.rules is not None:
             self.rules.reset(idx)
+
         if self.action_delay_max > 0:
-            self.delay[idx] = self.rng.integers(0, self.action_delay_max + 1, len(idx))
+            self.delay[idx] = self.rng.integers(
+                0,
+                self.action_delay_max + 1,
+                len(idx),
+            )
+
+        if len(corner_idx):
+            self._reset_corner_curriculum(corner_idx)
+
+    def _reset_corner_curriculum(self, idx) -> None:
+        """Inicia algunos partidos directamente en un córner."""
+
+        sim = self.sim
+
+        r = sim.st.ball["radius"]
+        W = self.field_w
+        H = self.field_h
+
+        takers = self.rng.integers(
+            0,
+            2,
+            len(idx),
+        )
+
+        ys = np.where(
+            self.rng.random(len(idx)) < 0.5,
+            -1.0,
+            1.0,
+        )
+
+        for i, n in enumerate(idx):
+            taker = int(takers[i])
+
+            # Rojo ataca +x; azul ataca -x.
+            sx = 1.0 if taker == 0 else -1.0
+            sy = float(ys[i])
+
+            nb = np.array(
+                [
+                    sx * (W - r - 1),
+                    sy * (H - r - 1),
+                ],
+                dtype=np.float64,
+            )
+
+            sim.pos[n, 0] = nb
+            sim.vel[n, 0] = 0.0
+
+            sim._reset_ball_state([n])
+
+            sim.kick_cancel[n] = False
+            sim.kickoff[n] = False
+            sim.kickoff_team[n] = taker
+
+            self.setpiece_team[n] = taker
+            self.setpiece_kind[n] = 2
+            self.setpiece_ticks[n] = 0
+            self.setpiece_pos[n] = nb
+
+            self.setpiece_limit[n] = max(
+                self.setpiece_timeout,
+                self._restart_travel_ticks(
+                    n,
+                    taker,
+                ) + 180,
+            )
+
+            self.last_touch[n] = -1
+            self.last_touch_player[n] = -1
+            self.last_touch_pos[n] = nb
+
+            self.last_pass_sender[n] = -1
+            self.last_pass_receiver[n] = -1
+
+            self.stuck_ticks[n] = 0
+
+        self._protect_setpieces()
 
     def _set_piece(self, idx) -> None:
         """Pelota parada simplificada (lateral / córner / saque de arco).
@@ -706,6 +854,12 @@ class HaxballEnv:
 
         goal = np.zeros(self.N, dtype=np.int64)
         kicked = np.zeros((self.N, self.P), dtype=bool)
+
+        corner_execute_team = np.full(
+            self.N,
+            -1,
+            dtype=np.int64,
+        )
         rules = self.rules
         if rules is not None:
             rules.begin_step()
@@ -781,12 +935,65 @@ class HaxballEnv:
                 else world_act
             )
 
+            if simplified:
+                corner_active = (
+                    (self.setpiece_team >= 0)
+                    & (self.setpiece_kind == 2)
+                )
+
+                corner_owner = self.setpiece_team.copy()
+
             g = self.sim.step(tick_act)
             goal = np.where(goal == 0, g, goal)
 
             if rules is not None:
                 rules.post_tick(world_act, goal)
             elif simplified:
+
+                if corner_active.any():
+
+                    own = (
+                        self.sim.player_team[None, :]
+                        == corner_owner[:, None]
+                    )
+
+                    corner_kicked = (
+                        corner_active
+                        & (
+                            self.sim.kicked
+                            & own
+                        ).any(axis=1)
+                    )
+
+                    if corner_kicked.any():
+
+                        sx = np.where(
+                            self.setpiece_pos[:, 0] >= 0,
+                            1.0,
+                            -1.0,
+                        )
+
+                        sy = np.where(
+                            self.setpiece_pos[:, 1] >= 0,
+                            1.0,
+                            -1.0,
+                        )
+
+                        # Dirección hacia dentro desde la esquina.
+                        inward_speed = -(
+                            sx * self.sim.ball_vel[:, 0]
+                            + sy * self.sim.ball_vel[:, 1]
+                        )
+
+                        good = (
+                            corner_kicked
+                            & (inward_speed > 0.0)
+                        )
+
+                        corner_execute_team[good] = (
+                            corner_owner[good]
+                        )
+
                 self._setpiece_post_tick(g)
 
             kicked |= self.sim.kicked
@@ -808,6 +1015,22 @@ class HaxballEnv:
         team_sign = self.sign[None, :]                  # +1 rojo, -1 azul
         rew = rc.goal * goal[:, None] * team_sign       # gol del rojo = +1 rojo / -1 azul
         rew += cooperation_reward
+
+        if rc.corner_execute > 0:
+
+            corner_bonus = (
+                (corner_execute_team[:, None] >= 0)
+                & (
+                    corner_execute_team[:, None]
+                    == self.sim.player_team[None, :]
+                )
+            )
+
+            rew += (
+                rc.corner_execute
+                * corner_bonus
+            )
+
         # shaping por potencial (sólo si no hubo gol: el estado terminal tiene Φ = 0)
         phi_ball, phi_near, phi_spread, phi_defense = self._potentials()
         phi0_ball, phi0_near, phi0_spread, phi0_defense = self._phi
