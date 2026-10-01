@@ -68,19 +68,25 @@ class RS4V3Trainer(MultiTrainer):
         self.program = ProgramState.from_config(cfg)
         self._saved_extra = {}
         super().__init__(cfg, run, resume, init_from)
+
+        self.model.to(self.device)
+
         if self.steps - self.program.config["start_steps"] != self.program.relative_steps:
             raise ValueError("El contador del checkpoint no coincide con el presupuesto RS4 v3")
+
         self.league.match_pfsp = True
         self.league.mixture = tuple(cfg.get("league", {}).get("mixture", (.2, .4, .2, .2)))
-        # Frozen running statistics are the same in rollout and sequence update.
+
         for name in ("self_norm", "ent_norm", "norm"):
             normalizer = getattr(self.model, name, None)
             if normalizer is not None:
                 normalizer.eval()
+
         from .rs4_inference import RoutedPolicyInference
         self.inference = RoutedPolicyInference(self.device, self.cuda_decisions, max_policies=4)
         self.total_rows = sum(s.N * s.P for s in self.slots)
         self.inference.register("learner", self.model, self.total_rows)
+
         self._controller_models = {"learner": self.model}
         if self.bc_model is not None:
             self._controller_models["teacher"] = self.bc_model
