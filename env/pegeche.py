@@ -131,7 +131,9 @@ class PegecheRules:
         self.expelled = np.zeros((N, P), bool)
         self.expel_at = np.full((N, P), -1, np.int64)
         # eventos del último env.step (para info / premios)
-        self.ev = {k: np.zeros(N, np.int64) for k in ("out", "foul", "claim", "card", "slide", "red")}
+        self.ev = {k: np.zeros(N, np.int64) for k in
+                   ("out", "foul", "claim", "card", "slide", "red",
+                    "restart_timeout", "restart_timeout_team")}
         self.out_loser = i8(-1)
 
     # ------------------------------------------------------------------ reset
@@ -677,6 +679,8 @@ class PegecheRules:
             self.c0[n] = False
             self.circ_r[n, 0] = 0.0
         if st != NONE and t - self.sp_t0[n] == SP_TIMEOUT:
+            self.ev["restart_timeout"][n] += 1
+            self.ev["restart_timeout_team"][n] = self.sp_team[n] + 1
             if st == THROW:
                 other_team = 1 - self.sp_team[n]  # _clear_setpiece borra el equipo del saque
                 self._restore_players(n)

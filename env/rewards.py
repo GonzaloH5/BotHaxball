@@ -38,11 +38,16 @@ class RewardConfig:
     team_pass_value: float = 0.003
     team_pass_chain: float = 0.0015
     team_pass_min_dist_frac: float = 0.04
+    team_pass_hold_ticks: int = 12
+    team_pass_possession_cap: float = 0.01
+    team_pass_return_min_usefulness: float = 0.25
     team_spread_floor: float = 0.05
 
     # Córners: premio pequeño por ejecutar el saque hacia dentro de la cancha.
     # Se deja en 0 globalmente y env/tasks.py lo activa sólo en tareas configuradas.
     corner_execute: float = 0.0
+    corner_hold_ticks: int = 12
+    corner_min_inward_frac: float = 0.04
 
 def potentials(ball_x_own, ball_y_own, player_ball_dist, goal_x: float, field_w: float):
     """Φ por agente. `ball_*_own` en coords del equipo del agente (ataca hacia +x)."""

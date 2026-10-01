@@ -46,13 +46,15 @@ class ModelAgent:
 
 
 class ScriptedAgent:
-    def __init__(self, eps: float = 0.0, seed: int = 0):
+    def __init__(self, eps: float = 0.0, seed: int = 0, policy: str = "r2", style: int = -1):
         self.eps = eps
+        self.policy = policy
+        self.style = style
         self.rng = np.random.default_rng(seed)
-        self.name = f"scripted(eps={eps})"
+        self.name = f"scripted(policy={policy},style={style},eps={eps})"
 
     def __call__(self, env, obs, players):
-        return scripted_actions(env, players, self.eps, self.rng)
+        return scripted_actions(env, players, self.eps, self.rng, policy=self.policy, style=self.style)
 
 
 def reset_agents(agents, env, done=None):
@@ -112,7 +114,11 @@ def make_agent(spec: str, greedy: bool = False):
     if spec == "scripted":
         return ScriptedAgent()
     if spec.startswith("scripted:"):
-        return ScriptedAgent(float(spec.split(":")[1]))
+        parts = spec.split(":")
+        if parts[1] in ("r2", "r3"):
+            style = int(parts[2]) if len(parts) > 2 else -1
+            return ScriptedAgent(policy=parts[1], style=style)
+        return ScriptedAgent(float(parts[1]))
     if spec == "random":
         return RandomAgent()
     return ModelAgent(spec, greedy)

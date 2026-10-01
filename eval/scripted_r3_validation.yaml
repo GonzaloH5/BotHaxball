@@ -1,0 +1,14 @@
+# Gate fijo de R3. Cambiarlo invalida la comparación y exige un informe nuevo.
+tasks: [futsal_1v1, futsal_2v2, futsal_3v3, futsal_4v4, futsal_5v5, jjrs_6v6, futsal_7v7]
+styles: [0, 1, 2]
+games_per_style: 32
+minutes: 2
+seed: 7300
+restart_tasks: [rs4_3v3, rs4_4v4, rs_3v3, jjrs_6v6]
+restart_trials: 8
+gates:
+  min_points_overall: 0.505
+  min_points_per_cell: 0.35
+  min_restart_execution: 0.99
+  max_restart_timeout: 0.01
+

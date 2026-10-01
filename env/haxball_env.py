@@ -101,6 +101,12 @@ class HaxballEnv:
         self.sign = np.where(self.sim.player_team == 0, 1.0, -1.0)
         self.ticks = np.zeros(self.N, dtype=np.int64)
         self.score = np.zeros((self.N, 2), dtype=np.int64)  # acumulado (estadísticas)
+        # Un partido de evaluación dura max_ticks aunque haya goles intermedios.
+        # Los episodios PPO pueden seguir terminando en cada gol.
+        self.match_ticks = np.zeros(self.N, dtype=np.int64)
+        self.match_score = np.zeros((self.N, 2), dtype=np.int64)
+        self.episode_id = np.zeros(self.N, dtype=np.int64)
+        self.scripted_style = np.arange(self.N, dtype=np.int64) % 3
         self._phi = None
         # Retraso de acciones (lag de red): cada partido sortea d en [0, action_delay_max] ticks
         # al reiniciarse, y la acción elegida en t recién se aplica en t + d (antes sigue la anterior).
@@ -124,6 +130,15 @@ class HaxballEnv:
 
         self.last_pass_sender = np.full(self.N, -1, dtype=np.int64)
         self.last_pass_receiver = np.full(self.N, -1, dtype=np.int64)
+        self.pending_pass_sender = np.full(self.N, -1, dtype=np.int64)
+        self.pending_pass_receiver = np.full(self.N, -1, dtype=np.int64)
+        self.pending_pass_team = np.full(self.N, -1, dtype=np.int64)
+        self.pending_pass_age = np.zeros(self.N, dtype=np.int64)
+        self.pending_pass_progress = np.zeros(self.N, dtype=np.float64)
+        self.coop_reward_spent = np.zeros((self.N, 2), dtype=np.float64)
+        self.pending_corner_team = np.full(self.N, -1, dtype=np.int64)
+        self.pending_corner_age = np.zeros(self.N, dtype=np.int64)
+        self.pending_corner_origin = np.zeros((self.N, 2), dtype=np.float64)
         self.field_h = st.field_half_h
         self.stuck_ticks = np.zeros(self.N, dtype=np.int64)  # pelota casi quieta pegada a una línea
         self.setpiece_dist = 50.0      # los rivales del que saca se corren a esta distancia
@@ -162,11 +177,17 @@ class HaxballEnv:
             return
 
         idx = np.asarray(idx, dtype=np.int64)
+        self.episode_id[idx] += 1
+        # Mezcla uniforme y determinista por episodio, sin consumir el RNG del
+        # entorno ni cambiar la reproducibilidad de R2.
+        self.scripted_style[idx] = (idx + self.episode_id[idx]) % 3
 
         # Algunos resets empiezan directamente en un córner.
         corner_mask = np.zeros(len(idx), dtype=bool)
 
-        if self.corner_reset_prob > 0:
+        # Un reset con equipo de saque explícito (gol, evaluación o test de
+        # kickoff) nunca debe convertirse aleatoriamente en córner.
+        if self.corner_reset_prob > 0 and kickoff_team is None:
             corner_mask = (
                 self.rng.random(len(idx))
                 < self.corner_reset_prob
@@ -214,7 +235,11 @@ class HaxballEnv:
 
         self.kickoff_limit[idx] = self.kickoff_timeout
 
-        if self.kickoff_timeout > 0:
+        # Los mapas plain ya colocan a los jugadores a distancia alcanzable y
+        # deben respetar exactamente el timeout solicitado. Los mapas con
+        # árbitro/reinicios reales pueden spawnear mucho más lejos y necesitan
+        # una extensión basada en el viaje mínimo.
+        if self.kickoff_timeout > 0 and self.out_of_bounds:
             for n in ko:
                 travel = self._restart_travel_ticks(
                     n,
@@ -235,6 +260,15 @@ class HaxballEnv:
 
         self.last_pass_sender[idx] = -1
         self.last_pass_receiver[idx] = -1
+        self.pending_pass_sender[idx] = -1
+        self.pending_pass_receiver[idx] = -1
+        self.pending_pass_team[idx] = -1
+        self.pending_pass_age[idx] = 0
+        self.pending_pass_progress[idx] = 0.0
+        self.coop_reward_spent[idx] = 0.0
+        self.pending_corner_team[idx] = -1
+        self.pending_corner_age[idx] = 0
+        self.pending_corner_origin[idx] = 0.0
 
         self.stuck_ticks[idx] = 0
 
@@ -322,6 +356,13 @@ class HaxballEnv:
 
             self.last_pass_sender[n] = -1
             self.last_pass_receiver[n] = -1
+            self.pending_pass_sender[n] = -1
+            self.pending_pass_receiver[n] = -1
+            self.pending_pass_team[n] = -1
+            self.pending_pass_age[n] = 0
+            self.coop_reward_spent[n] = 0.0
+            self.pending_corner_team[n] = -1
+            self.pending_corner_age[n] = 0
 
             self.stuck_ticks[n] = 0
 
@@ -375,6 +416,13 @@ class HaxballEnv:
             self.last_touch_pos[n] = nb
             self.last_pass_sender[n] = -1
             self.last_pass_receiver[n] = -1
+            self.pending_pass_sender[n] = -1
+            self.pending_pass_receiver[n] = -1
+            self.pending_pass_team[n] = -1
+            self.pending_pass_age[n] = 0
+            self.coop_reward_spent[n] = 0.0
+            self.pending_corner_team[n] = -1
+            self.pending_corner_age[n] = 0
 
             self.stuck_ticks[n] = 0
         self._protect_setpieces()
@@ -429,6 +477,7 @@ class HaxballEnv:
 
     def _setpiece_post_tick(self, goal):
         active = self.setpiece_team >= 0
+        owner = self.setpiece_team.copy()
         self.setpiece_ticks[active] += 1
 
         own = self.setpiece_team[:, None] == self.sim.player_team[None, :]
@@ -452,9 +501,10 @@ class HaxballEnv:
 
             self.sim.vel[goal_kick, 0] *= scale[:, None]
 
+        timed_out = active & ~kicked_by_taker & (self.setpiece_ticks >= self.setpiece_limit) & (goal == 0)
         released = active & (
             kicked_by_taker
-            | (self.setpiece_ticks >= self.setpiece_limit)
+            | timed_out
             | (goal != 0)
         )
 
@@ -468,8 +518,12 @@ class HaxballEnv:
         self.sim.vel[waiting, 0] = 0.0
 
         self._protect_setpieces()
+        return timed_out, owner
 
     def reset(self) -> np.ndarray:
+        self.score[:] = 0
+        self.match_ticks[:] = 0
+        self.match_score[:] = 0
         self._reset_envs(np.arange(self.N))
         self._phi = self._potentials()
         return self.observe()
@@ -699,12 +753,75 @@ class HaxballEnv:
                 d[:, sel] = d[:, sel].min(axis=1, keepdims=True)
         return d
 
-    def _cooperation_touch_reward(self, tch, touch_ball_pos=None):
-        """Reward por transferencias útiles entre compañeros."""
+    def _empty_cooperation_events(self):
+        shape = (self.N, 2)
+        return {name: np.zeros(shape, dtype=np.int64) for name in
+                ("passes", "progressive_passes", "pass_chains", "turnovers")}
+
+    @staticmethod
+    def _merge_events(target, source):
+        for key, value in source.items():
+            target[key] += value
+
+    def _advance_pending_passes(self, ticks=1):
+        """Confirma transferencias sólo tras una breve retención del receptor."""
         bonus = np.zeros((self.N, self.P), dtype=np.float64)
+        events = self._empty_cooperation_events()
+        active = self.pending_pass_team >= 0
+        self.pending_pass_age[active] += int(ticks)
+        ready = np.where(active & (self.pending_pass_age >= self.rcfg.team_pass_hold_ticks))[0]
+        teams = self.sim.player_team
+        for n in ready:
+            sender = int(self.pending_pass_sender[n])
+            receiver = int(self.pending_pass_receiver[n])
+            team = int(self.pending_pass_team[n])
+            progress = float(self.pending_pass_progress[n])
+            opp = teams != team
+            if opp.any():
+                positions = self.sim.player_pos[n]
+                opponent_positions = positions[opp]
+                receiver_space = np.linalg.norm(opponent_positions - positions[receiver], axis=1).min()
+                sender_space = np.linalg.norm(opponent_positions - positions[sender], axis=1).min()
+                space_gain = float(np.clip((receiver_space - sender_space) / (0.15 * self.field_w), 0.0, 1.0))
+            else:
+                space_gain = 0.0
+            usefulness = 0.65 * progress + 0.35 * space_gain
+            immediate_return = (self.last_pass_sender[n] == receiver
+                                and self.last_pass_receiver[n] == sender)
+            base = self.rcfg.team_pass_success if usefulness > 0.05 else 0.0
+            amount = base + self.rcfg.team_pass_value * usefulness
+            if immediate_return and usefulness < self.rcfg.team_pass_return_min_usefulness:
+                amount = 0.0
+            chain = (not immediate_return and self.last_pass_receiver[n] == sender
+                     and self.last_pass_sender[n] >= 0
+                     and self.last_pass_sender[n] != receiver and usefulness > 0.10)
+            if chain:
+                amount += self.rcfg.team_pass_chain
+                events["pass_chains"][n, team] += 1
+            remaining = max(0.0, self.rcfg.team_pass_possession_cap - self.coop_reward_spent[n, team])
+            paid = min(amount, remaining)
+            if paid > 0:
+                bonus[n, teams == team] += paid
+                self.coop_reward_spent[n, team] += paid
+            events["passes"][n, team] += 1
+            if usefulness > 0.10:
+                events["progressive_passes"][n, team] += 1
+            self.last_pass_sender[n] = sender
+            self.last_pass_receiver[n] = receiver
+            self.pending_pass_sender[n] = -1
+            self.pending_pass_receiver[n] = -1
+            self.pending_pass_team[n] = -1
+            self.pending_pass_age[n] = 0
+            self.pending_pass_progress[n] = 0.0
+        return bonus, events
+
+    def _cooperation_touch_reward(self, tch, touch_ball_pos=None):
+        """Detecta candidatos de pase; el reward llega tras retención."""
+        bonus = np.zeros((self.N, self.P), dtype=np.float64)
+        events = self._empty_cooperation_events()
 
         if self.T <= 1:
-            return bonus
+            return bonus, events
 
         sim = self.sim
         rc = self.rcfg
@@ -767,76 +884,26 @@ class HaxballEnv:
                             1.0,
                         )
 
-                        # ¿El receptor tiene más espacio que el pasador?
-                        opp_mask = teams != team
-
-                        if opp_mask.any():
-                            opp_pos = sim.player_pos[n, opp_mask]
-
-                            recv_space = np.linalg.norm(
-                                opp_pos - sim.player_pos[n, p],
-                                axis=1,
-                            ).min()
-
-                            sender_space = np.linalg.norm(
-                                opp_pos - sim.player_pos[n, prev],
-                                axis=1,
-                            ).min()
-
-                            space_gain = np.clip(
-                                (recv_space - sender_space)
-                                / (0.15 * self.field_w),
-                                0.0,
-                                1.0,
-                            )
-                        else:
-                            space_gain = 0.0
-
-                        usefulness = (
-                            0.65 * progress
-                            + 0.35 * space_gain
-                        )
-
-                        # A -> B -> A sigue siendo útil (pared),
-                        # pero reducimos el reward base para evitar farmear.
-                        immediate_return = (
-                            self.last_pass_sender[n] == p
-                            and self.last_pass_receiver[n] == prev
-                        )
-
-                        base = rc.team_pass_success
-                        if immediate_return:
-                            base *= 0.5
-
-                        pass_reward = (
-                            base
-                            + rc.team_pass_value * usefulness
-                        )
-
-                        team_players = teams == team
-                        bonus[n, team_players] += pass_reward
-
-                        # A -> B -> C con tres jugadores distintos.
-                        chain = (
-                            self.last_pass_receiver[n] == prev
-                            and self.last_pass_sender[n] >= 0
-                            and self.last_pass_sender[n] != p
-                        )
-
-                        if chain and usefulness > 0.10:
-                            bonus[n, team_players] += rc.team_pass_chain
-
-                        self.last_pass_sender[n] = prev
-                        self.last_pass_receiver[n] = p
+                        self.pending_pass_sender[n] = prev
+                        self.pending_pass_receiver[n] = p
+                        self.pending_pass_team[n] = team
+                        self.pending_pass_age[n] = 0
+                        self.pending_pass_progress[n] = progress
 
                 else:
                     # Rival interceptó: corta cualquier cadena.
+                    events["turnovers"][n, prev_team] += 1
                     self.last_pass_sender[n] = -1
                     self.last_pass_receiver[n] = -1
+                    self.pending_pass_sender[n] = -1
+                    self.pending_pass_receiver[n] = -1
+                    self.pending_pass_team[n] = -1
+                    self.pending_pass_age[n] = 0
+                    self.coop_reward_spent[n, team] = 0.0
 
             self.last_touch_player[n] = p
             self.last_touch_pos[n] = event_pos
-        return bonus
+        return bonus, events
 
     def step(self, actions: np.ndarray):
         actions = np.asarray(actions, dtype=np.int64)
@@ -902,16 +969,25 @@ class HaxballEnv:
             (self.N, self.P),
             dtype=np.float64,
         )
+        cooperation_events = self._empty_cooperation_events()
+        corner_attempts = np.zeros((self.N, 2), dtype=np.int64)
+        corner_successes = np.zeros((self.N, 2), dtype=np.int64)
+        restart_timeouts = np.zeros((self.N, 2), dtype=np.int64)
 
         if fused and self.T > 1:
             for k in range(self.frame_skip):
+                pending_reward, pending_events = self._advance_pending_passes(1)
+                cooperation_reward += pending_reward
+                self._merge_events(cooperation_events, pending_events)
                 tch = fused_touches[:, k]
 
                 if tch.any():
-                    cooperation_reward += self._cooperation_touch_reward(
+                    touch_reward, touch_events = self._cooperation_touch_reward(
                         tch,
                         fused_touch_pos[:, k],
                     )
+                    cooperation_reward += touch_reward
+                    self._merge_events(cooperation_events, touch_events)
 
         for k in range(0 if fused else self.frame_skip):
             if self.action_delay_max > 0:
@@ -945,6 +1021,11 @@ class HaxballEnv:
 
             g = self.sim.step(tick_act)
             goal = np.where(goal == 0, g, goal)
+
+            if self.T > 1:
+                pending_reward, pending_events = self._advance_pending_passes(1)
+                cooperation_reward += pending_reward
+                self._merge_events(cooperation_events, pending_events)
 
             if rules is not None:
                 rules.post_tick(world_act, goal)
@@ -989,18 +1070,23 @@ class HaxballEnv:
                             corner_kicked
                             & (inward_speed > 0.0)
                         )
+                        for team_id in (0, 1):
+                            corner_attempts[:, team_id] += corner_kicked & (corner_owner == team_id)
+                        self.pending_corner_team[good] = corner_owner[good]
+                        self.pending_corner_age[good] = 0
+                        self.pending_corner_origin[good] = self.setpiece_pos[good]
 
-                        corner_execute_team[good] = (
-                            corner_owner[good]
-                        )
-
-                self._setpiece_post_tick(g)
+                setpiece_timeout, timeout_owner = self._setpiece_post_tick(g)
+                for team_id in (0, 1):
+                    restart_timeouts[:, team_id] += setpiece_timeout & (timeout_owner == team_id)
 
             kicked |= self.sim.kicked
             tch = self.sim.touch
 
             if tch.any():
-                cooperation_reward += self._cooperation_touch_reward(tch)
+                touch_reward, touch_events = self._cooperation_touch_reward(tch)
+                cooperation_reward += touch_reward
+                self._merge_events(cooperation_events, touch_events)
 
                 for t in (0, 1):
                     self.last_touch[
@@ -1009,6 +1095,26 @@ class HaxballEnv:
                             self.sim.player_team == t,
                         ].any(axis=1)
                     ] = t
+
+        # Un córner sólo cuenta cuando realmente entró en juego y el equipo que
+        # sacó retuvo la continuidad durante una ventana breve.
+        corner_pending = self.pending_corner_team >= 0
+        self.pending_corner_age[corner_pending] += self.frame_skip
+        corner_travel = np.linalg.norm(self.sim.ball_pos - self.pending_corner_origin, axis=1)
+        corner_ready = (corner_pending
+                        & (self.pending_corner_age >= self.rcfg.corner_hold_ticks)
+                        & (corner_travel >= self.rcfg.corner_min_inward_frac * self.field_w)
+                        & (self.last_touch == self.pending_corner_team)
+                        & (self.setpiece_team < 0))
+        corner_execute_team[corner_ready] = self.pending_corner_team[corner_ready]
+        for team_id in (0, 1):
+            corner_successes[:, team_id] += corner_ready & (self.pending_corner_team == team_id)
+        corner_failed = corner_pending & (((self.last_touch >= 0)
+                                           & (self.last_touch != self.pending_corner_team))
+                                          | (self.pending_corner_age >= 180))
+        corner_finished = corner_ready | corner_failed
+        self.pending_corner_team[corner_finished] = -1
+        self.pending_corner_age[corner_finished] = 0
         self.ticks += self.frame_skip
 
         rc = self.rcfg
@@ -1074,6 +1180,7 @@ class HaxballEnv:
 
         self.kickoff_ticks = np.where(self.sim.kickoff, self.kickoff_ticks + self.frame_skip, 0)
         stall = np.zeros(self.N, dtype=bool)
+        stall_team = self.sim.kickoff_team.copy()
         if self.kickoff_timeout > 0:
             stall = self.sim.kickoff & (self.kickoff_ticks >= self.kickoff_limit)
             staller = self.sim.kickoff_team[:, None] == self.sim.player_team[None, :]
@@ -1104,9 +1211,15 @@ class HaxballEnv:
             if out.any():
                 self._set_piece(np.where(out)[0])
 
+        self.match_ticks += self.frame_skip
+        self.match_score[goal == 1, 0] += 1
+        self.match_score[goal == -1, 1] += 1
+        match_done = self.match_ticks >= self.max_ticks
+        final_score = np.full((self.N, 2), -1, dtype=np.int64)
+        final_score[match_done] = self.match_score[match_done]
         timeout = self.ticks >= self.max_ticks
-        done = scored | timeout | stall
-        truncated = timeout & ~scored & ~stall
+        done = scored | timeout | stall | match_done
+        truncated = (timeout | match_done) & ~scored & ~stall
         self.score[goal == 1, 0] += 1
         self.score[goal == -1, 1] += 1
 
@@ -1117,6 +1230,9 @@ class HaxballEnv:
             # tras un gol saca el que lo recibió (como en HaxBall); si no, al azar
             kt = np.where(goal[idx] == 1, 1, np.where(goal[idx] == -1, 0, self.rng.integers(0, 2, len(idx))))
             self._reset_envs(idx, kickoff_team=kt)
+        if match_done.any():
+            self.match_ticks[match_done] = 0
+            self.match_score[match_done] = 0
         # Sin reset/set-piece, ya tenemos exactamente estos potenciales.
         self._phi = (self._potentials() if len(idx) or out.any() or not self.optimize_rollout
                      else (phi_ball, phi_near, phi_spread, phi_defense))
@@ -1125,7 +1241,16 @@ class HaxballEnv:
             obs[idx] = self.observe(idx)
         else:
             obs = self.observe() if len(idx) else final_obs
+        events = {**cooperation_events, "corner_attempts": corner_attempts,
+                  "corner_successes": corner_successes,
+                  "restart_timeouts": restart_timeouts + np.column_stack((stall & (stall_team == 0),
+                                                                           stall & (stall_team == 1))).astype(np.int64)}
+        if rules is not None:
+            encoded = rules.ev.get("restart_timeout_team", np.zeros(self.N, dtype=np.int64))
+            for team_id in (0, 1):
+                events["restart_timeouts"][:, team_id] += (encoded == team_id + 1)
         info = {"goal": goal, "truncated": truncated, "stall": stall, "out": out,
+                "match_done": match_done, "final_score": final_score, "events": events,
                 "ps_kicked": self.sim.ps_kicked.copy(), "final_obs": final_obs, "kicked": kicked}
         if rules is not None:
             info["rules"] = {k: v.copy() for k, v in rules.ev.items()}

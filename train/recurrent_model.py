@@ -72,7 +72,9 @@ class RecurrentSetActorCritic(SetActorCritic):
         if kind != "set":
             raise ValueError("La memoria requiere un checkpoint universal de tipo set")
         missing, unexpected = self.load_state_dict(checkpoint["model"], strict=False)
-        allowed = {name for name in self.state_dict() if name.startswith(("gru.", "memory_pi.", "memory_v."))}
+        allowed_prefixes = ("gru.", "memory_pi.", "memory_v.", "q.", "attn.", "residual_attn.",
+                            "mate_attn_proj.", "opp_attn_proj.", "attn_gate")
+        allowed = {name for name in self.state_dict() if name.startswith(allowed_prefixes)}
         if set(missing) != allowed or unexpected:
             raise ValueError(f"Checkpoint BC incompatible: faltan {missing}, sobran {unexpected}")
         nn.init.zeros_(self.memory_pi.weight)

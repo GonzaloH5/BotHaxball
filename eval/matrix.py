@@ -45,17 +45,28 @@ def eval_task(agent, opp, task, games, minutes, seed=0, action_delay_max=0):
     a, b = legs
     wins, draws, losses = a["wins"] + b["losses"], a["draws"] + b["draws"], a["losses"] + b["wins"]
     n = wins + draws + losses
+    event_names = ("passes", "progressive_passes", "pass_chains", "turnovers",
+                   "corner_attempts", "corner_successes", "restart_timeouts")
+    events_a = a.get("events_red", {})
+    events_b = b.get("events_blue", {})
+    event_counts = {name: int(events_a.get(name, 0)) + int(events_b.get(name, 0))
+                    for name in event_names}
+    team_minutes = games * minutes
+    event_rates = {name + "_per_minute": value / max(team_minutes, 1e-9)
+                   for name, value in event_counts.items()}
     return {"points": (wins + 0.5 * draws) / n, "games": n, "wins": wins, "draws": draws, "losses": losses,
             "goals_for": a["goals_for"] + b["goals_against"],
             "goals_against": a["goals_against"] + b["goals_for"],
-            "scoreless_games": a["scoreless_games"] + b["scoreless_games"]}
+            "scoreless_games": a["scoreless_games"] + b["scoreless_games"],
+            "scoreless_fraction": (a["scoreless_games"] + b["scoreless_games"]) / n,
+            "events": event_counts, **event_rates}
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("model")
     ap.add_argument("--tasks", default=None, help="'all', lista separada por comas, o las activas del checkpoint")
-    ap.add_argument("--vs", default="scripted", help="rival: 'scripted', 'scripted:0.3' o un .pt")
+    ap.add_argument("--vs", default="scripted", help="rival: scripted, scripted:r3[:estilo], scripted:0.3 o .pt")
     ap.add_argument("--games", type=int, default=32)
     ap.add_argument("--minutes", type=float, default=2.0)
     ap.add_argument("--greedy", action="store_true")

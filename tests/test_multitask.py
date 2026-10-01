@@ -17,37 +17,39 @@ def _trainer(stage):
     return t, ROOT / "runs" / run
 
 
-def test_shaping_decays_per_task():
-    """Una tarea que entra en la etapa B arranca con shaping completo aunque las de la etapa A ya lo hayan perdido."""
+def test_shaping_follows_opponent_stage_when_configured():
+    """El perfil actual liga el shaping a la dificultad del rival, no a la edad de la tarea."""
     t, d = _trainer(0)
     try:
-        decay = t.cfg["reward"]["shaping_decay_steps"]
-        t.steps = int(0.6 * decay)
+        t.steps = int(0.6 * t.cfg["reward"]["shaping_decay_steps"])
         t.stage = 1
         t.sync_task_state()
         t.build_envs()
-        old = {n for n in t.stages[0]["tasks"]}
         for s in t.slots:
-            expected = 0.4 if s.task.name in old else 1.0
+            expected = t.cfg["reward"]["shaping_by_opp_stage"][s.opp_stage]
             assert abs(t.shaping_for(s) - expected) < 1e-6, (s.task.name, t.shaping_for(s))
     finally:
         t.writer.close()
         shutil.rmtree(d, ignore_errors=True)
 
 
-def test_low_scoring_task_can_advance():
-    """Una tarea con pocos goles por iteración (p. ej. 6 por iteración) igual junta la ventana y avanza."""
+def test_curriculum_needs_128_matches_and_two_consecutive_point_windows():
+    """Ni muchos goles ni una sola ventana promueven al rival."""
     t, d = _trainer(0)
     try:
         s = t.slots[0]
-        for _ in range(60):          # 60 iteraciones x 6 goles = 360 goles, 90% a favor
-            s.goals[0][:] = [0, 0]
-            s.goals[2][:] = [5, 1] if _ % 2 else [6, 0]
-            t.opponent_curriculum()
-            if s.opp_stage:
-                break
+        s.goals[2][:] = [1000, 0]
+        t.opponent_curriculum()
+        assert s.opp_stage == 0
+        s.match_results[2][:] = [110, 18, 0, 200, 10, 3]
+        t.opponent_curriculum()
+        assert s.opp_stage == 0 and s.promotion_streak == 1
+        # Sin partidos nuevos no cuenta como una segunda evaluación.
+        t.opponent_curriculum()
+        assert s.opp_stage == 0 and s.promotion_streak == 1
+        s.match_results[2][:] = [110, 18, 0, 190, 11, 4]
+        t.opponent_curriculum()
         assert s.opp_stage == 1
-        wr, n = s.winrate()
     finally:
         t.writer.close()
         shutil.rmtree(d, ignore_errors=True)

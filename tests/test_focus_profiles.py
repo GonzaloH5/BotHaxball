@@ -11,8 +11,8 @@ from train.runtime import load_config
 
 
 PROFILES = [
-    ("config_1v1_focus.yaml", 0.5, 0.5 / 6),
-    ("config_cooperation.yaml", 0.2, 0.8 / 6),
+    ("config_1v1_focus.yaml", 0.5, 0.5 / 5),
+    ("config_cooperation.yaml", 0.2, 0.8 / 5),
 ]
 
 
@@ -24,6 +24,16 @@ def test_balanced_profile_gives_every_stage_a_task_the_same_share():
     shares = trainer.task_shares()
     assert set(shares) == set(cfg["stages"][0]["tasks"])
     assert all(value == pytest.approx(1 / len(shares)) for value in shares.values())
+
+
+def test_coordination_profile_has_exact_declared_mix_and_excludes_jjrs():
+    cfg = load_config(multitask.ROOT / "train/config_coordination_attention.yaml")
+    trainer = MultiTrainer.__new__(MultiTrainer)
+    trainer.cfg, trainer.stages, trainer.stage, trainer.task_state = cfg, cfg["stages"], 0, {}
+    shares = trainer.task_shares()
+    expected = cfg["stages"][0]["weights"]
+    assert shares == pytest.approx(expected)
+    assert shares["jjrs_6v6"] == 0 and sum(shares.values()) == pytest.approx(1)
 
 
 @pytest.mark.parametrize("profile,one,other", PROFILES)

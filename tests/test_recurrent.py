@@ -172,6 +172,9 @@ def test_recurrent_ppo_bc_pool_timeouts_and_resume(tmp_path, monkeypatch):
     try:
         trainer.iterate()
         assert trainer.steps > 0 and len(calls) >= 3
+        saved = torch.load(trainer.run_dir / "latest.pt", map_location="cpu", weights_only=False)
+        assert saved["checkpoint_version"] == 2
+        assert saved["league"] and all("model_config" in member for member in saved["league"])
         assert any(np.any(h) and (p < 18).all() for h, p in calls)
         assert trainer.model.memory_pi.weight.abs().sum() > 0
         assert torch.equal(original_norm, trainer.model.self_norm.mean)
@@ -258,7 +261,12 @@ def test_evaluation_keeps_independent_players_and_resets_done_rows(tmp_path):
 def test_onnx_temporal_outputs_match_torch_across_team_sizes(tmp_path):
     ort = pytest.importorskip("onnxruntime")
     pytest.importorskip("onnx")
-    m = model().eval()
+    m = RecurrentSetActorCritic(U_SELF_DIM, hidden=16, ent_hidden=8, ent_layers=1,
+                                memory_size=8, pooling="attentive_meanmax",
+                                rule_observation="masked").eval()
+    m.attn_gate.data.fill_(.2)
+    torch.nn.init.normal_(m.memory_pi.weight, std=0.1)
+    torch.nn.init.normal_(m.memory_v.weight, std=0.1)
     path = tmp_path / "memory.onnx"
     torch.onnx.export(RecurrentPolicyOnly(m), (observations()[0], m.initial_state(3), torch.full((3,),18,dtype=torch.long)),
         str(path), input_names=["obs","memory","previous_action"], output_names=["logits","memory_out"],

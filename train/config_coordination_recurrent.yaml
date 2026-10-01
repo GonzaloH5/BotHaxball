@@ -1,0 +1,11 @@
+# Piloto B (25M): misma atención residual y una GRU de 64 unidades.
+extends: config_coordination_attention.yaml
+run_name: coordination_recurrent_pilot
+model:
+  type: recurrent_set
+  memory_size: 64
+ppo:
+  sequence_length: 32
+evaluation:
+  reports_dir: reports/coordination_recurrent_pilot
+

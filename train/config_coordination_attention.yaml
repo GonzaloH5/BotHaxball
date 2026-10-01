@@ -1,0 +1,75 @@
+# Piloto A (25M): continuación feedforward con atención residual inicialmente cerrada.
+# Arranque:
+# python -m train.multitask --config train/config_coordination_attention.yaml \
+#   --init-from runs/baselines/multi_it027572_2872839296/baseline.pt
+extends: config_multi.yaml
+run_name: coordination_attention_pilot
+seed_league_from_init: true
+
+model:
+  pooling: attentive_meanmax
+  rule_observation: masked
+  type: set
+
+ppo:
+  total_steps: 25_000_000
+  lr: 1.0e-4
+  lr_final: 3.0e-5
+  bc_kl_coef: 0.0
+  bc_kl_final: 0.0
+
+reward:
+  shaping_by_opp_stage: [0.0]
+  team_pass_success: 0.0015
+  team_pass_value: 0.003
+  team_pass_chain: 0.0015
+  team_pass_min_dist_frac: 0.04
+  team_pass_hold_ticks: 12
+  team_pass_possession_cap: 0.01
+  team_pass_return_min_usefulness: 0.25
+  corner_hold_ticks: 12
+  corner_min_inward_frac: 0.04
+
+stages:
+  - name: coordinacion_colectiva
+    tasks: [big_3v3, futsal_2v2, futsal_3v3, futsal_af_3v3, futsal_1v1,
+            aha_3v3, futsal_4v4, rs4_4v4, jjrs_6v6, futsal_5v5, futsal_7v7]
+    fixed_weights: true
+    weights:
+      futsal_3v3: 0.25
+      big_3v3: 0.10
+      futsal_af_3v3: 0.10
+      aha_3v3: 0.10
+      rs4_4v4: 0.20
+      futsal_2v2: 0.05
+      futsal_1v1: 0.05
+      futsal_4v4: 0.05
+      futsal_5v5: 0.05
+      futsal_7v7: 0.05
+      jjrs_6v6: 0.00
+
+schedule:
+  hold_opponent_for_match: true
+  min_games: 128
+  rebalance_every: 25
+
+curriculum:
+  - {name: coordination_r3, scripted: 0.30, selfplay: 0.35, pool: 0.35,
+     scripted_eps: 0.0, scripted_policy: r3, scripted_style: -1,
+     advance_points: 2.0}
+
+scripted_readiness:
+  required: true
+  report: reports/scripted_r3_gate.json
+
+evaluation:
+  every_steps: 25_000_000
+  suite: eval/coordination_validation.yaml
+  baseline: runs/baselines/multi_it027572_2872839296/baseline.pt
+  reports_dir: reports/coordination_attention_pilot
+  stop_after_consecutive: 2
+
+log:
+  checkpoint_every: 25
+  replay_every: 100
+

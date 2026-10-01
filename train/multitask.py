@@ -9,7 +9,7 @@ Cómo funciona:
   * Currículo por AMPLITUD con repaso: las etapas (`stages`) van sumando tareas; una tarea que ya entró nunca
     baja de `min_share` de las muestras, así no se olvida. Se pasa de etapa cuando todas las tareas activas
     llegaron a la liga del currículo de rivales y se cumplió `min_steps` (o al llegar a `max_steps`).
-  * Currículo de rivales POR TAREA (scripteado fácil -> difícil -> liga), igual que train/ppo_selfplay.py.
+  * Currículo de rivales POR TAREA, promovido por puntos de partidos completos y no por proporción de goles.
   * Una sola liga de snapshots para todos los formatos (el modelo juega cualquiera); no se vacía entre etapas.
   * Control de regresiones: si el winrate contra el bot de una tarea cae `regression_drop` respecto de su mejor
     marca, se sube su peso (x`regression_boost`) hasta que se recupere.
@@ -18,7 +18,10 @@ from __future__ import annotations
 
 import argparse
 import copy
+import hashlib
+import json
 import time
+from dataclasses import fields
 from pathlib import Path
 
 import numpy as np
@@ -50,6 +53,11 @@ class TaskSlot:
         self.N, self.P, self.T = env.N, env.P, env.T
         self.opp_stage = 0
         self.wr_window: list[tuple[int, int]] = []
+        self.match_window: list[tuple[int, int, int, int, int, int]] = []
+        self.match_results = {SELF: np.zeros(6, dtype=np.int64),
+                              POOL: np.zeros(6, dtype=np.int64),
+                              SCRIPTED: np.zeros(6, dtype=np.int64)}
+        self.promotion_streak = 0
         self.best_wr = 0.0
         self.boost = 1.0
         self.goals = {SELF: [0, 0], POOL: [0, 0], SCRIPTED: [0, 0]}
@@ -58,14 +66,17 @@ class TaskSlot:
         self.regression_context = None
         self.mode_context = None
         self.mode_carry = np.zeros(3, dtype=np.float64)
+        self.match_finished = np.ones(self.N, dtype=bool)
         self.metric_version = 0
 
-    def set_regression_context(self, scripted_eps):
-        """Una marca sólo es comparable contra la misma dificultad de rival."""
-        context = (self.opp_stage, float(scripted_eps))
+    def set_regression_context(self, scripted_eps, scripted_policy="r2", scripted_style=-1):
+        """Una marca sólo es comparable contra la misma dificultad/política de rival."""
+        context = (self.opp_stage, float(scripted_eps), str(scripted_policy), int(scripted_style))
         if self.regression_context != context:
             self.best_wr, self.boost = 0.0, 1.0
             self.wr_window = []
+            self.match_window = []
+            self.promotion_streak = 0
             self.regression_context = context
 
     def winrate(self) -> tuple[float, int]:
@@ -73,10 +84,18 @@ class TaskSlot:
         l_ = sum(b for _, b in self.wr_window)
         return w / max(w + l_, 1), w + l_
 
+    def match_performance(self) -> tuple[float, int, tuple[int, int, int], float]:
+        totals = np.array(self.match_window, dtype=np.int64).sum(axis=0) if self.match_window else np.zeros(6, int)
+        wins, draws, losses, _, _, scoreless = totals
+        games = int(wins + draws + losses)
+        return ((wins + 0.5 * draws) / max(games, 1), games,
+                (int(wins), int(draws), int(losses)), scoreless / max(games, 1))
+
 
 class MultiTrainer:
     def __init__(self, cfg: dict, run: str, resume: bool, init_from: str | None = None):
         self.cfg = cfg
+        self._validate_scripted_readiness()
         self.optimize_rollout = cfg.get("runtime", {}).get("optimize_rollout", True)
         self.cuda_decisions = cfg.get("runtime", {}).get("cuda_decisions", "legacy")
         if self.cuda_decisions not in DECISION_BACKENDS:
@@ -96,11 +115,10 @@ class MultiTrainer:
                             else int(physics_threads))
         torch.manual_seed(cfg["seed"])
         self.rng = np.random.default_rng(cfg["seed"])
-        self.rcfg = RewardConfig(goal=r["goal"], w_ball_progress=r["w_ball_progress"], w_near_ball=r["w_near_ball"],
-                                 kick_to_goal=r["kick_to_goal"], kickoff_stall=r.get("kickoff_stall", 1.0),
-                                 kickoff_approach=r.get("kickoff_approach", 0.0),
-                                 out_penalty=r.get("out_penalty", 0.1), w_spread=r.get("w_spread", 0.0),
-                                 gamma=p["gamma"])
+        reward_fields = {field.name for field in fields(RewardConfig)}
+        reward_args = {key: value for key, value in r.items() if key in reward_fields}
+        reward_args["gamma"] = p["gamma"]
+        self.rcfg = RewardConfig(**reward_args)
         self.catalog = load_catalog(ROOT / cfg.get("tasks_file", "train/tasks.yaml"))
         self.stages = cfg["stages"]
         for st in self.stages:
@@ -162,15 +180,37 @@ class MultiTrainer:
         if resume and (self.run_dir / "latest.pt").exists():
             self.load(self.run_dir / "latest.pt")
         elif init_from:
-            if getattr(self.model, "is_recurrent", False):
+            if hasattr(self.model, "initialize_from"):
                 self.model.initialize_from(ck)
             else:
                 self.model.load_state_dict(ck["model"])
-            print(f"modelo inicial: {init_from} (imitación)" +
+            if cfg.get("seed_league_from_init", False):
+                self._restore_league(ck, include_learner=True)
+            print(f"modelo inicial: {init_from} (migración compatible)" +
                   (f", regularizado con KL x{p['bc_kl_coef']}" if self.bc_model is not None else ""))
         (self.run_dir / "config.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
         self.build_envs()
         self.writer = SummaryWriter(str(self.run_dir / "tb"))
+
+    def _validate_scripted_readiness(self) -> None:
+        """Impide usar R3 con un informe ausente, fallido o de código anterior."""
+        uses_r3 = any(str(stage.get("scripted_policy", "r2")).lower() == "r3"
+                      and float(stage.get("scripted", 0)) > 0 for stage in self.cfg.get("curriculum", []))
+        readiness = self.cfg.get("scripted_readiness", {})
+        if not uses_r3 or not readiness.get("required", False):
+            return
+        raw = Path(str(readiness.get("report", "reports/scripted_r3_gate.json")).replace("\\", "/"))
+        path = raw if raw.is_absolute() else ROOT / raw
+        if not path.exists():
+            raise RuntimeError(f"R3 requiere un gate aprobado: ejecutar python -m eval.scripted_gate --out {path}")
+        report = json.loads(path.read_text(encoding="utf-8"))
+        if not report.get("gate", {}).get("passed", False):
+            raise RuntimeError(f"R3 no está aprobado por {path}: {report.get('gate', {}).get('reasons', [])}")
+        recorded = report.get("source_sha256", {})
+        for relative in ("bots/scripted.py", "env/haxball_env.py", "env/pegeche.py"):
+            current = hashlib.sha256((ROOT / relative).read_bytes()).hexdigest()
+            if recorded.get(relative) != current:
+                raise RuntimeError(f"El gate R3 quedó obsoleto porque cambió {relative}; volver a evaluarlo")
 
     # ------------------------------------------------------------ tareas y entornos
     def active_tasks(self) -> list[str]:
@@ -195,7 +235,14 @@ class MultiTrainer:
             boost = 1.0 if st.get("fixed_weights", False) else self.task_state.get(n, {}).get("boost", 1.0)
             w[n] = base * boost
         tot = sum(w.values())
+        if tot <= 0:
+            raise ValueError("La etapa debe declarar al menos una tarea con peso positivo")
         share = {n: v / tot for n, v in w.items()}
+        # Un perfil fijo es un contrato exacto: en particular, peso 0 significa
+        # que la tarea queda fuera de esta fase. El piso sólo protege el repaso
+        # de las etapas adaptativas.
+        if st.get("fixed_weights", False):
+            return share
         floor = self.cfg["schedule"].get("min_share", 0.05)
         for _ in range(3):  # piso de repaso
             low = {n for n, s in share.items() if s < floor}
@@ -210,6 +257,10 @@ class MultiTrainer:
         self._reset_decision_graph()
         e = self.cfg["env"]
         names = self.active_tasks()
+        shares = self.task_shares()
+        # En perfiles de reparto fijo, un peso cero es una exclusión real: no
+        # se crea un entorno residual ni se consumen muestras para esa tarea.
+        names = [n for n in names if shares[n] > 0]
         # Migrar marcas antiguas sin procedencia antes de calcular los pesos.
         # Tampoco reutilizar una marca si se cambió scripted_eps en el config.
         for n in names:
@@ -218,11 +269,19 @@ class MultiTrainer:
                 version = self.cfg.get("task_metric_versions", {}).get(n, 0)
                 if state.get("metric_version", 0) != version:
                     state.update(best_wr=0.0, boost=1.0, wr_window=[], metric_version=version)
-                expected = (state["opp_stage"], float(self.cfg["curriculum"][state["opp_stage"]]["scripted_eps"]))
-                if tuple(state.get("regression_context") or ()) != expected:
+                cst = self.cfg["curriculum"][state["opp_stage"]]
+                expected = (state["opp_stage"], float(cst["scripted_eps"]),
+                            str(cst.get("scripted_policy", "r2")), int(cst.get("scripted_style", -1)))
+                previous = tuple(state.get("regression_context") or ())
+                legacy = (state["opp_stage"], float(cst["scripted_eps"]))
+                # Checkpoints anteriores guardaban sólo (stage, eps). Si siguen usando
+                # R2 mixed, es exactamente el mismo rival: actualizar metadata sin perder
+                # la ventana ya medida. Cualquier cambio real de política sí la invalida.
+                if previous == legacy and expected[2:] == ("r2", -1):
+                    state["regression_context"] = expected
+                elif previous != expected:
                     state.update(best_wr=0.0, boost=1.0, wr_window=[], regression_context=expected)
         self.max_entities = max(self.catalog[n].n_entities for n in names)
-        shares = self.task_shares()
         budget = e["agents"]
         self.slots: list[TaskSlot] = []
         for i, n in enumerate(names):
@@ -255,7 +314,11 @@ class MultiTrainer:
             context = s.get("regression_context")
             slot.regression_context = tuple(context) if context is not None else None
             slot.wr_window = [tuple(pair) for pair in s.get("wr_window", [])][-400:]  # ventana por goles
-            slot.set_regression_context(self.cfg["curriculum"][slot.opp_stage]["scripted_eps"])
+            slot.match_window = [tuple(row) for row in s.get("match_window", [])][-400:]
+            slot.promotion_streak = int(s.get("promotion_streak", 0))
+            cst = self.cfg["curriculum"][slot.opp_stage]
+            slot.set_regression_context(cst["scripted_eps"], cst.get("scripted_policy", "r2"),
+                                        cst.get("scripted_style", -1))
             context = s.get("mode_context")
             slot.mode_context = tuple(context) if context is not None else None
             slot.mode_carry = np.array(s.get("mode_carry", [0.0, 0.0, 0.0]), dtype=np.float64)
@@ -275,7 +338,7 @@ class MultiTrainer:
 
         R0: guía ligera para tareas todavía inmaduras.
         R1: guía mínima.
-        R2: sin shaping auxiliar.
+        R2/R3: sin shaping auxiliar.
         """
         by_stage = self.cfg["reward"].get("shaping_by_opp_stage")
 
@@ -296,6 +359,8 @@ class MultiTrainer:
                                             "steps": s.steps, "intro_step": s.intro_step,
                                             "regression_context": s.regression_context,
                                             "wr_window": list(s.wr_window),
+                                            "match_window": list(s.match_window),
+                                            "promotion_streak": s.promotion_streak,
                                             "mode_context": s.mode_context,
                                             "mode_carry": s.mode_carry.tolist(),
                                             "metric_version": s.metric_version}
@@ -304,12 +369,15 @@ class MultiTrainer:
     def save(self, path: Path) -> None:
         self.sync_task_state()
         atomic_torch_save({
+            "checkpoint_version": 2,
             "model": self.model.state_dict(), "model_config": self.model.config(), "opt": self.opt.state_dict(),
             "steps": self.steps, "iteration": self.iteration, "stage": self.stage, "stage_steps": self.stage_steps,
             "task_state": self.task_state, "learner_elo": self.league.learner_elo,
             "scripted_elo": self.league.scripted_elo,
-            "league": [(m.name, m.model.state_dict(), m.elo, m.wins, m.games) for m in self.league.members],
-            "env": {"obs_layout": "universal", "tasks": self.active_tasks(), "max_entities": self.max_entities,
+            "league": [{"name": m.name, "model": m.model.state_dict(), "model_config": m.model.config(),
+                        "elo": m.elo, "wins": m.wins, "games": m.games} for m in self.league.members],
+            "env": {"obs_layout": "universal", "tasks": [s.task.name for s in self.slots],
+                    "max_entities": self.max_entities,
                     "frame_skip": self.cfg["env"]["frame_skip"]},
         }, path)
 
@@ -329,13 +397,31 @@ class MultiTrainer:
         self.steps, self.iteration, self.stage = ck["steps"], ck["iteration"], ck["stage"]
         self.stage_steps, self.task_state = ck["stage_steps"], ck["task_state"]
         self.league.learner_elo, self.league.scripted_elo = ck["learner_elo"], ck["scripted_elo"]
-        for name, sd, elo, wins, games in ck["league"]:
-            m = build_model(ck["model_config"])
+        self._restore_league(ck)
+        print(f"reanudado desde {path} (paso {self.steps:,}, iter {self.iteration}, etapa {self.stage})")
+
+    def _restore_league(self, ck, include_learner=False) -> None:
+        """Carga ligas v1/v2; v2 permite mezclar arquitecturas históricas."""
+        if include_learner:
+            self.league.learner_elo = ck.get("learner_elo", self.league.learner_elo)
+            self.league.scripted_elo = ck.get("scripted_elo", self.league.scripted_elo)
+        for saved in ck["league"]:
+            if isinstance(saved, dict):
+                name, sd = saved["name"], saved["model"]
+                elo, wins, games = saved["elo"], saved["wins"], saved["games"]
+                member_config = saved.get("model_config", ck["model_config"])
+            else:
+                name, sd, elo, wins, games = saved
+                member_config = ck["model_config"]
+            m = build_model(member_config)
             m.load_state_dict(sd)
             self.league.add_snapshot(m.to(self.device), name)
             mem = self.league.members[-1]
             mem.elo, mem.wins, mem.games = elo, wins, games
-        print(f"reanudado desde {path} (paso {self.steps:,}, iter {self.iteration}, etapa {self.stage})")
+        if include_learner:
+            source = build_model(ck["model_config"])
+            source.load_state_dict(ck["model"])
+            self.league.add_snapshot(source.to(self.device), "baseline_inicial")
 
     # ------------------------------------------------------------ rivales
     def assign_modes(self, s: TaskSlot) -> None:
@@ -357,17 +443,65 @@ class MultiTrainer:
             counts[mode] += 1
             debt[mode] -= 1
         s.mode_carry = debt
-        modes = np.concatenate([np.full(c, m) for m, c in zip((SELF, POOL, SCRIPTED), counts)])
-        self.rng.shuffle(modes)
-        opp_id = np.full(s.N, -1)
-        pool_envs = np.where(modes == POOL)[0]
+        proposed = np.concatenate([np.full(c, m) for m, c in zip((SELF, POOL, SCRIPTED), counts)])
+        self.rng.shuffle(proposed)
+        hold_for_match = bool(self.cfg.get("schedule", {}).get("hold_opponent_for_match", False))
+        if hold_for_match and hasattr(s, "modes"):
+            # Un rival no cambia a mitad de un partido de max_ticks. Sólo se
+            # reasignan filas cuyo partido terminó durante el rollout anterior.
+            modes = s.modes.copy()
+            available = np.flatnonzero(s.match_finished)
+            locked = ~s.match_finished
+            locked_counts = np.bincount(modes[locked], minlength=3)
+            wanted = np.maximum(counts - locked_counts, 0)
+            assignments = np.concatenate([np.full(c, m) for m, c in enumerate(wanted)])
+            if len(assignments) < len(available):
+                extra = self.rng.choice(3, len(available) - len(assignments), p=fr)
+                assignments = np.concatenate((assignments, extra))
+            self.rng.shuffle(assignments)
+            modes[available] = assignments[:len(available)]
+            opp_id = s.opp_id.copy()
+            opp_id[available] = -1
+            new_rows = available
+        else:
+            modes = proposed
+            opp_id = np.full(s.N, -1)
+            new_rows = np.arange(s.N)
+        pool_envs = new_rows[modes[new_rows] == POOL]
         if len(pool_envs):
             ids = self.league.sample(self.cfg["league"]["opponents_per_iter"], self.rng)
             opp_id[pool_envs] = np.array(ids)[np.arange(len(pool_envs)) % len(ids)]
         learner = np.zeros((s.N, s.P), dtype=bool)
         learner[:, : s.T] = True
         learner[modes == SELF, s.T:] = True
-        s.modes, s.opp_id, s.learner, s.scripted_eps = modes, opp_id, learner, st["scripted_eps"]
+        s.modes, s.opp_id, s.learner = modes, opp_id, learner
+        if hold_for_match:
+            s.match_finished[:] = False
+        s.scripted_eps = st["scripted_eps"]
+        s.scripted_policy = st.get("scripted_policy", "r2")
+        s.scripted_style = st.get("scripted_style", -1)
+
+    def record_match_results(self, s: TaskSlot, info: dict) -> None:
+        """Acumula partidos completos, separados del reset PPO que ocurre tras cada gol."""
+        finished = info.get("match_done")
+        scores = info.get("final_score")
+        if finished is None or scores is None or not np.asarray(finished).any():
+            return
+        finished = np.asarray(finished, dtype=bool)
+        for mode in (SELF, POOL, SCRIPTED):
+            rows = finished & (s.modes == mode)
+            if not rows.any():
+                continue
+            red, blue = scores[rows, 0], scores[rows, 1]
+            bucket = s.match_results[mode]
+            bucket[0] += int((red > blue).sum())
+            bucket[1] += int((red == blue).sum())
+            bucket[2] += int((red < blue).sum())
+            bucket[3] += int(red.sum())
+            bucket[4] += int(blue.sum())
+            bucket[5] += int(((red + blue) == 0).sum())
+        if self.cfg.get("schedule", {}).get("hold_opponent_for_match", False):
+            s.match_finished |= finished
 
     # ------------------------------------------------------------ actuar
     def _reset_decision_graph(self):
@@ -412,8 +546,10 @@ class MultiTrainer:
                 acts[envs, blue] = torch.distributions.Categorical(logits=lg).sample().cpu().numpy().reshape(len(envs), s.T)
             sc = np.where(s.modes == SCRIPTED)[0]
             if len(sc):
-                acts[sc, blue] = scripted_actions(s.env, np.arange(s.T, s.P), s.scripted_eps, self.rng,
-                                                 env_indices=sc)
+                acts[sc, blue] = scripted_actions(
+                    s.env, np.arange(s.T, s.P), s.scripted_eps, self.rng, env_indices=sc,
+                    policy=s.scripted_policy, style=s.scripted_style,
+                )
             out.append((acts, logp[k:k + n].reshape(s.N, s.P), value[k:k + n].reshape(s.N, s.P)))
             k += n
         return out
@@ -492,9 +628,10 @@ class MultiTrainer:
         scripted = []
         for slot in self.slots:
             rows = slot.scripted_rows if self.optimize_rollout else np.where(slot.modes == SCRIPTED)[0]
-            acts = (scripted_actions(slot.env, np.arange(slot.T, slot.P), slot.scripted_eps, self.rng,
-                                     env_indices=rows)
-                    if len(rows) else None)
+            acts = (scripted_actions(
+                        slot.env, np.arange(slot.T, slot.P), slot.scripted_eps, self.rng,
+                        env_indices=rows, policy=slot.scripted_policy, style=slot.scripted_style,
+                    ) if len(rows) else None)
             scripted.append((rows, acts))
         wait_start = time.perf_counter() if profile is not None else 0.0
         actions, logp, values = transfer.wait_output()
@@ -604,6 +741,7 @@ class MultiTrainer:
                 sc = (g != 0) & (s.modes == SCRIPTED)
                 if sc.any():
                     self.league.record(None, int((g[sc] == 1).sum()), int((g[sc] == -1).sum()))
+                self.record_match_results(s, info)
                 new_obs.append(o2)
             for (slot, rows, _), bootstrap in zip(timeouts, self.values_many([x[2] for x in timeouts])):
                 slot.buf["rew"][t, rows] += p["gamma"] * bootstrap
@@ -681,7 +819,7 @@ class MultiTrainer:
         runs/<run>/replays/it<iter>_<tarea>_vs_<rival>.html, rotando tareas y alternando rival (bot / sí mismo)."""
         import subprocess
         import sys
-        names = self.active_tasks()
+        names = [s.task.name for s in self.slots]
         k = self.iteration // self.cfg["log"]["replay_every"]
         task = names[k % len(names)]
         rival = "scripted" if k % 2 == 0 else str(ckpt)
@@ -701,23 +839,58 @@ class MultiTrainer:
     def opponent_curriculum(self) -> None:
         cur = self.cfg["curriculum"]
         for s in self.slots:
-            s.set_regression_context(cur[s.opp_stage]["scripted_eps"])
+            cst = cur[s.opp_stage]
+            s.set_regression_context(cst["scripted_eps"], cst.get("scripted_policy", "r2"),
+                                     cst.get("scripted_style", -1))
             gs = s.goals[SCRIPTED]
+            if "advance_points" in cst:
+                row = tuple(int(v) for v in s.match_results[SCRIPTED])
+                has_new_evaluation = bool(sum(row[:3]))
+                if has_new_evaluation:
+                    s.match_window = (s.match_window + [row])[-400:]
+                s.match_results[SCRIPTED][:] = 0
+                need_games = int(self.cfg.get("schedule", {}).get("min_games", 128))
+                while len(s.match_window) > 1 and sum(sum(x[:3]) for x in s.match_window[1:]) >= need_games:
+                    s.match_window.pop(0)
+                points, games, _, _ = s.match_performance()
+                if games >= need_games and has_new_evaluation:
+                    s.best_wr = max(s.best_wr, points)
+                    s.promotion_streak = s.promotion_streak + 1 if points >= cst["advance_points"] else 0
+                if (games >= need_games and s.promotion_streak >= 2
+                        and s.opp_stage < len(cur) - 1):
+                    s.opp_stage += 1
+                    next_stage = cur[s.opp_stage]
+                    s.set_regression_context(next_stage["scripted_eps"],
+                                             next_stage.get("scripted_policy", "r2"),
+                                             next_stage.get("scripted_style", -1))
+                    print(f"*** {s.task.name}: rivales -> {next_stage['name']} por puntos ***", flush=True)
+                    if not self.league.members:
+                        self.league.add_snapshot(self.model, f"it{self.iteration}")
+                s.goals[SCRIPTED] = [0, 0]
+                continue
             # Ventana medida en GOLES, no en iteraciones: se guardan las iteraciones más recientes necesarias
             # para juntar `min_goals`. Con muchas tareas repartiéndose el tiempo, las de pocos goles (Big 3v3,
             # AHA...) nunca llegaban a 200 goles en 20 iteraciones y no podían avanzar de rival.
-            need = self.cfg.get("schedule", {}).get("min_goals", 200)
+            task_min_goals = self.cfg.get("schedule", {}).get("min_goals_by_task", {})
+            need = task_min_goals.get(
+                s.task.name,
+                self.cfg.get("schedule", {}).get("min_goals", 200)
+            )
             s.wr_window = (s.wr_window + [(gs[0], gs[1])])[-400:]
             while len(s.wr_window) > 1 and sum(a + b for a, b in s.wr_window[1:]) >= need:
                 s.wr_window.pop(0)
             s.goals[SCRIPTED] = [0, 0]
             wr, n = s.winrate()
-            if n >= 200:
+            if n >= need:
                 s.best_wr = max(s.best_wr, wr)
-            if n >= 200 and wr >= cur[s.opp_stage]["advance_winrate"] and s.opp_stage < len(cur) - 1:
+
+            if n >= need and wr >= cur[s.opp_stage]["advance_winrate"] and s.opp_stage < len(cur) - 1:
                 s.opp_stage += 1
-                s.set_regression_context(cur[s.opp_stage]["scripted_eps"])
-                print(f"*** {s.task.name}: rivales -> {cur[s.opp_stage]['name']} ***", flush=True)
+                cst = cur[s.opp_stage]
+                s.set_regression_context(cst["scripted_eps"], cst.get("scripted_policy", "r2"),
+                                         cst.get("scripted_style", -1))
+                print(f"*** {s.task.name}: rivales -> {cst['name']} ({cst.get('scripted_policy', 'r2')}) ***",
+                      flush=True)
                 if not self.league.members:
                     self.league.add_snapshot(self.model, f"it{self.iteration}")
 
@@ -768,9 +941,14 @@ class MultiTrainer:
         w.add_scalar("shaping_coef", self.rcfg.shaping_coef, self.steps)
         for s in self.slots:
             wr, goals = s.winrate()
+            points, games, record, scoreless = s.match_performance()
             w.add_scalar(f"task/{s.task.name}/goal_share_vs_scripted", wr if goals else float("nan"), self.steps)
+            w.add_scalar(f"task/{s.task.name}/points_vs_scripted", points if games else float("nan"), self.steps)
+            w.add_scalar(f"task/{s.task.name}/scoreless_vs_scripted", scoreless if games else float("nan"), self.steps)
             w.add_scalar(f"task/{s.task.name}/goals_in_window", goals, self.steps)
             w.add_scalar(f"task/{s.task.name}/opp_stage", s.opp_stage, self.steps)
+            w.add_scalar(f"task/{s.task.name}/scripted_r3",
+                         1.0 if getattr(s, "scripted_policy", "r2") == "r3" else 0.0, self.steps)
             w.add_scalar(f"task/{s.task.name}/shaping", s.env.rcfg.shaping_coef, self.steps)
         if self.iteration % self.cfg["log"]["every"] == 0:
             print(f"it {self.iteration:5d} | etapa {self.stage} | pasos {self.steps / 1e6:7.1f}M | {sps:6.0f}/s "
@@ -779,9 +957,11 @@ class MultiTrainer:
             cells = []
             for s in self.slots:
                 wr, ng = s.winrate()
-                result = f"{wr:.2f}({ng})" if ng else "sin datos(0)"
-                cells.append(f"{s.task.name} r{s.opp_stage} {result}")
-            print("      proporción de goles vs bot: " + " | ".join(cells), flush=True)
+                points, games, record, _ = s.match_performance()
+                match_result = f"pts {points:.2f} {record[0]}-{record[1]}-{record[2]}" if games else "pts sin datos"
+                goal_result = f"goles {wr:.2f}({ng})" if ng else "goles sin datos"
+                cells.append(f"{s.task.name} r{s.opp_stage} {match_result} {goal_result}")
+            print("      rendimiento vs bot: " + " | ".join(cells), flush=True)
 
     def update(self, b, ent_coef):
         p = self.cfg["ppo"]

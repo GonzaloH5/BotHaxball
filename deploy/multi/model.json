@@ -9,12 +9,17 @@
   "frame_skip": 3,
   "max_ticks": 7200,
   "tasks": [
-    "big_2v2",
     "big_3v3",
     "futsal_2v2",
     "futsal_3v3",
+    "futsal_af_3v3",
     "x1_1v1",
-    "aha_3v3"
+    "aha_3v3",
+    "futsal_4v4",
+    "rs4_4v4",
+    "jjrs_6v6",
+    "futsal_5v5",
+    "futsal_7v7"
   ],
   "ps_cfg": {
     "charge": 96,
@@ -22,5 +27,5 @@
     "grav": 0.1
   },
   "checkpoint": "runs\\multi\\latest.pt",
-  "steps": 53376000
+  "steps": 2869117440
 }

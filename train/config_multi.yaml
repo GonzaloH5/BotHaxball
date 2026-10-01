@@ -80,14 +80,14 @@ stages:
     fixed_weights: true
     weights:
       big_3v3:        0.05
-      futsal_2v2:     0.05
-      futsal_3v3:     0.05
+      futsal_2v2:     0.10
+      futsal_3v3:     0.35
       futsal_af_3v3:  0.05
       x1_1v1:         0.05
       aha_3v3:        0.05
       futsal_4v4:     0.05
 
-      rs4_4v4:        0.55
+      rs4_4v4:        0.20
 
       jjrs_6v6:       0.00
 
@@ -100,16 +100,35 @@ stages:
 schedule:
   rehearsal_weight: 0.5
   min_share: 0.05
-  rebalance_every: 25       # iteraciones entre chequeos de regresión / avance de etapa
-  min_goals: 200            # goles vs bot que se miden (ventana por goles) para avanzar de rival / regresiones
-  regression_drop: 0.15     # caída del winrate vs bot respecto de la mejor marca que dispara más peso
-  regression_boost: 1.5
+  rebalance_every: 25
+  min_goals: 200
+  min_games: 128
+  hold_opponent_for_match: true
 
-# Currículo de rivales (por tarea): se avanza con el winrate por goles contra el bot scripteado.
+  min_goals_by_task:
+    big_3v3: 120
+    futsal_2v2: 160
+    futsal_3v3: 120
+    futsal_af_3v3: 120
+    x1_1v1: 200
+    aha_3v3: 120
+    futsal_4v4: 100
+    rs4_4v4: 100
+    jjrs_6v6: 70
+    futsal_5v5: 80
+    futsal_7v7: 60
+
+# Currículo de rivales (por tarea): se avanza por puntos de partidos completos,
+# con al menos 128 partidos y dos evaluaciones consecutivas.
 curriculum:
-  - {name: vs_scripted,      scripted: 0.7,  selfplay: 0.3,  pool: 0.0, scripted_eps: 0.5, advance_winrate: 0.8}
-  - {name: vs_scripted_hard, scripted: 0.4,  selfplay: 0.4,  pool: 0.2, scripted_eps: 0.1, advance_winrate: 0.85}
-  - {name: league,           scripted: 0.05, selfplay: 0.45, pool: 0.5, scripted_eps: 0.0, advance_winrate: 2.0}
+  # R0/R1/R2 conservan exactamente el scripted histórico. R2 deja de ser terminal:
+  # una tarea que sostenga >=90% por goles pasa individualmente a R3.
+  - {name: vs_scripted,      scripted: 0.7,  selfplay: 0.3,  pool: 0.0,  scripted_eps: 0.5, scripted_policy: r2, scripted_style: -1, advance_points: 0.80}
+  - {name: vs_scripted_hard, scripted: 0.4,  selfplay: 0.4,  pool: 0.2,  scripted_eps: 0.1, scripted_policy: r2, scripted_style: -1, advance_points: 0.85}
+  - {name: league_r2,        scripted: 0.05, selfplay: 0.45, pool: 0.5,  scripted_eps: 0.0, scripted_policy: r2, scripted_style: -1, advance_points: 0.90}
+
+  # R3: style=-1 rota balanceado/agresivo/conservador por episodio. Es terminal.
+  - {name: league_r3,        scripted: 0.15, selfplay: 0.40, pool: 0.45, scripted_eps: 0.0, scripted_policy: r3, scripted_style: -1, advance_points: 2.0}
 
 league:
   snapshot_every: 25

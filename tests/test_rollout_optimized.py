@@ -73,7 +73,9 @@ def test_complete_transitions_match_reference(task, delay):
             else:
                 np.testing.assert_array_equal(a, b)
         for key, a in vars(env.sim).items():
-            if isinstance(a, np.ndarray):
+            # Buffers privados de reutilización pueden existir sólo en la ruta
+            # fusionada; no forman parte del estado físico observable.
+            if isinstance(a, np.ndarray) and not key.startswith("_coop_"):
                 np.testing.assert_array_equal(a, getattr(legacy.sim, key), err_msg=key)
         for a, b in zip(env._phi, legacy._phi):
             np.testing.assert_array_equal(a, b)
@@ -83,15 +85,16 @@ def test_complete_transitions_match_reference(task, delay):
 
 @pytest.mark.parametrize("T", [1, 2, 3, 6, 7, 11])
 @pytest.mark.parametrize("eps", [0.0, 0.1, 0.5])
-def test_selected_bots_keep_actions_and_random_state(T, eps):
+@pytest.mark.parametrize("policy", ["r2", "r3"])
+def test_selected_bots_keep_actions_and_random_state(T, eps, policy):
     env = HaxballEnv(17, T, "big", seed=13, random_reset_prob=1.0)
     env.reset()
     players, rows = np.arange(T, 2 * T), np.array([0, 4, 11, 16])
     a, b = np.random.default_rng(61), np.random.default_rng(61)
     for _ in range(12):
         env.sim.reset_random(np.arange(env.N))
-        reference = _scripted_reference(env, players, eps, a)
-        result = scripted_actions(env, players, eps, b, env_indices=rows)
+        reference = _scripted_reference(env, players, eps, a, policy=policy)
+        result = scripted_actions(env, players, eps, b, env_indices=rows, policy=policy)
         np.testing.assert_array_equal(result, reference[rows])
         assert a.bit_generator.state == b.bit_generator.state
 

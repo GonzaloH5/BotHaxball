@@ -2,6 +2,8 @@
 así el ONNX exportado recibe observaciones crudas."""
 from __future__ import annotations
 
+import math
+
 import torch
 from torch import nn
 
@@ -33,6 +35,31 @@ def _mlp(i, h, layers):
         mods += [nn.Linear(d, h), nn.ReLU()]
         d = h
     return nn.Sequential(*mods)
+
+
+class _MultiheadQueryAttention(nn.Module):
+    """Atención cross de una query con shapes dinámicos exportables a ONNX."""
+
+    def __init__(self, dim: int, heads: int = 4):
+        super().__init__()
+        if dim % heads:
+            raise ValueError("attention dim debe ser divisible por heads")
+        self.dim, self.heads, self.head_dim = dim, heads, dim // heads
+        self.q_proj = nn.Linear(dim, dim)
+        self.k_proj = nn.Linear(dim, dim)
+        self.v_proj = nn.Linear(dim, dim)
+        self.out_proj = nn.Linear(dim, dim)
+
+    def forward(self, query, entities, key_padding_mask):
+        batch, count = entities.shape[0], entities.shape[1]
+        q = self.q_proj(query).reshape(batch, 1, self.heads, self.head_dim).transpose(1, 2)
+        k = self.k_proj(entities).reshape(batch, count, self.heads, self.head_dim).transpose(1, 2)
+        v = self.v_proj(entities).reshape(batch, count, self.heads, self.head_dim).transpose(1, 2)
+        scores = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(self.head_dim)
+        scores = scores.masked_fill(key_padding_mask[:, None, None, :], -1e4)
+        weights = torch.softmax(scores, dim=-1)
+        context = torch.matmul(weights, v).transpose(1, 2).reshape(batch, 1, self.dim)
+        return self.out_proj(context)
 
 
 class ActorCritic(nn.Module):
@@ -161,6 +188,8 @@ class SetActorCritic(nn.Module):
                  rule_observation: str = "full"):
         super().__init__()
         self.self_dim, self.ent_dim, self.n_actions = self_dim, ent_dim, n_actions
+        if pooling not in ("meanmax", "attention", "attentive_meanmax"):
+            raise ValueError(f"pooling desconocido: {pooling}")
         self.hidden, self.layers, self.ent_hidden, self.pooling = hidden, layers, ent_hidden, pooling
         self.ent_layers = ent_layers
         if rule_observation not in ("full", "masked"):
@@ -181,6 +210,15 @@ class SetActorCritic(nn.Module):
             self.q = nn.Linear(self_dim, ent_hidden)
             self.attn = nn.MultiheadAttention(ent_hidden, num_heads=4, batch_first=True)
             joint += ent_hidden
+        elif pooling == "attentive_meanmax":
+            # Rama residual compatible: mantiene exactamente el ancho y la
+            # salida del mean/max al migrar un checkpoint. Un gate escalar en
+            # cero la abre gradualmente durante el fine-tuning.
+            self.q = nn.Linear(self_dim, ent_hidden)
+            self.residual_attn = _MultiheadQueryAttention(ent_hidden, heads=4)
+            self.mate_attn_proj = nn.Linear(ent_hidden, 2 * ent_hidden)
+            self.opp_attn_proj = nn.Linear(ent_hidden, 2 * ent_hidden)
+            self.attn_gate = nn.Parameter(torch.zeros(()))
         self.pi_body = _mlp(joint, hidden, layers)
         self.v_body = _mlp(joint, hidden, layers)
         self.pi = nn.Linear(hidden, n_actions)
@@ -229,7 +267,20 @@ class SetActorCritic(nn.Module):
         e_in = torch.cat([e[..., :2], self.ent_norm(e[..., 2:])], dim=-1) * present.unsqueeze(-1)
         h = self.ent_enc(e_in)
         sn = self.self_norm(s)
-        feats = [sn, self._pool(h, present & ~rival), self._pool(h, present & rival)]
+        mate_mask, opp_mask = present & ~rival, present & rival
+        mate_pool, opp_pool = self._pool(h, mate_mask), self._pool(h, opp_mask)
+        if self.pooling == "attentive_meanmax":
+            q = self.q(sn).unsqueeze(1)
+            residuals = []
+            for mask, projection in ((mate_mask, self.mate_attn_proj), (opp_mask, self.opp_attn_proj)):
+                key_pad = ~mask
+                key_pad[:, 0] = key_pad[:, 0] & mask.any(1)
+                attended = self.residual_attn(q, h, key_pad)
+                residuals.append(torch.tanh(self.attn_gate) * projection(attended.squeeze(1))
+                                 * mask.any(1, keepdim=True))
+            mate_pool = mate_pool + residuals[0]
+            opp_pool = opp_pool + residuals[1]
+        feats = [sn, mate_pool, opp_pool]
         if self.pooling == "attention":
             q = self.q(sn).unsqueeze(1)
             # una fila sin entidades presentes daría NaN: se le deja pasar al menos la primera (relleno)
@@ -238,6 +289,18 @@ class SetActorCritic(nn.Module):
             a, _ = self.attn(q, h, h, key_padding_mask=key_pad)
             feats.append(a.squeeze(1) * present.any(1, keepdim=True))
         return torch.cat(feats, dim=-1)
+
+    def initialize_from(self, checkpoint):
+        """Migra un SetActorCritic preservando exactamente su política inicial."""
+        source = checkpoint["model_config"]
+        if source.get("type", "set") != "set":
+            raise ValueError("La migración compatible requiere un checkpoint set feedforward")
+        missing, unexpected = self.load_state_dict(checkpoint["model"], strict=False)
+        allowed_prefixes = ("q.", "attn.", "residual_attn.", "mate_attn_proj.",
+                            "opp_attn_proj.", "attn_gate")
+        bad = [name for name in missing if not name.startswith(allowed_prefixes)]
+        if bad or unexpected:
+            raise ValueError(f"Checkpoint incompatible: faltan {bad}, sobran {unexpected}")
 
     def forward(self, obs: torch.Tensor):
         x = self._features(obs)

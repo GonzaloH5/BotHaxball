@@ -36,20 +36,28 @@ def play(agent_red, agent_blue, n_games=128, minutes=3.0, n_per_team=1, stadium=
     env._phi = env._potentials()
     obs = env.observe()
     reset_agents((agent_red, agent_blue), env)
+    event_totals = {name: np.zeros(2, dtype=np.int64) for name in
+                    ("passes", "progressive_passes", "pass_chains", "turnovers",
+                     "corner_attempts", "corner_successes", "restart_timeouts")}
     red = np.arange(env.T)
     blue = np.arange(env.T, env.P)
     for _ in range(ticks // frame_skip):
         a = np.empty((n_games, env.P), dtype=np.int64)
         a[:, red] = agent_red(env, obs, red)
         a[:, blue] = agent_blue(env, obs, blue)
-        obs, _, done, _ = env.step(a)
+        obs, _, done, info = env.step(a)
+        for name in event_totals:
+            event_totals[name] += info["events"][name].sum(axis=0)
         if done.any():
             reset_agents((agent_red, agent_blue), env, done)
     r, b = env.score[:, 0], env.score[:, 1]
     if return_details:
-        return {"wins": int((r > b).sum()), "draws": int((r == b).sum()), "losses": int((b > r).sum()),
+        details = {"wins": int((r > b).sum()), "draws": int((r == b).sum()), "losses": int((b > r).sum()),
                 "goals_for": int(r.sum()), "goals_against": int(b.sum()),
                 "scoreless_games": int(((r + b) == 0).sum())}
+        details["events_red"] = {name: int(value[0]) for name, value in event_totals.items()}
+        details["events_blue"] = {name: int(value[1]) for name, value in event_totals.items()}
+        return details
     return int((r > b).sum()), int((r == b).sum()), int((b > r).sum()), int(r.sum()), int(b.sum())
 
 

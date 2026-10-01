@@ -86,15 +86,22 @@ class RecurrentTrainer(MultiTrainer):
             for oid in np.unique(s.opp_id[s.opp_id >= 0]):
                 rows = np.where(s.opp_id == oid)[0]
                 opponent = self.league.members[oid].model
-                lg, _, hm = opponent.step(tensor(obs[rows, blue].reshape(-1, self.obs_dim)),
-                    tensor(s.opponent_memory[rows, blue].reshape(-1, opponent.memory_size)),
-                    tensor(s.previous_action[rows, blue].reshape(-1)),
-                    tensor(s.episode_start[rows, blue].reshape(-1)))
+                opponent_obs = tensor(obs[rows, blue].reshape(-1, self.obs_dim))
+                if getattr(opponent, "is_recurrent", False):
+                    lg, _, hm = opponent.step(opponent_obs,
+                        tensor(s.opponent_memory[rows, blue].reshape(-1, opponent.memory_size)),
+                        tensor(s.previous_action[rows, blue].reshape(-1)),
+                        tensor(s.episode_start[rows, blue].reshape(-1)))
+                    s.opponent_memory[rows, blue] = hm.cpu().numpy().reshape(len(rows), s.T, -1)
+                else:
+                    lg = opponent.logits(opponent_obs)
                 acts[rows, blue] = torch.distributions.Categorical(logits=lg).sample().cpu().numpy().reshape(len(rows), s.T)
-                s.opponent_memory[rows, blue] = hm.cpu().numpy().reshape(len(rows), s.T, -1)
             scripted = np.where(s.modes == SCRIPTED)[0]
             if len(scripted):
-                acts[scripted, blue] = scripted_actions(s.env, np.arange(s.T, s.P), s.scripted_eps, self.rng)[scripted]
+                acts[scripted, blue] = scripted_actions(
+                    s.env, np.arange(s.T, s.P), s.scripted_eps, self.rng,
+                    env_indices=scripted, policy=s.scripted_policy, style=s.scripted_style,
+                )
             out.append((acts, logp, value.cpu().numpy().reshape(s.N, s.P)))
         return out
 
@@ -116,8 +123,8 @@ class RecurrentTrainer(MultiTrainer):
         for group in self.opt.param_groups:
             group["lr"] = lr
         entropy_coef = lerp(p["ent_coef"], p["ent_coef_final"], fraction)
-        self.rcfg.shaping_coef = max(0.0, 1.0 - self.steps / cfg["reward"]["shaping_decay_steps"])
         for s in self.slots:
+            s.env.rcfg.shaping_coef = self.shaping_for(s)
             self.assign_modes(s)
             s.buf = {key: np.zeros((length, s.N, s.P) + shape, dtype) for key, shape, dtype in
                      (("obs", (width,), np.float32), ("act", (), np.int64), ("previous_action", (), np.int64),
@@ -159,6 +166,7 @@ class RecurrentTrainer(MultiTrainer):
                     s.pool_goals.setdefault(s.opp_id[e], [0, 0])[0 if goal[e] == 1 else 1] += 1
                 scripted = s.modes == SCRIPTED
                 self.league.record(None, int((goal[scripted] == 1).sum()), int((goal[scripted] == -1).sum()))
+                self.record_match_results(s, info)
                 next_obs.append(o2)
             obs = next_obs
         self._obs = obs

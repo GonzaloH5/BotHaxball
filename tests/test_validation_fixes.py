@@ -64,7 +64,7 @@ def test_opponent_promotion_discards_easier_record_and_boost():
     slot.goals[SCRIPTED] = [110, 90]
     trainer.opponent_curriculum()
     assert slot.best_wr == pytest.approx(0.55)
-    assert slot.regression_context == (1, 0.1)
+    assert slot.regression_context == (1, 0.1, "r2", -1)
 
 
 def test_same_difficulty_preserves_window_but_changed_noise_resets_it():
@@ -157,12 +157,16 @@ def test_gate_requires_reference_and_rejects_scoreless_draws():
     assert gate["room_validation"] == "pending"
 
 
-def test_masked_onnx_matches_torch_with_different_team_sizes(tmp_path):
+@pytest.mark.parametrize("pooling", ["meanmax", "attentive_meanmax"])
+def test_masked_onnx_matches_torch_with_different_team_sizes(tmp_path, pooling):
     pytest.importorskip("onnx")
     ort = pytest.importorskip("onnxruntime")
     from train.model import PolicyOnly
-    model = SetActorCritic(U_SELF_DIM, hidden=16, ent_hidden=8, rule_observation="masked").eval()
-    path = tmp_path / "masked.onnx"
+    model = SetActorCritic(U_SELF_DIM, hidden=16, ent_hidden=8, pooling=pooling,
+                           rule_observation="masked").eval()
+    if pooling == "attentive_meanmax":
+        model.attn_gate.data.fill_(.2)
+    path = tmp_path / f"masked_{pooling}.onnx"
     dummy = torch.zeros(1, U_SELF_DIM + 3 * U_ENT_DIM)
     torch.onnx.export(PolicyOnly(model), dummy, str(path), input_names=["obs"], output_names=["logits"],
                       dynamic_axes={"obs": {0: "batch", 1: "width"}, "logits": {0: "batch"}},

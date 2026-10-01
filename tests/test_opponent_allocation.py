@@ -94,9 +94,9 @@ def test_empty_goal_window_is_not_displayed_as_zero_percent(capsys):
     trainer.cfg["reward"] = {"shaping_decay_steps": 400_000_000}
     stats = {"entropy": 2}
     trainer.log(stats, .001, 100, 1, .2)
-    assert "big_2v2 r0 sin datos(0)" in capsys.readouterr().out
+    assert "big_2v2 r0 pts sin datos goles sin datos" in capsys.readouterr().out
     assert np.isnan(recorded["task/big_2v2/goal_share_vs_scripted"])
     slot.wr_window = [(0, 5)]
     trainer.log(stats, .001, 100, 1, .2)
-    assert "big_2v2 r0 0.00(5)" in capsys.readouterr().out
+    assert "big_2v2 r0 pts sin datos goles 0.00(5)" in capsys.readouterr().out
     assert recorded["task/big_2v2/goal_share_vs_scripted"] == 0
