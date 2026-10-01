@@ -6,7 +6,7 @@ import pytest
 import torch
 import yaml
 
-from tools import evaluate_rs4, prepare_rs4
+from tools import configure_rs4_rewards, evaluate_rs4, prepare_rs4
 from train import multitask
 from train.multitask import MultiTrainer
 from train.runtime import annealing_fraction, load_config
@@ -41,6 +41,7 @@ def source_run(tmp_path, monkeypatch):
     monkeypatch.setattr(multitask, "ROOT", tmp_path)
     monkeypatch.setattr(prepare_rs4, "ROOT", tmp_path)
     monkeypatch.setattr(evaluate_rs4, "ROOT", tmp_path)
+    monkeypatch.setattr(configure_rs4_rewards, "ROOT", tmp_path)
     trainer = MultiTrainer(cfg, "multi", False)
     try:
         trainer.stage = 2
@@ -206,3 +207,37 @@ def test_evaluation_subprocess_smoke_with_real_models(source_run, monkeypatch):
         assert row["generalist"]["games"] == row["specialist"]["games"] == 2
         assert row["generalist"] == row["specialist"]
         assert row["points_delta"] == 0
+
+
+def test_configure_tactics_is_opt_in_preserves_ppo_and_checkpoints(source_run):
+    source, _ = source_run
+    branch = prepare_rs4.prepare(source)
+    before = load_config(branch / "config.yaml")
+    original_bytes = (branch / "config.yaml").read_bytes()
+    hashes = {name: prepare_rs4.file_hash(branch / name) for name in ("latest.pt", "parent.pt")}
+    backup = configure_rs4_rewards.configure()
+    assert backup.read_bytes() == original_bytes
+    cfg = load_config(branch / "config.yaml")
+    assert cfg["rs4_tactics"]["start_steps"] == 3_761_018_624
+    for key in ("ppo", "model", "league", "env", "curriculum", "stages", "schedule"):
+        assert_same(cfg[key], before[key])
+    for name, digest in hashes.items():
+        assert prepare_rs4.file_hash(branch / name) == digest
+    resumed = MultiTrainer(cfg, "rs4", True)
+    try:
+        assert resumed.slots[0].env.rcfg.rs4_tactical_coef == .12
+        assert resumed.slots[0].env.hold_scripted_style_for_match
+        resumed.iterate()
+    finally:
+        resumed.writer.close()
+    with pytest.raises(ValueError, match="ya está"):
+        configure_rs4_rewards.configure()
+    assert prepare_rs4.file_hash(source) == hashes["parent.pt"]
+
+
+def test_cannot_configure_generalist(source_run):
+    source, _ = source_run
+    before = source.with_name("config.yaml").read_bytes()
+    with pytest.raises(ValueError, match="generalista"):
+        configure_rs4_rewards.configure("multi")
+    assert source.with_name("config.yaml").read_bytes() == before

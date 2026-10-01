@@ -83,7 +83,13 @@ def main():
     parser.add_argument("--games", type=int, default=128)
     parser.add_argument("--minutes", type=float, default=2.0)
     parser.add_argument("--seed", type=int, default=51)
+    parser.add_argument("--styles", action="store_true", help="Evaluar R3 0/1/2 por separado y parent.pt")
     args = parser.parse_args()
+    if args.styles and args.opponents:
+        parser.error("Usar --styles o --opponents, no ambos")
+    if args.styles:
+        args.opponents = ["scripted:r3:0", "scripted:r3:1", "scripted:r3:2",
+                          str(ROOT / "runs" / args.run / "parent.pt")]
     output, summary = evaluate(args.run, args.checkpoint, args.opponents, args.games, args.minutes, args.seed)
     for row in summary["results"]:
         print(f"{row['opponent']['rival']}: generalista {row['generalist']['points']:.3f}, "

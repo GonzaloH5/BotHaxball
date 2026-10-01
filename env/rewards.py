@@ -32,6 +32,7 @@ class RewardConfig:
     gamma: float = 0.995
     w_defense_support: float = 0.0  # opt-in por tarea; cobertura, no persecución colectiva
     defense_shaping_floor: float = 0.0
+    rs4_tactical_coef: float = 0.0  # opt-in sólo rs_one 4v4; guía conjunta acotada
 
     # Cooperación global: sólo se usa con equipos de 2+ jugadores.
     team_pass_success: float = 0.0015

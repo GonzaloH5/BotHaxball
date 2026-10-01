@@ -1,0 +1,13 @@
+# Aplicar con tools.configure_rs4_rewards o prepare_rs4 --tactical-rewards.
+extends: config_rs4_specialist.yaml
+rs4_tactics:
+  coef: 0.12
+  coef_final: 0.0
+  decay_steps: 200_000_000
+  start_steps: 0  # el configurador usa los pasos actuales, no este cero
+  hold_styles_for_match: true
+reward:
+  w_near_ball: 0.0
+  kick_to_goal: 0.0
+  w_spread: 0.0
+  team_spread_floor: 0.0

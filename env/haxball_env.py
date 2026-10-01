@@ -172,6 +172,11 @@ class HaxballEnv:
         self.optimize_rollout = optimize_rollout
         self.optimize_reward_geometry = optimize_rollout
         self.optimize_callbacks = optimize_rollout
+        self.hold_scripted_style_for_match = False
+        self.scripted_match_id = np.zeros(self.N, dtype=np.int64)
+        self._rs4_phi = None
+        if self.rcfg.rs4_tactical_coef and (stadium != "rs_one" or self.T != 4):
+            raise ValueError("rs4_tactical_coef sólo se admite en rs_one 4v4")
 
     # ----------------------------------------------------------------- reset
     def _reset_envs(self, idx, kickoff_team=None):
@@ -182,7 +187,12 @@ class HaxballEnv:
         self.episode_id[idx] += 1
         # Mezcla uniforme y determinista por episodio, sin consumir el RNG del
         # entorno ni cambiar la reproducibilidad de R2.
-        self.scripted_style[idx] = (idx + self.episode_id[idx]) % 3
+        if self.hold_scripted_style_for_match:
+            fresh = idx[(self.match_ticks[idx] == 0) | (self.match_ticks[idx] >= self.max_ticks)]
+            self.scripted_style[fresh] = (fresh + self.scripted_match_id[fresh]) % 3
+            self.scripted_match_id[fresh] += 1
+        else:
+            self.scripted_style[idx] = (idx + self.episode_id[idx]) % 3
 
         # Algunos resets empiezan directamente en un córner.
         corner_mask = np.zeros(len(idx), dtype=bool)
@@ -553,6 +563,7 @@ class HaxballEnv:
         self.match_score[:] = 0
         self._reset_envs(np.arange(self.N))
         self._phi = self._potentials()
+        self._rs4_phi = self._rs4_potential() if self.rcfg.rs4_tactical_coef else None
         return self.observe()
 
     # ----------------------------------------------------------------- obs
@@ -748,6 +759,19 @@ class HaxballEnv:
             out[:, sel] = defense_support_potential(players, ball, self.goal_x, self.field_h)[:, None]
         # No pagar colocación en saques: están protegidos por reglas distintas.
         out[self.sim.kickoff | (self.setpiece_team >= 0)] = 0.0
+        return out
+
+    def _rs4_potential(self):
+        out = np.zeros((self.N, self.P))
+        if self.rcfg.rs4_tactical_coef == 0:
+            return out
+        from .rs4_tactics import components
+        values = components(self.sim.player_pos, self.sim.player_team, self.sim.ball_pos,
+                            self.goal_x, self.field_h, self.sim.st.goal_half_height)
+        phi = 0.65 * values[..., 0] + 0.35 * (0.5 + 0.5 * (values[..., 1] - values[..., 2]))
+        out[:] = self.rcfg.rs4_tactical_coef * phi[:, self.sim.player_team]
+        # Guía de juego abierto: nunca pagar por esperar/invadir un saque.
+        out[self.sim.kickoff | (self.setpiece_team >= 0)] = 0
         return out
 
     def _spread_potential(self):
@@ -1300,6 +1324,15 @@ class HaxballEnv:
         timeout = self.ticks >= self.max_ticks
         done = scored | timeout | stall | match_done
         truncated = (timeout | match_done) & ~scored & ~stall
+        tactical_reward = None
+        if rc.rs4_tactical_coef != 0 or self._rs4_phi is not None:
+            next_tactical = self._rs4_potential()
+            # Truncación usa bootstrap; goles/stall sí son terminales reales de PPO.
+            absorbing = done & ~truncated
+            previous = self._rs4_phi if self._rs4_phi is not None else np.zeros_like(next_tactical)
+            tactical_reward = g * np.where(absorbing[:, None], 0.0, next_tactical) - previous
+            rew += tactical_reward
+            self._rs4_phi = next_tactical if rc.rs4_tactical_coef else None
         self.score[goal == 1, 0] += 1
         self.score[goal == -1, 1] += 1
 
@@ -1316,6 +1349,9 @@ class HaxballEnv:
         # Sin reset/set-piece, ya tenemos exactamente estos potenciales.
         self._phi = (self._potentials() if len(idx) or out.any() or not self.optimize_rollout
                      else (phi_ball, phi_near, phi_spread, phi_defense))
+        if self._rs4_phi is not None and len(idx):
+            refreshed = self._rs4_potential()
+            self._rs4_phi[idx] = refreshed[idx]
         if len(idx) and self.optimize_rollout:
             obs = final_obs.copy()
             obs[idx] = self.observe(idx)
@@ -1332,6 +1368,8 @@ class HaxballEnv:
         info = {"goal": goal, "truncated": truncated, "stall": stall, "out": out,
                 "match_done": match_done, "final_score": final_score, "events": events,
                 "ps_kicked": self.sim.ps_kicked.copy(), "final_obs": final_obs, "kicked": kicked}
+        if tactical_reward is not None:
+            info["rs4_tactical_reward"] = tactical_reward.copy()
         if rules is not None:
             info["rules"] = {k: v.copy() for k, v in rules.ev.items()}
         return obs, rew.astype(np.float32), done, info

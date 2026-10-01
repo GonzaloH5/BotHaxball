@@ -326,6 +326,96 @@ esta optimización.
 
 #### Rama especializada RS4, independiente del generalista
 
+##### Guía táctica RS4 opcional
+
+La rama conservadora anterior sigue disponible. La guía nueva se activa
+explícitamente, con el entrenamiento detenido y guardado. Si `rs4` ya existe:
+
+```bash
+python -m tools.configure_rs4_rewards --run rs4
+python -u -m train.multitask --config runs/rs4/config.yaml --run rs4 --resume
+```
+
+Si todavía no existe, preparar una sola vez con:
+
+```bash
+python -m tools.prepare_rs4 --source runs/multi/latest.pt --run rs4 --additional-steps 500000000 --tactical-rewards
+```
+
+El configurador crea un backup único `config_before_tactics_*.yaml`. No modifica
+pesos, normalizadores, Adam, liga, checkpoints, config del generalista ni
+LR/entropía/BC. Rechaza el run generalista y activaciones repetidas que reinicien
+el decay. La config generada es la autoridad; no reanudar con la plantilla estática.
+
+**Qué cambia en el aprendizaje:** se desactivan acercamiento genérico a la pelota,
+bonus de patada hacia delante y separación genérica (`w_near_ball`, `kick_to_goal`,
+`w_spread`, `team_spread_floor`). Se mantienen gol, salidas, saques, córners y
+cooperación existente. Los pases ya requieren retención/utilidad, controlan
+devoluciones y tienen un cap por posesión de 0,01 por defecto; no se agregan pagos
+por tocar, despejar, atajar o completar cualquier pase.
+
+La nueva Φ usa cuatro roles geométricos: arquero/líbero, presión/conductor y dos
+apoyos/coberturas diagonales. Las zonas se desplazan con pelota y ventaja geométrica
+de control; ataque abre el equipo y defensa lo compacta. Se evalúan las 24
+asignaciones: cada jugador ocupa un solo rol, sin identidades permanentes, con
+una banda de tolerancia en lugar de un punto exacto. No se añaden IDs de roles a
+la observación ni una red separada por posición. La guía puede ser imperfecta:
+no es una formación óptima demostrada ni una rotación con memoria/histeresis.
+
+Φ combina **65% estructura + 35% balance de amenaza/peligro**, acotada en [0,1].
+Amenaza usa distancia al arco, apertura angular, control geométrico y cobertura
+de tres líneas de tiro. Es una heurística, NO una probabilidad de gol calibrada.
+Los compañeros reciben la misma diferencia de potencial; no bonos individuales
+que compitan por ser arquero o pateador. No se usa historial privado de posesión.
+
+Reward adicional: `gamma * potencial_ponderado_siguiente - potencial_ponderado_anterior`.
+El coeficiente inicial **0,12** baja a **0** en **200 millones de pasos globales
+adicionales desde la activación**, no desde cero ni desde el comienzo del generalista.
+El potencial anterior conserva su propio coeficiente al cambiar el nuevo; no se
+recalcula con el nuevo peso. Se usa Φ terminal 0 en gol/stall; truncaciones mantienen
+el potencial de la observación final para el bootstrap PPO. Saques tienen Φ 0;
+se contabiliza la transición hacia/desde ese estado, no una recompensa por esperar.
+No se recorta la diferencia de potencial después de calcularla: eso rompería su
+telescopado. No hay porcentajes de reward total garantizados: dependen de los eventos.
+
+La construcción sigue el criterio de [potential-based shaping de Ng et al.](https://people.eecs.berkeley.edu/~russell/papers/icml99-shaping.pdf).
+No se promete invariancia de la política aprendida en PPO aproximado/self-play,
+ni inmunidad general a exploits: existen otros bonuses no potenciales y el rival
+cambia. Se prueban invariantes concretos, no calidad futbolística.
+
+Estilos R3 existentes: **0 equilibrado, 1 agresivo, 2 conservador**. La guía activa
+mantener el estilo mezclado de cada rival durante todo el partido, en lugar de
+cambiarlo tras cada gol/reset PPO; se alterna al reiniciar un partido completo.
+La liga y PFSP siguen intactos. No se inventaron tres nuevos bots ni se supone
+que cubren todos los estilos humanos. La observación/reglas del agente no cambian.
+`rs4_4v4` es `rs_one` con saques simplificados, sin faltas/slides/tiros libres;
+`glh_4v4` y `rs_4v4` son modalidades distintas del catálogo.
+
+Comparar, con entrenamiento detenido, contra cada estilo y el padre congelado:
+
+```bash
+python -m tools.evaluate_rs4 --run rs4 --styles --games 128 --minutes 2 --seed 51
+python -m tools.evaluate_rs4 --run rs4 --styles --games 128 --minutes 2 --seed 73
+```
+
+Son cuatro rivales, evaluados con ambos modelos y colores; puede llevar tiempo.
+Medir puntos, goles, partidos sin goles, pérdidas, pases/cadenas y timeouts, no
+reward de entrenamiento. Las ventanas de entrenamiento heredadas contienen datos
+anteriores a la guía; no son una evaluación limpia del cambio. Los informes nuevos
+sí son independientes. La evaluación no activa shaping táctico ni premia seguir
+la formación propuesta.
+
+El log/TensorBoard muestra `rs4/tactical_coef`, reward táctico medio y absoluto.
+Si se quiere comparar velocidad local del Pod, usar benchmark con
+`--config runs/rs4/config.yaml --checkpoint runs/rs4/latest.pt`; la primera
+compilación Numba se descarta con warmup. No se ha medido rendimiento CUDA de
+esta guía en la PC local. Si el config guardado exige gate R3, cambiar
+`env/haxball_env.py` invalida su hash: regenerar con
+`python -m eval.scripted_gate --out reports/scripted_r3_gate.json` y no omitir el gate.
+
+Restaurar la config del backup permite retirar la guía; no revierte el aprendizaje
+ya realizado. El generalista `parent.pt`/`runs/multi/latest.pt` permanece intacto.
+
 Esta es una rama de **entrenamiento**, no otra arquitectura ni una rama Git.
 `tools.prepare_rs4` crea un run separado desde un checkpoint PPO completo y su
 `config.yaml` guardado. Conserva modelo, normalizadores, Adam, liga, pasos e

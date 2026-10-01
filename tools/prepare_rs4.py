@@ -87,9 +87,13 @@ def main():
     parser.add_argument("--source", default="runs/multi/latest.pt")
     parser.add_argument("--run", default="rs4")
     parser.add_argument("--additional-steps", type=int, default=500_000_000)
+    parser.add_argument("--tactical-rewards", action="store_true", help="Activar la guía RS4 acotada, con decay propio")
     args = parser.parse_args()
     try:
         path = prepare(args.source, args.run, args.additional_steps)
+        if args.tactical_rewards:
+            from .configure_rs4_rewards import configure
+            configure(args.run)
     except (ValueError, FileExistsError) as error:
         parser.error(str(error))
     print(f"Run RS4 preparado: {path}; el checkpoint fuente no se modificó.")

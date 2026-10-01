@@ -39,6 +39,7 @@ from .cuda_decisions import DECISION_BACKENDS, CudaDecisionGraph, sample_decisio
 from .model import SetActorCritic, build_model
 from .ppo_selfplay import lerp, resolve_device
 from .runtime import CudaRolloutTransfer, PpoBatchTransfer, annealing_fraction, batch_to_device, cpu_budget, load_config
+from .rs4_specialization import coefficient as rs4_coefficient, validate as validate_rs4_tactics
 
 ROOT = Path(__file__).resolve().parent.parent
 SELF, POOL, SCRIPTED = 0, 1, 2
@@ -103,6 +104,7 @@ class MultiTrainer:
                 cfg = copy.deepcopy(cfg)
                 cfg["bc_reference"] = saved.get("bc_reference")
         self.cfg = cfg
+        validate_rs4_tactics(cfg)
         self._validate_scripted_readiness()
         self.optimize_rollout = cfg.get("runtime", {}).get("optimize_rollout", True)
         self.optimize_cpu = cfg.get("runtime", {}).get("optimize_cpu", False)
@@ -301,6 +303,8 @@ class MultiTrainer:
             # cada tarea tiene su propia config de recompensa: el shaping decae según cuánto lleva ESA tarea
             # en el entrenamiento (ver shaping_for), así un mapa que entra tarde arranca con guía completa
             rcfg = copy.copy(self.rcfg)
+            if n == "rs4_4v4" and self.cfg.get("rs4_tactics"):
+                rcfg.rs4_tactical_coef = rs4_coefficient(self.cfg, self.steps)
             overrides = self.cfg.get("task_reward_overrides", {}).get(n, {})
             for key, value in overrides.items():
                 if key not in ("w_defense_support", "defense_shaping_floor"):
@@ -319,6 +323,8 @@ class MultiTrainer:
             env.optimize_callbacks = bool(
                 getattr(self, "optimize_rollout", True)
                 and self.cfg.get("runtime", {}).get("optimize_callbacks", True))
+            env.hold_scripted_style_for_match = bool(
+                self.cfg.get("rs4_tactics", {}).get("hold_styles_for_match", False))
             slot = TaskSlot(t, env)
             # intro_step: paso global en que la tarea entró. Tareas nuevas = ahora; estados guardados antes de
             # existir este campo = 0 (estaban desde el principio o se comportaban así hasta ahora)
@@ -794,6 +800,8 @@ class MultiTrainer:
         ent_coef = lerp(p["ent_coef"], p["ent_coef_final"], frac)
         for s in self.slots:
             s.env.rcfg.shaping_coef = self.shaping_for(s)
+            if s.task.name == "rs4_4v4" and cfg.get("rs4_tactics"):
+                s.env.rcfg.rs4_tactical_coef = rs4_coefficient(cfg, self.steps)
 
         # Sólo para mostrar un valor resumen en consola.
         self.rcfg.shaping_coef = float(
@@ -813,6 +821,7 @@ class MultiTrainer:
                     s._buffer_cache = cache
             s.buf = cache
             s.pool_goals = {}
+            s.rs4_reward_sum = s.rs4_reward_abs_sum = 0.0
         self._policy_groups = None
         self._reset_decision_graph()
         if self.optimize_rollout:
@@ -827,6 +836,10 @@ class MultiTrainer:
                 b = s.buf
                 b["obs"][t], b["act"][t], b["logp"][t], b["val"][t] = o, acts, logp, val
                 o2, rew, done, info = s.env.step(acts)
+                if "rs4_tactical_reward" in info:
+                    tactical = info["rs4_tactical_reward"]
+                    s.rs4_reward_sum += float(tactical.sum())
+                    s.rs4_reward_abs_sum += float(np.abs(tactical).sum())
                 if info["truncated"].any():
                     tr = np.where(info["truncated"])[0]
                     timeouts.append((s, tr, info["final_obs"][tr]))
@@ -915,6 +928,13 @@ class MultiTrainer:
                 self.spawn_replay(self.run_dir / f"ckpt_{self.iteration:06d}.pt")
         log_start = time.perf_counter()
         stats["timing/maintenance_seconds"] = log_start - update_end
+        if cfg.get("rs4_tactics"):
+            for slot in self.slots:
+                if slot.task.name == "rs4_4v4":
+                    count = L * slot.N * slot.P
+                    stats["rs4/tactical_coef"] = slot.env.rcfg.rs4_tactical_coef
+                    stats["rs4/tactical_reward_mean"] = slot.rs4_reward_sum / count
+                    stats["rs4/tactical_reward_abs_mean"] = slot.rs4_reward_abs_sum / count
         self.log(stats, lr, n, t_roll, t_upd)
         log_end = time.perf_counter()
         self.maybe_rebalance_or_advance()
@@ -1068,6 +1088,10 @@ class MultiTrainer:
                   f"(rollout {t_roll:.1f}s prep {stats.get('timing/prepare_seconds', 0.0):.2f}s upd {t_upd:.1f}s) | elo por goles {self.league.learner_elo:5.0f} | "
                   f"ent {stats['entropy']:.2f} | KL {stats.get('approx_kl', 0):.4f} "
                   f"clip {stats.get('clipfrac', 0):.3f} | shaping {self.rcfg.shaping_coef:.2f}", flush=True)
+            if "rs4/tactical_coef" in stats:
+                print(f"      RS4 guía {stats['rs4/tactical_coef']:.4f} | "
+                      f"reward táctico medio {stats['rs4/tactical_reward_mean']:+.6f} | "
+                      f"absoluto {stats['rs4/tactical_reward_abs_mean']:.6f}", flush=True)
             cells = []
             for s in self.slots:
                 wr, ng = s.winrate()
