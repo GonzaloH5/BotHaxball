@@ -326,9 +326,8 @@ class Trainer:
             lg = cfg["league"]
             if self.iteration % lg["snapshot_every"] == 0 and self.stage >= 1:
                 self.league.add_snapshot(self.model, f"it{self.iteration}")
-            if self.iteration % cfg["log"]["checkpoint_every"] == 0:
-                self.save(self.run_dir / "latest.pt")
-                self.save(self.run_dir / f"ckpt_{self.iteration:06d}.pt")
+            from .checkpoints import maybe_save_checkpoints
+            maybe_save_checkpoints(self)
 
             sps = (self.steps - steps_start) / (time.time() - t_start)
             wr_pool = self._rate(ep_goals[POOL])

@@ -34,7 +34,7 @@ from env.rewards import RewardConfig
 from env.tasks import load_catalog, make_env
 
 from .league import League
-from .checkpoints import atomic_torch_save
+from .checkpoints import atomic_torch_save, maybe_save_checkpoints
 from .cuda_decisions import DECISION_BACKENDS, CudaDecisionGraph, sample_decisions
 from .model import SetActorCritic, build_model
 from .ppo_selfplay import lerp, resolve_device
@@ -921,11 +921,9 @@ class MultiTrainer:
         lg = cfg["league"]
         if self.iteration % lg["snapshot_every"] == 0 and any(s.opp_stage >= 1 for s in self.slots):
             self.league.add_snapshot(self.model, f"it{self.iteration}")
-        if self.iteration % cfg["log"]["checkpoint_every"] == 0:
-            self.save(self.run_dir / "latest.pt")
-            self.save(self.run_dir / f"ckpt_{self.iteration:06d}.pt")
-            if cfg["log"].get("replay_every") and self.iteration % cfg["log"]["replay_every"] == 0:
-                self.spawn_replay(self.run_dir / f"ckpt_{self.iteration:06d}.pt")
+        historical = maybe_save_checkpoints(self)
+        if historical is not None and cfg["log"].get("replay_every") and self.iteration % cfg["log"]["replay_every"] == 0:
+            self.spawn_replay(historical)
         log_start = time.perf_counter()
         stats["timing/maintenance_seconds"] = log_start - update_end
         if cfg.get("rs4_tactics"):

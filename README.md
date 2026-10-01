@@ -650,8 +650,29 @@ ausencia) del `runs/multi/config.yaml`; una opción explícita `bc_reference` al
 El presupuesto sube de 3.000M a 5.000M pasos útiles. `ppo.schedule_steps=3_000_000_000`
 conserva los decaimientos actuales de LR, entropía y BC; después se clampa a sus
 valores finales. Desde 2.919M, quedarían aproximadamente 14,5 horas **si se mantienen
-40k pasos/s reales**, no una duración garantizada. Se guardan checkpoints cada 250
-iteraciones y se desactivan replays concurrentes; no se borran históricos existentes.
+40k pasos/s reales**, no una duración garantizada. Se desactivan replays concurrentes.
+
+### Retención de checkpoints (GPU / RS4)
+
+El perfil nocturno y las nuevas ramas RS4 actualizan `latest.pt` cada **5 minutos**
+y guardan un histórico `ckpt_XXXXXX.pt` cada **30 minutos**, conservando los **6 últimos**.
+Los intervalos son de tiempo real por sesión, independientes de los pasos/s, y se
+comprueban al finalizar cada iteración. Ctrl+C y el fin normal siguen guardando latest.
+Sólo después de publicar correctamente un histórico nuevo se eliminan los antiguos
+del mismo run. No se tocan `parent.pt`, checkpoints de etapa, subdirectorios, enlaces
+ni copias con otros nombres. Los históricos eliminados no se recuperan sin backup externo.
+Esto limita las copias automáticas; no limita el espacio de TensorBoard/evaluaciones.
+
+Para una rama ya existente, detener guardando primero y reanudar con:
+
+```bash
+python -u -m train.multitask --config runs/rs4/config.yaml --run rs4 --resume --override log.checkpoint_interval_seconds=300 log.checkpoint_history_interval_seconds=1800 log.checkpoint_keep=6
+```
+
+La configuración resuelta queda guardada en el run. Las configuraciones sin intervalos
+en segundos conservan el comportamiento anterior de `checkpoint_every`; sin
+`checkpoint_keep` no hay limpieza automática. La primera limpieza ocurre tras el
+primer histórico nuevo (aproximadamente 30 minutos desde el reinicio).
 
 Los siguientes cambios son de **entrenamiento**, no aceleraciones equivalentes:
 

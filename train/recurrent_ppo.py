@@ -205,9 +205,8 @@ class RecurrentTrainer(MultiTrainer):
         self.opponent_curriculum()
         if self.iteration % cfg["league"]["snapshot_every"] == 0 and any(s.opp_stage >= 1 for s in self.slots):
             self.league.add_snapshot(self.model, f"it{self.iteration}")
-        if self.iteration % cfg["log"]["checkpoint_every"] == 0:
-            self.save(self.run_dir / "latest.pt")
-            self.save(self.run_dir / f"ckpt_{self.iteration:06d}.pt")
+        from .checkpoints import maybe_save_checkpoints
+        maybe_save_checkpoints(self)
         self.log(stats, lr, samples, rollout_time, update_time)
         self.maybe_rebalance_or_advance()
 

@@ -53,5 +53,8 @@ curriculum:
   - {name: league_r3, scripted: 0.15, selfplay: 0.40, pool: 0.45, scripted_eps: 0.0, scripted_policy: r3, scripted_style: -1, advance_points: 2.0}
 log:
   every: 25
-  checkpoint_every: 250  # ~10–12 min a la velocidad informada; latest y copia histórica atómicos
+  checkpoint_every: 250  # fallback para entrenadores/versiones anteriores
+  checkpoint_interval_seconds: 300         # latest cada ~5 min, al terminar un update
+  checkpoint_history_interval_seconds: 1800 # copia histórica cada ~30 min
+  checkpoint_keep: 6                       # sólo últimos ckpt_NNNNNN.pt del run
   replay_every: 0        # evita procesos de replay concurrentes durante la noche

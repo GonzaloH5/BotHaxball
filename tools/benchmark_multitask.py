@@ -150,6 +150,8 @@ def main():
         cfg["runtime"]["cuda_decisions"] = args.decision_backend
     # Sin replays/procesos externos ni checkpoints periódicos durante la medición.
     cfg["log"].update(every=1, checkpoint_every=10**12, replay_every=0)
+    cfg["log"].pop("checkpoint_interval_seconds", None)
+    cfg["log"].pop("checkpoint_history_interval_seconds", None)
     cfg["league"]["snapshot_every"] = 10**12
     cfg["schedule"]["rebalance_every"] = 10**12
     (ROOT / "runs").mkdir(exist_ok=True)

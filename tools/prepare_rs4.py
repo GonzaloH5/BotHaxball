@@ -60,6 +60,8 @@ def prepare(source, run="rs4", additional_steps=500_000_000):
         profile = load_config(PROFILE)
         cfg["stages"] = copy.deepcopy(profile["stages"])
         cfg["run_name"] = run
+        for key in ("checkpoint_interval_seconds", "checkpoint_history_interval_seconds", "checkpoint_keep"):
+            cfg["log"][key] = profile["log"][key]
         cfg.setdefault("runtime", {})["preserve_bc_reference"] = True
         # Cambiar el límite de ejecución nunca debe reiniciar el annealing anterior.
         cfg["ppo"].setdefault("schedule_steps", cfg["ppo"]["total_steps"])
