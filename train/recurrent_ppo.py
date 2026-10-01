@@ -9,6 +9,7 @@ import yaml
 from bots.scripted import scripted_actions
 from .multitask import MultiTrainer, SELF, POOL, SCRIPTED
 from .ppo_selfplay import lerp
+from .runtime import annealing_fraction
 
 
 def pack_sequences(buffer, learner, length):
@@ -118,7 +119,7 @@ class RecurrentTrainer(MultiTrainer):
         length, width = p["rollout_len"], self.obs_dim
         if not hasattr(self, "_obs"):
             self._obs = [s.env.reset() for s in self.slots]
-        fraction = self.steps / p["total_steps"]
+        fraction = annealing_fraction(self.steps, p)
         lr = lerp(p["lr"], p["lr_final"], fraction)
         for group in self.opt.param_groups:
             group["lr"] = lr

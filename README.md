@@ -198,9 +198,11 @@ Rendimiento medido en esta PC (sólo CPU): la red se lleva ~90% del tiempo (`pyt
 ### Pod sólo CPU (i5-10400F, 6 núcleos / 12 hilos)
 
 `train/config_cpu.yaml` conserva PPO, referencia BC, recompensas, liga y currículo de
-`config_runpod.yaml`, con CPU, Torch 8 y física 12. Es la baseline informada del nuevo
-host (~5.2k pasos útiles/s; rollout ~13 s, prep ~0.13 s, update ~7 s), no un óptimo
-verificado. No cambia `env.agents=1152`, rollout 128, epochs 3 ni minibatch 8192.
+`config_runpod.yaml`, con CPU, Torch 8 y física 4. Esta combinación dio 6.876 pasos/s
+reales en la medición posterior del i5 (rollout 5,734 s, prep 0,167 s, update 9,566 s).
+La baseline histórica era 8/12 (~5.2k/s según el log); no son mediciones directamente
+comparables ni una demostración del óptimo global. No cambia `env.agents=1152`,
+rollout 128, epochs 3 ni minibatch 8192.
 Este perfil conserva el currículo normal; si el run usa otro reparto/perfil o una
 referencia BC distinta, conservar esa configuración y cambiar sólo dispositivo e hilos.
 
@@ -224,8 +226,8 @@ done
 # Perfil inclusivo CPU (añade overhead): usar aquí los hilos ganadores.
 python -m tools.benchmark_multitask --config train/config_cpu.yaml --torch-threads 8 --numba-threads 12 --warmup 3 --iters 15 --profile-rollout
 
-# Reanudar; sustituir los hilos por los valores verificados en el Pod.
-python -m train.multitask --config train/config_cpu.yaml --run multi --resume --override ppo.torch_threads=8 ppo.numba_threads=12
+# Reanudar con 8/4, configuración adoptada tras la medición posterior.
+python -m train.multitask --config train/config_cpu.yaml --run multi --resume
 ```
 
 Comparar `pasos/s reales` (muestras útiles divididas por tiempo total), las muestras
@@ -251,8 +253,9 @@ del tamaño de minibatch, y se reutilizan en las épocas PPO. El cache vive sól
 ese update y se reconstruye con las observaciones del siguiente lote. Se mantienen
 la fórmula KL, coeficiente BC, optimizador, muestras, permutaciones y número de updates.
 Las diferencias de tamaño/orden de inferencia pueden introducir redondeos de coma
-flotante; no se promete una trayectoria bit a bit idéntica. CUDA y recurrente conservan
-su ruta; con BC desactivada o una sola época no se crea cache.
+flotante; no se promete una trayectoria bit a bit idéntica. CUDA no usa este flag CPU:
+el perfil nocturno activa explícitamente `runtime.cache_bc_logits=true` para CUDA.
+Recurrente conserva su ruta; con BC desactivada o una sola época no se crea cache.
 
 Para 106.496 muestras y 18 acciones float32 reserva ~7,3 MiB adicionales. La medición
 aportada del Pod fue 4.147 pasos/s reales, rollout 13,064 s, prep 0,149 s y update
@@ -320,6 +323,70 @@ tarea; por sí sola no demuestra mejora ni colapso y no justifica cambiar PPO du
 esta optimización.
 
 ### Entrenamiento CPU + GPU en Runpod
+
+#### Perfil nocturno RTX 3060 Ti + Xeon (10 hilos / 15 GB RAM)
+
+Con el código actualizado, guardar y detener la instancia anterior con **Ctrl+C una
+vez**, esperar `guardado` y activar el entorno CUDA del Pod. Desde la raíz:
+
+```bash
+python -m tools.launch_gpu_overnight --run multi
+```
+
+El lanzador mide física 4/6/8/10, limitada al cupo real. Mantiene Torch `auto` (hasta
+dos hilos CPU en CUDA), mide `pasos/s reales` y confirma finalista/baseline en orden
+inverso. Si la ventaja es menor del 3%, conserva física 4. Cada proceso usa la misma
+copia congelada de `latest.pt` y del `config.yaml` efectivo; los updates temporales se
+descartan. Guarda resultados en `reports/gpu_startup/probe_*` y luego reanuda
+automáticamente **el checkpoint original**, no el entrenado en un sondeo.
+Es un ajuste rápido de arranque, no una garantía del óptimo. Un fallo detiene el
+lanzador con su error, sin iniciar otra sesión. `--skip-tuning` permite usar física 4
+directamente. La primera compilación puede tardar minutos.
+
+Para dejarlo al cerrar SSH, sin otra instancia entrenando, en Bash:
+
+```bash
+nohup .venv/bin/python -u -m tools.launch_gpu_overnight --run multi > "runs/multi/overnight-$(date +%Y%m%d-%H%M%S).log" 2>&1 &
+```
+
+`train/config_gpu_overnight.yaml` conserva arquitectura, física, recompensas, PPO,
+1152 agentes, rollout 128, tres épocas y minibatch 8192. Reutiliza las predicciones
+de la referencia BC congelada durante las épocas también en CUDA (~7,3 MiB para
+106.496 filas), además de graph/buffers existentes. Conserva la referencia BC (o su
+ausencia) del `runs/multi/config.yaml`; una opción explícita `bc_reference` al usar
+`train.multitask` tiene prioridad. Se mantiene el optimizador y la liga al reanudar.
+
+El presupuesto sube de 3.000M a 5.000M pasos útiles. `ppo.schedule_steps=3_000_000_000`
+conserva los decaimientos actuales de LR, entropía y BC; después se clampa a sus
+valores finales. Desde 2.919M, quedarían aproximadamente 14,5 horas **si se mantienen
+40k pasos/s reales**, no una duración garantizada. Se guardan checkpoints cada 250
+iteraciones y se desactivan replays concurrentes; no se borran históricos existentes.
+
+Los siguientes cambios son de **entrenamiento**, no aceleraciones equivalentes:
+
+- Futsal pasa del 65% al 75% del presupuesto de agentes en C; aumenta AF/4v4/5v5/7v7,
+  baja Futsal 3v3 del 35% al 25% y mantiene 2v2 en 10%.
+- R2 usa 15% de scripted, para reunir evidencia de partidos más rápido. La promoción
+  sigue exigiendo 128 partidos y dos evaluaciones consecutivas con los mismos umbrales.
+- En Futsal R3, con al menos 128 partidos y >=95% de puntos, se pasa a 5% scripted,
+  25% self-play y 70% liga. Por debajo del 90% se restaura 15/40/45. Los porcentajes
+  se aplican al terminar partidos, nunca cambiando el rival a mitad de uno.
+- PFSP conserva su fórmula y recibe más peso extra para el snapshot reciente;
+  no supone que éste sea siempre más fuerte. Ganar al scripted no equivale a dominar
+  la liga ni demuestra que ya no haya aprendizaje.
+
+El log añade KL, clipfrac y evidencia para promoción/dominio. La métrica auxiliar
+de goles ahora se actualiza también cuando la promoción usa puntos de partidos;
+antes podía seguir mostrando una ventana vieja del checkpoint. Los porcentajes de
+GPU suben/bajan al alternar física/inferencia/PPO: no se intenta fijarlos al 100%.
+Más RAM libre no exige aumentar entornos; hacerlo cambiaría el lote y el aprendizaje.
+El nuevo reparto puede cambiar las muestras útiles/iter y los pasos/s, por lo que
+no se debe atribuir toda diferencia frente al perfil anterior a optimización técnica.
+
+Pruebas locales: continuación sobre checkpoint con Adam/liga/BC conservados,
+decaimientos, promoción, histéresis, cache BC y lanzamiento aislado. CUDA se prueba
+sólo donde está disponible: no se ha medido una aceleración en esta 3060 Ti desde
+la máquina local. Detalle en `reports/gpu_overnight_20261001.md`.
 
 El reparto de rivales compensa las fracciones entre rollouts: un 5% de scripted
 en una tarea de 13 entornos no se redondea permanentemente a cero ni se fuerza

@@ -115,6 +115,7 @@ def main():
         cfg["runtime"]["optimize_cpu"] = False
     if args.no_cache_bc_logits:
         cfg["runtime"]["cache_bc_logits_cpu"] = False
+        cfg["runtime"]["cache_bc_logits"] = False
     if args.no_optimize_cpu:
         cfg["runtime"]["optimize_cpu"] = False
     if args.profile_rollout:
@@ -134,6 +135,9 @@ def main():
     (ROOT / "runs").mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="_benchmark_", dir=ROOT / "runs") as directory:
         shutil.copy2(args.checkpoint, Path(directory) / "latest.pt")
+        saved_config = Path(args.checkpoint).parent / "config.yaml"
+        if cfg["runtime"].get("preserve_bc_reference", False) and saved_config.exists():
+            shutil.copy2(saved_config, Path(directory) / "config.yaml")
         trainer = MultiTrainer(cfg, Path(directory).name, resume=True)
         profile = RolloutProfile(trainer) if args.profile_rollout else None
         decision_profile = (CudaDecisionProfile(trainer.device)

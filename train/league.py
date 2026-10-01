@@ -34,6 +34,7 @@ class League:
     learner_elo: float = 1000.0
     members: list[Member] = field(default_factory=list)
     scripted_elo: float = 1000.0
+    recent_weight: float = 0.25
 
     def add_snapshot(self, model: ActorCritic, name: str) -> None:
         m = copy.deepcopy(model).eval()
@@ -50,7 +51,7 @@ class League:
             return []
         w = np.array([(1.0 - m.winrate) ** self.pfsp_power + 1e-3 for m in self.members])
         # siempre algo de peso extra al último snapshot
-        w[-1] += w.sum() * 0.25
+        w[-1] += w.sum() * self.recent_weight
         return list(rng.choice(len(self.members), size=k, p=w / w.sum()))
 
     @staticmethod

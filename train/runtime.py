@@ -56,6 +56,14 @@ def cpu_budget():
     return max(1, count)
 
 
+def annealing_fraction(steps, ppo):
+    """Extender el presupuesto no reinicia LR/entropía/BC; clampa al valor final."""
+    horizon = ppo.get("schedule_steps", ppo["total_steps"])
+    if not np.isfinite(horizon) or horizon <= 0:
+        raise ValueError("ppo.schedule_steps/total_steps debe ser positivo y finito")
+    return min(1.0, max(0.0, steps / horizon))
+
+
 class CudaRolloutTransfer:
     """Buffers pinned reutilizables: una subida de obs y una bajada de decisiones por tick.
 

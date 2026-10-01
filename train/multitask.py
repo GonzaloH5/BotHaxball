@@ -38,7 +38,7 @@ from .checkpoints import atomic_torch_save
 from .cuda_decisions import DECISION_BACKENDS, CudaDecisionGraph, sample_decisions
 from .model import SetActorCritic, build_model
 from .ppo_selfplay import lerp, resolve_device
-from .runtime import CudaRolloutTransfer, PpoBatchTransfer, batch_to_device, cpu_budget, load_config
+from .runtime import CudaRolloutTransfer, PpoBatchTransfer, annealing_fraction, batch_to_device, cpu_budget, load_config
 
 ROOT = Path(__file__).resolve().parent.parent
 SELF, POOL, SCRIPTED = 0, 1, 2
@@ -58,6 +58,7 @@ class TaskSlot:
                               POOL: np.zeros(6, dtype=np.int64),
                               SCRIPTED: np.zeros(6, dtype=np.int64)}
         self.promotion_streak = 0
+        self.scripted_mastered = False
         self.best_wr = 0.0
         self.boost = 1.0
         self.goals = {SELF: [0, 0], POOL: [0, 0], SCRIPTED: [0, 0]}
@@ -77,6 +78,7 @@ class TaskSlot:
             self.wr_window = []
             self.match_window = []
             self.promotion_streak = 0
+            self.scripted_mastered = False
             self.regression_context = context
 
     def winrate(self) -> tuple[float, int]:
@@ -94,6 +96,12 @@ class TaskSlot:
 
 class MultiTrainer:
     def __init__(self, cfg: dict, run: str, resume: bool, init_from: str | None = None):
+        if resume and not init_from and cfg.get("runtime", {}).get("preserve_bc_reference", False):
+            saved_config = ROOT / "runs" / run / "config.yaml"
+            if saved_config.exists():
+                saved = yaml.safe_load(saved_config.read_text(encoding="utf-8")) or {}
+                cfg = copy.deepcopy(cfg)
+                cfg["bc_reference"] = saved.get("bc_reference")
         self.cfg = cfg
         self._validate_scripted_readiness()
         self.optimize_rollout = cfg.get("runtime", {}).get("optimize_rollout", True)
@@ -156,7 +164,8 @@ class MultiTrainer:
         self.model.to(self.device)
         self.opt = torch.optim.Adam(self.model.parameters(), lr=p["lr"], eps=1e-5)
         lg = cfg["league"]
-        self.league = League(max_size=lg["max_size"], pfsp_power=lg["pfsp_power"])
+        self.league = League(max_size=lg["max_size"], pfsp_power=lg["pfsp_power"],
+                             recent_weight=lg.get("recent_weight", 0.25))
         # Imitación (train/bc.py): arrancar desde el modelo que imita a jugadores reales y/o regularizar
         # con KL(pi_bc || pi) para no alejarse del estilo humano (posiciones, esperar el saque...).
         if init_from:
@@ -317,6 +326,7 @@ class MultiTrainer:
             slot.wr_window = [tuple(pair) for pair in s.get("wr_window", [])][-400:]  # ventana por goles
             slot.match_window = [tuple(row) for row in s.get("match_window", [])][-400:]
             slot.promotion_streak = int(s.get("promotion_streak", 0))
+            slot.scripted_mastered = bool(s.get("scripted_mastered", False))
             cst = self.cfg["curriculum"][slot.opp_stage]
             slot.set_regression_context(cst["scripted_eps"], cst.get("scripted_policy", "r2"),
                                         cst.get("scripted_style", -1))
@@ -362,6 +372,7 @@ class MultiTrainer:
                                             "wr_window": list(s.wr_window),
                                             "match_window": list(s.match_window),
                                             "promotion_streak": s.promotion_streak,
+                                            "scripted_mastered": s.scripted_mastered,
                                             "mode_context": s.mode_context,
                                             "mode_carry": s.mode_carry.tolist(),
                                             "metric_version": s.metric_version}
@@ -425,8 +436,32 @@ class MultiTrainer:
             self.league.add_snapshot(source.to(self.device), "baseline_inicial")
 
     # ------------------------------------------------------------ rivales
+    def update_scripted_mastery(self, s):
+        """Reducir el rival terminal fácil sólo con evidencia de partidos completos."""
+        setting = self.cfg.get("schedule", {}).get("mastered_scripted", {})
+        if (not setting or s.task.name not in setting.get("tasks", [])
+                or s.opp_stage != len(self.cfg["curriculum"]) - 1):
+            s.scripted_mastered = False
+            return
+        points, games, _, _ = s.match_performance()
+        before = s.scripted_mastered
+        if games >= self.cfg.get("schedule", {}).get("min_games", 128):
+            if points >= setting.get("enter_points", 0.95):
+                s.scripted_mastered = True
+            elif points < setting.get("exit_points", 0.90):
+                s.scripted_mastered = False
+        else:
+            s.scripted_mastered = False
+        if s.scripted_mastered != before:
+            mode = "más liga/self-play" if s.scripted_mastered else "restaura práctica scripted"
+            print(f"*** {s.task.name}: {mode} (puntos {points:.3f}, partidos {games}) ***", flush=True)
+
     def assign_modes(self, s: TaskSlot) -> None:
         st = self.cfg["curriculum"][s.opp_stage]
+        self.update_scripted_mastery(s)
+        if s.scripted_mastered:
+            st = {**st, **{k: self.cfg["schedule"]["mastered_scripted"][k]
+                          for k in ("selfplay", "pool", "scripted")}}
         fr = np.array([st["selfplay"], st["pool"] if self.league.members else 0.0, st["scripted"]])
         fr = fr / fr.sum()
         # Reparto compensado: las fracciones pequeñas reciben entornos a lo
@@ -743,7 +778,7 @@ class MultiTrainer:
         L, D = p["rollout_len"], self.obs_dim
         if not hasattr(self, "_obs"):
             self._obs = [s.env.reset() for s in self.slots]
-        frac = self.steps / p["total_steps"]
+        frac = annealing_fraction(self.steps, p)
         lr = lerp(p["lr"], p["lr_final"], frac)
         for g in self.opt.param_groups:
             g["lr"] = lr
@@ -908,6 +943,15 @@ class MultiTrainer:
             s.set_regression_context(cst["scripted_eps"], cst.get("scripted_policy", "r2"),
                                      cst.get("scripted_style", -1))
             gs = s.goals[SCRIPTED]
+            # La promoción por PARTIDOS también debe mantener actualizada la
+            # métrica auxiliar de GOLES; antes quedaba congelada en el checkpoint.
+            need = self.cfg.get("schedule", {}).get("min_goals_by_task", {}).get(
+                s.task.name, self.cfg.get("schedule", {}).get("min_goals", 200))
+            if sum(gs):
+                s.wr_window = (s.wr_window + [(gs[0], gs[1])])[-400:]
+                while len(s.wr_window) > 1 and sum(a + b for a, b in s.wr_window[1:]) >= need:
+                    s.wr_window.pop(0)
+            s.goals[SCRIPTED] = [0, 0]
             if "advance_points" in cst:
                 row = tuple(int(v) for v in s.match_results[SCRIPTED])
                 has_new_evaluation = bool(sum(row[:3]))
@@ -918,6 +962,7 @@ class MultiTrainer:
                 while len(s.match_window) > 1 and sum(sum(x[:3]) for x in s.match_window[1:]) >= need_games:
                     s.match_window.pop(0)
                 points, games, _, _ = s.match_performance()
+                self.update_scripted_mastery(s)
                 if games >= need_games and has_new_evaluation:
                     s.best_wr = max(s.best_wr, points)
                     s.promotion_streak = s.promotion_streak + 1 if points >= cst["advance_points"] else 0
@@ -931,20 +976,10 @@ class MultiTrainer:
                     print(f"*** {s.task.name}: rivales -> {next_stage['name']} por puntos ***", flush=True)
                     if not self.league.members:
                         self.league.add_snapshot(self.model, f"it{self.iteration}")
-                s.goals[SCRIPTED] = [0, 0]
                 continue
             # Ventana medida en GOLES, no en iteraciones: se guardan las iteraciones más recientes necesarias
             # para juntar `min_goals`. Con muchas tareas repartiéndose el tiempo, las de pocos goles (Big 3v3,
             # AHA...) nunca llegaban a 200 goles en 20 iteraciones y no podían avanzar de rival.
-            task_min_goals = self.cfg.get("schedule", {}).get("min_goals_by_task", {})
-            need = task_min_goals.get(
-                s.task.name,
-                self.cfg.get("schedule", {}).get("min_goals", 200)
-            )
-            s.wr_window = (s.wr_window + [(gs[0], gs[1])])[-400:]
-            while len(s.wr_window) > 1 and sum(a + b for a, b in s.wr_window[1:]) >= need:
-                s.wr_window.pop(0)
-            s.goals[SCRIPTED] = [0, 0]
             wr, n = s.winrate()
             if n >= need:
                 s.best_wr = max(s.best_wr, wr)
@@ -1012,20 +1047,29 @@ class MultiTrainer:
             w.add_scalar(f"task/{s.task.name}/scoreless_vs_scripted", scoreless if games else float("nan"), self.steps)
             w.add_scalar(f"task/{s.task.name}/goals_in_window", goals, self.steps)
             w.add_scalar(f"task/{s.task.name}/opp_stage", s.opp_stage, self.steps)
+            need_games = self.cfg.get("schedule", {}).get("min_games", 128)
+            w.add_scalar(f"task/{s.task.name}/promotion_games_remaining", max(0, need_games - games), self.steps)
+            w.add_scalar(f"task/{s.task.name}/promotion_streak", s.promotion_streak, self.steps)
+            w.add_scalar(f"task/{s.task.name}/scripted_mastered", float(s.scripted_mastered), self.steps)
             w.add_scalar(f"task/{s.task.name}/scripted_r3",
                          1.0 if getattr(s, "scripted_policy", "r2") == "r3" else 0.0, self.steps)
             w.add_scalar(f"task/{s.task.name}/shaping", s.env.rcfg.shaping_coef, self.steps)
         if self.iteration % self.cfg["log"]["every"] == 0:
             print(f"it {self.iteration:5d} | etapa {self.stage} | pasos {self.steps / 1e6:7.1f}M | {sps:6.0f}/s "
                   f"(rollout {t_roll:.1f}s prep {stats.get('timing/prepare_seconds', 0.0):.2f}s upd {t_upd:.1f}s) | elo por goles {self.league.learner_elo:5.0f} | "
-                  f"ent {stats['entropy']:.2f} | shaping {self.rcfg.shaping_coef:.2f}", flush=True)
+                  f"ent {stats['entropy']:.2f} | KL {stats.get('approx_kl', 0):.4f} "
+                  f"clip {stats.get('clipfrac', 0):.3f} | shaping {self.rcfg.shaping_coef:.2f}", flush=True)
             cells = []
             for s in self.slots:
                 wr, ng = s.winrate()
                 points, games, record, _ = s.match_performance()
                 match_result = f"pts {points:.2f} {record[0]}-{record[1]}-{record[2]}" if games else "pts sin datos"
                 goal_result = f"goles {wr:.2f}({ng})" if ng else "goles sin datos"
-                cells.append(f"{s.task.name} r{s.opp_stage} {match_result} {goal_result}")
+                need_games = self.cfg.get("schedule", {}).get("min_games", 128)
+                progress = (f"partidos {games}/{need_games} racha {s.promotion_streak}/2"
+                            if s.opp_stage < len(self.cfg.get("curriculum", [])) - 1 else
+                            "dominado: más liga" if s.scripted_mastered else "terminal")
+                cells.append(f"{s.task.name} r{s.opp_stage} {match_result} {goal_result} [{progress}]")
             print("      rendimiento vs bot: " + " | ".join(cells), flush=True)
 
     def update(self, b, ent_coef):
@@ -1045,8 +1089,10 @@ class MultiTrainer:
         # La referencia BC está en eval y congelada: obs y normalizadores de
         # ese modelo no cambian durante PPO. Cache local, nunca en checkpoint.
         bc_logp = None
-        if (bc_coef > 0 and b["obs"].device.type == "cpu" and p["epochs"] > 1
-                and self.cfg.get("runtime", {}).get("cache_bc_logits_cpu", False)):
+        runtime = self.cfg.get("runtime", {})
+        cache_bc = runtime.get("cache_bc_logits", False) or (
+            b["obs"].device.type == "cpu" and runtime.get("cache_bc_logits_cpu", False))
+        if bc_coef > 0 and p["epochs"] > 1 and cache_bc:
             with torch.no_grad():
                 for start in range(0, n, mb):
                     chunk = torch.log_softmax(self.bc_model.logits(b["obs"][start:start + mb]), -1)
@@ -1124,6 +1170,8 @@ def main():
             d[int(last)] = yaml.safe_load(v)
         else:
             d[last] = yaml.safe_load(v)
+    if any(ov.split("=", 1)[0] == "bc_reference" for ov in args.override):
+        cfg.setdefault("runtime", {})["preserve_bc_reference"] = False
     trainer_class = MultiTrainer
     if cfg["model"].get("type") == "recurrent_set":
         from .recurrent_ppo import RecurrentTrainer

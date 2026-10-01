@@ -1,0 +1,57 @@
+# RTX 3060 Ti 8 GB + Xeon E5-2630 v4 (10 hilos asignados).
+# Reanudar run multi: optimización conservadora y más práctica en Futsal.
+extends: config_runpod.yaml
+ppo:
+  torch_threads: auto
+  numba_threads: 4       # evita 31 heredados; punto inicial conservador, no óptimo del Xeon medido
+  total_steps: 5_000_000_000
+  schedule_steps: 3_000_000_000  # conserva LR/entropía/BC actuales; después usa sus valores finales
+runtime:
+  cache_bc_logits: true
+  preserve_bc_reference: true  # conserva la referencia (o ausencia) del config.yaml del run
+schedule:
+  mastered_scripted:
+    tasks: [futsal_2v2, futsal_3v3, futsal_af_3v3, futsal_4v4, futsal_5v5, futsal_7v7]
+    enter_points: 0.95
+    exit_points: 0.90
+    scripted: 0.05
+    selfplay: 0.25
+    pool: 0.70
+league:
+  recent_weight: 0.50  # PFSP intacto + más exposición al snapshot reciente
+stages:
+  - name: A_basico_mapas_distintos
+    tasks: [big_3v3, futsal_2v2, futsal_3v3, futsal_af_3v3, x1_1v1, aha_3v3]
+    min_steps: 60_000_000
+    max_steps: 250_000_000
+  - name: B_equipos_chicos_y_reales
+    tasks: [futsal_4v4, rs4_4v4, jjrs_6v6]
+    min_steps: 150_000_000
+    max_steps: 600_000_000
+  - name: C_equipos_medianos
+    tasks: [futsal_5v5, futsal_7v7]
+    fixed_weights: true
+    weights:
+      big_3v3: 0.05
+      futsal_2v2: 0.10
+      futsal_3v3: 0.25
+      futsal_af_3v3: 0.10
+      x1_1v1: 0.025
+      aha_3v3: 0.025
+      futsal_4v4: 0.10
+      rs4_4v4: 0.15
+      jjrs_6v6: 0.0
+      futsal_5v5: 0.10
+      futsal_7v7: 0.10
+    min_steps: 200_000_000
+    max_steps: 800_000_000
+curriculum:
+  - {name: vs_scripted, scripted: 0.7, selfplay: 0.3, pool: 0.0, scripted_eps: 0.5, scripted_policy: r2, scripted_style: -1, advance_points: 0.80}
+  - {name: vs_scripted_hard, scripted: 0.4, selfplay: 0.4, pool: 0.2, scripted_eps: 0.1, scripted_policy: r2, scripted_style: -1, advance_points: 0.85}
+  # Más partidos contra el MISMO R2, para evaluar/practicar sin esperar horas por el 5%.
+  - {name: league_r2, scripted: 0.15, selfplay: 0.40, pool: 0.45, scripted_eps: 0.0, scripted_policy: r2, scripted_style: -1, advance_points: 0.90}
+  - {name: league_r3, scripted: 0.15, selfplay: 0.40, pool: 0.45, scripted_eps: 0.0, scripted_policy: r3, scripted_style: -1, advance_points: 2.0}
+log:
+  every: 25
+  checkpoint_every: 250  # ~10–12 min a la velocidad informada; latest y copia histórica atómicos
+  replay_every: 0        # evita procesos de replay concurrentes durante la noche
