@@ -24,18 +24,26 @@ def sample_decisions(logits, values):
 class CudaDecisionGraph:
     """Captura sólo forward/gather/scatter; nunca RNG, física, normalización ni Adam."""
 
-    def __init__(self, device, mode="auto"):
+    def __init__(self, device, mode="auto", reuse_capture_pool=True):
         if mode not in ("auto", "graph"):
             raise ValueError(f"modo de CUDA Graph desconocido: {mode}")
         self.device, self.mode = torch.device(device), mode
         self.graph = self.input = self.outputs = self.stream = None
+        self.reuse_capture_pool = reuse_capture_pool
+        # El graph anterior mantiene vivo su pool hasta la siguiente captura.
+        # Nunca se vuelve a ejecutar: pesos/buffers/rivales se recapturan siempre.
+        self._pool_owner = None
         self.disabled_reason = None
         self.capture_seconds = 0.0
         self.captures = self.replays = 0
 
     def reset(self):
         """Llamar con el último act ya sincronizado, antes de tocar normalizadores/pesos."""
-        self.graph = self.input = self.outputs = self.stream = None
+        if self.reuse_capture_pool and self.graph is not None:
+            self._pool_owner = self.graph
+        self.graph = self.input = self.outputs = None
+        if not self.reuse_capture_pool:
+            self.stream = None
         self.capture_seconds = 0.0
         self.captures = self.replays = 0
         # Una incompatibilidad en auto se mantiene desactivada; no repetir captura/aviso 128 veces.
@@ -57,7 +65,7 @@ class CudaDecisionGraph:
             raise ValueError("CUDA Graph requiere un tensor CUDA")
         with torch.cuda.device(self.device):
             current = torch.cuda.current_stream(self.device)
-            stream = torch.cuda.Stream(device=self.device)
+            stream = self.stream if self.stream is not None else torch.cuda.Stream(device=self.device)
             stream.wait_stream(current)
             with torch.cuda.stream(stream):
                 for _ in range(3):
@@ -65,11 +73,13 @@ class CudaDecisionGraph:
             current.wait_stream(stream)
             graph = torch.cuda.CUDAGraph()
             # torch.cuda.graph sincroniza antes de capturar. El H2D inicial ya debe estar completo.
-            with torch.cuda.graph(graph, stream=stream):
+            pool = self._pool_owner.pool() if self._pool_owner is not None else None
+            with torch.cuda.graph(graph, pool=pool, stream=stream):
                 outputs = forward(flat)
             current.wait_stream(stream)
         # Mantener vivos input/output/stream y los tensores de los modelos durante todo el rollout.
         self.graph, self.input, self.outputs, self.stream = graph, flat, outputs, stream
+        self._pool_owner = None
 
     @torch.no_grad()
     def run(self, forward, flat):
@@ -83,6 +93,7 @@ class CudaDecisionGraph:
                 if self.mode != "auto" or not self._unsupported(error):
                     raise
                 self.disabled_reason = str(error)
+                self._pool_owner = self.stream = None
                 warnings.warn(f"CUDA Graph no compatible; usando decisiones eager: {error}", RuntimeWarning)
                 return forward(flat)
             finally:

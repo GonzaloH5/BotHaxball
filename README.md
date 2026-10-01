@@ -324,6 +324,46 @@ esta optimización.
 
 ### Entrenamiento CPU + GPU en Runpod
 
+#### Menos asignaciones CUDA y perfil del update
+
+Última medición aportada: callbacks **45.378 → 48.374 pasos/s reales (+6,6%)**,
+rollout **1,683 → 1,501 s**, mismo checkpoint y 97.920 muestras/iter. El update
+osciló de 0,380 a 0,427 s; no se atribuye esa oscilación a una mejora del update.
+
+El nuevo retoque reutiliza el stream y el pool privado de captura
+(`runtime.reuse_cuda_capture_pool=true`). Conserva una captura NUEVA y tres
+warmups por rollout, con pesos, normalizadores e índices de rivales actuales;
+el graph anterior sólo mantiene viva su reserva de memoria y nunca se reproduce.
+Las capturas/replays son secuenciales, no concurrentes. Puede reservar más VRAM
+entre rollouts. No elimina el coste completo de captura ni garantiza aceleración.
+
+`runtime.reuse_minibatch_obs=true` reúne las filas mediante `index_select` en un
+buffer por update. El backward se encola antes de sobrescribirlo en el mismo
+stream. Conserva permutaciones, épocas, tamaño de minibatch, descarte de cola,
+normalización, gradientes, Adam, BC, recompensas y número de muestras.
+
+La velocidad de estos dos cambios **no está medida en CUDA localmente**.
+Con entrenamiento detenido/guardado, probar en el Pod:
+
+```bash
+python -m pytest tests/test_cuda_decisions.py tests/test_minibatch_obs.py -q
+python -m tools.benchmark_multitask --config train/config_gpu_overnight.yaml --numba-threads 4 --warmup 3 --iters 15 --no-reuse-capture-pool --no-reuse-minibatch-obs
+python -m tools.benchmark_multitask --config train/config_gpu_overnight.yaml --numba-threads 4 --warmup 3 --iters 15
+```
+
+Comparar pasos/s REALES; repetir en orden inverso. Para aislar cada cambio,
+desactivar sólo uno de los dos flags. El benchmark usa copias temporales del run.
+`--profile-rollout` ahora muestra también el update CUDA: tiempo host de envío y
+eventos GPU para BC, gather, forward/loss, backward y clipping/Adam. No agrega
+sincronización por minibatch; lee eventos después de la descarga habitual de
+métricas. Los intervalos GPU incluyen huecos de envío CPU: no representan sólo
+kernels ni se suman a los host. La instrumentación agrega overhead; medir velocidad
+sin ella. `--json-output` incluye captura y, al perfilar, desglose del update.
+
+Reanudar con el mismo checkpoint y perfil habitual; para desactivar sólo este
+retoque: `--override runtime.reuse_cuda_capture_pool=false runtime.reuse_minibatch_obs=false`.
+CPU y el entrenador recurrente conservan su comportamiento previo.
+
 #### Rollout: callbacks compilados de saques y cooperación
 
 La comparación aportada del Pod validó la geometría anterior: **37.286 → 43.014

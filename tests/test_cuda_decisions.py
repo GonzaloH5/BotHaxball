@@ -3,6 +3,8 @@
 Las pruebas CUDA son estrictas (no aceptan fallback) y deben ejecutarse en el Pod.
 """
 import copy
+import json
+from contextlib import nullcontext
 from types import SimpleNamespace
 
 import numpy as np
@@ -17,6 +19,56 @@ from train.runtime import CudaRolloutTransfer, load_config
 
 
 CUDA = pytest.mark.skipif(not torch.cuda.is_available(), reason="Necesita CUDA: ejecutar en el Pod")
+
+
+@pytest.mark.parametrize("reuse", [False, True])
+def test_capture_reuses_only_pool_and_stream_never_graph(monkeypatch, reuse):
+    class Stream:
+        def wait_stream(self, other):
+            pass
+
+    class Graph:
+        def pool(self):
+            return (1, id(self))
+
+    captures, streams, forwards = [], [], []
+    current = Stream()
+
+    def new_stream(**kwargs):
+        stream = Stream()
+        streams.append(stream)
+        return stream
+
+    def capture(graph, **kwargs):
+        captures.append((graph, kwargs))
+        return nullcontext()
+
+    monkeypatch.setattr(torch.cuda, "device", lambda _: nullcontext())
+    monkeypatch.setattr(torch.cuda, "current_stream", lambda _: current)
+    monkeypatch.setattr(torch.cuda, "Stream", new_stream)
+    monkeypatch.setattr(torch.cuda, "stream", lambda _: nullcontext())
+    monkeypatch.setattr(torch.cuda, "CUDAGraph", Graph)
+    monkeypatch.setattr(torch.cuda, "graph", capture)
+    engine = CudaDecisionGraph("cuda", reuse_capture_pool=reuse)
+    flat = SimpleNamespace(device=SimpleNamespace(type="cuda"))
+    def forward(obs):
+        result = object()
+        forwards.append(result)
+        return result
+    engine._capture(forward, flat)
+    first, first_stream = engine.graph, engine.stream
+    engine.reset()
+    engine.reset()  # iterate invalida tanto al terminar como al empezar el rollout.
+    assert engine.graph is engine.input is engine.outputs is None
+    assert engine._pool_owner is (first if reuse else None)
+    engine._capture(forward, flat)
+    assert engine.graph is not first
+    assert engine._pool_owner is None
+    assert len(forwards) == 8  # tres warmups + captura, en CADA rollout.
+    assert captures[0][1]["pool"] is None
+    assert captures[1][1]["pool"] == (first.pool() if reuse else None)
+    assert (engine.stream is first_stream) == reuse
+    assert len(streams) == (1 if reuse else 2)
 
 
 def mixed_trainer(device):
@@ -173,16 +225,25 @@ def test_benchmark_profile_and_baseline_use_disposable_checkpoint(tmp_path, monk
         return trainer
     monkeypatch.setattr(benchmark, "MultiTrainer", factory)
     argv = ["benchmark", "--checkpoint", str(checkpoint), "--warmup", "1", "--iters", "1", "--profile-rollout"]
+    report = tmp_path / "benchmark.json"
+    argv.extend(["--json-output", str(report)])
     if baseline:
         argv.append("--baseline")
     if no_reuse:
         argv.append("--no-reuse-ppo-batch")
+        argv.extend(["--no-reuse-capture-pool", "--no-reuse-minibatch-obs"])
     monkeypatch.setattr(sys, "argv", argv)
     benchmark.main()
     output = capsys.readouterr().out
+    summary = json.loads(report.read_text(encoding="utf-8"))
+    assert summary["cuda_captures"] == summary["cuda_replays"] == summary["cuda_capture_seconds"] == 0
+    assert "timing/update_forward_loss_seconds" in summary["update_profile_seconds"]
     assert "pasos/s reales" in output and "Desglose inclusivo" in output
     assert trainers[0].cuda_decisions == ("legacy" if baseline else "auto")
     assert trainers[0].cfg["runtime"]["reuse_ppo_batch"] == (not (baseline or no_reuse))
+    if no_reuse:
+        assert trainers[0].cfg["runtime"]["reuse_cuda_capture_pool"] is False
+        assert trainers[0].cfg["runtime"]["reuse_minibatch_obs"] is False
     assert trainers[0]._decision_profile is None
     assert checkpoint.read_bytes() == before
     assert not list((tmp_path / "runs").glob("_benchmark_*"))
@@ -225,14 +286,17 @@ def test_graph_matches_mixed_policies_changes_inputs_and_keeps_rng_outside():
 
 
 @CUDA
-def test_reset_refreshes_weights_norm_and_opponents():
+@pytest.mark.parametrize("reuse", [False, True])
+def test_reset_refreshes_weights_norm_and_opponents(reuse):
     trainer, flat = mixed_trainer("cuda")
-    trainer._decision_graph = CudaDecisionGraph(trainer.device, "graph")
+    trainer._decision_graph = CudaDecisionGraph(trainer.device, "graph", reuse_capture_pool=reuse)
     trainer._decision_profile = None
     old_logits, _ = trainer._cuda_inference(flat)
     old_logits = old_logits.clone()
     torch.cuda.synchronize(trainer.device)
     trainer._reset_decision_graph()
+
+
     assert trainer._decision_graph.graph is None
     old_var = trainer.model.self_norm.var  # mantener viva para verificar cambio real de dirección
     with torch.no_grad():
@@ -248,6 +312,25 @@ def test_reset_refreshes_weights_norm_and_opponents():
     assert trainer._decision_graph.captures == trainer._decision_graph.replays == 1
     torch.cuda.synchronize(trainer.device)
     trainer._reset_decision_graph()
+
+
+@CUDA
+def test_capture_pool_handles_changing_batch_layouts():
+    engine = CudaDecisionGraph("cuda", "graph")
+    pool = None
+    for rows in (16, 7, 33, 16):
+        flat = torch.randn(rows, 9, device="cuda")
+        forward = lambda x: (x.sin() + x.square(), x.sum(-1))
+        cpu_rng, gpu_rng = torch.get_rng_state(), torch.cuda.get_rng_state()
+        actual = engine.run(forward, flat)
+        torch.testing.assert_close(actual, forward(flat))
+        assert torch.equal(cpu_rng, torch.get_rng_state())
+        assert torch.equal(gpu_rng, torch.cuda.get_rng_state())
+        if pool is not None:
+            assert engine.graph.pool() == pool
+        pool = engine.graph.pool()
+        torch.cuda.synchronize()
+        engine.reset()
 
 
 @CUDA

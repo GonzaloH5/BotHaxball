@@ -99,6 +99,8 @@ def main():
     ap.add_argument("--profile-rollout", action="store_true", help="Desglose inclusivo por componente (añade overhead)")
     ap.add_argument("--no-reward-geometry", action="store_true", help="Geometría de rewards NumPy para comparar, sin cambiar física/red/PPO")
     ap.add_argument("--no-callbacks", action="store_true", help="Callbacks de saques/cooperación de referencia; conserva geometría y CUDA")
+    ap.add_argument("--no-reuse-capture-pool", action="store_true", help="Crear stream/pool nuevos en cada captura CUDA para comparar")
+    ap.add_argument("--no-reuse-minibatch-obs", action="store_true", help="Asignar observaciones nuevas en cada minibatch CUDA para comparar")
     ap.add_argument("--no-reuse-ppo-batch", action="store_true", help="Preparación anterior: asignar/pinear cada lote para comparar")
     ap.add_argument("--no-cache-bc-logits", action="store_true", help="Recalcular referencia BC en cada época PPO para comparar CPU")
     ap.add_argument("--no-optimize-cpu", action="store_true", help="Desactivar agrupamiento CPU y buffer de minibatch; conserva cache BC")
@@ -132,6 +134,10 @@ def main():
         cfg["runtime"]["optimize_reward_geometry"] = False
     if args.no_callbacks:
         cfg["runtime"]["optimize_callbacks"] = False
+    if args.no_reuse_capture_pool:
+        cfg["runtime"]["reuse_cuda_capture_pool"] = False
+    if args.no_reuse_minibatch_obs:
+        cfg["runtime"]["reuse_minibatch_obs"] = False
     if args.profile_rollout:
         cfg["runtime"]["profile_update"] = True
     if args.baseline or args.no_reuse_ppo_batch:
@@ -223,6 +229,13 @@ def main():
                            extra_seconds=extras, learning_metrics=metrics)
             summary.update(cpu_seconds=cpu_seconds, cpu_core_equivalents=cpu_cores,
                            cpu_budget=budget, cpu_budget_percent=100 * cpu_cores / budget)
+            summary.update(cuda_capture_seconds=sum(row[4] for row in measured) / args.iters,
+                           cuda_captures=sum(row[5] for row in measured) / args.iters,
+                           cuda_replays=sum(row[6] for row in measured) / args.iters)
+            if profile:
+                summary["update_profile_seconds"] = {
+                    key: sum(row[key] for row in update_timings[args.warmup:]) / args.iters
+                    for key in update_timings[-1]}
             if args.json_output:
                 args.json_output.parent.mkdir(parents=True, exist_ok=True)
                 args.json_output.write_text(json.dumps(summary, indent=2), encoding="utf-8")
@@ -234,17 +247,19 @@ def main():
                 if trainer._decision_graph is not None and trainer._decision_graph.disabled_reason is not None:
                     print(f"fallback eager: {trainer._decision_graph.disabled_reason}")
                 print(f"buffers PPO reutilizados: {trainer._batch_transfer is not None}")
+                print(f"pool/stream de captura reutilizados: {cfg['runtime'].get('reuse_cuda_capture_pool', True)} "
+                      f"| obs de minibatch reutilizadas: {cfg['runtime'].get('reuse_minibatch_obs', True)}")
                 if trainer._batch_transfer is not None:
                     for key in batch_stats[-1]:
                         average = sum(row[key] for row in batch_stats[args.warmup:]) / args.iters
                         print(f"  {key}: {average:.4f}/iter")
             if profile:
                 profile.report(args.iters)
-                if trainer.device.type == "cpu":
-                    print("\nDesglose update CPU (incluido en update):")
-                    for key in update_timings[-1]:
-                        average = sum(row[key] for row in update_timings[args.warmup:]) / args.iters
-                        print(f"  {key}: {average:.3f} s/iter")
+                print("\nDesglose update: host y GPU stream NO se suman (incluido en update).")
+                print("GPU stream incluye huecos de envío CPU; no mide saturación ni sólo kernels.")
+                for key in update_timings[-1]:
+                    average = sum(row[key] for row in update_timings[args.warmup:]) / args.iters
+                    print(f"  {key}: {average:.3f} s/iter")
             if decision_profile:
                 if trainer.cuda_decisions == "legacy":
                     print("\nNota: en legacy, inferencia también incluye los muestreos; su fase muestreo no es comparable por separado.")

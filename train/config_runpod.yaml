@@ -9,3 +9,5 @@ runtime:
   optimize_rollout: true  # false: observaciones/física/bots de referencia para comparar
   cuda_decisions: auto    # graph determinista por rollout + muestreo fresco; avisa si usa fallback eager
   reuse_ppo_batch: true   # host pinned y GPU persistentes para preparar PPO sin crear/liberar cada lote
+  reuse_cuda_capture_pool: true  # recaptura actualizada, reutilizando stream y pool privado anterior
+  reuse_minibatch_obs: true      # index_select a un buffer por update; mismo orden y muestras PPO

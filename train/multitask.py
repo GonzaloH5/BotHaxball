@@ -148,7 +148,8 @@ class MultiTrainer:
         self._batch_transfer = (PpoBatchTransfer(self.device)
                                 if self.device.type == "cuda" and cfg.get("runtime", {}).get("reuse_ppo_batch", True)
                                 else None)
-        self._decision_graph = (CudaDecisionGraph(self.device, self.cuda_decisions)
+        self._decision_graph = (CudaDecisionGraph(self.device, self.cuda_decisions,
+                                reuse_capture_pool=cfg.get("runtime", {}).get("reuse_cuda_capture_pool", True))
                                 if self.device.type == "cuda" and self.cuda_decisions in ("auto", "graph") else None)
         if self.device.type == "cuda":
             print(f"decisiones CUDA: {self.cuda_decisions}", flush=True)
@@ -1090,10 +1091,30 @@ class MultiTrainer:
         cnt = 0
         bc_coef = getattr(self, "bc_coef", 0.0)
         cpu_fast = b["obs"].device.type == "cpu" and getattr(self, "optimize_cpu", False)
-        obs_buffer = b["obs"].new_empty((mb, b["obs"].shape[1])) if cpu_fast else None
+        reuse_obs = cpu_fast or (b["obs"].device.type == "cuda" and
+                                self.cfg.get("runtime", {}).get("reuse_minibatch_obs", True))
+        # El backward termina antes de sobrescribir este buffer en el mismo stream.
+        # Sólo reutilizar entradas sin gradiente; el grafo de autograd sigue siendo nuevo.
+        reuse_obs = reuse_obs and not b["obs"].requires_grad
+        obs_buffer = b["obs"].new_empty((mb, b["obs"].shape[1])) if reuse_obs else None
         profile = self.cfg.get("runtime", {}).get("profile_update", False)
         timings = dict(bc_cache=0.0, gather=0.0, forward_loss=0.0, backward=0.0, optimizer=0.0)
+        gpu_events = []
+
+        def gpu_start():
+            if profile and b["obs"].device.type == "cuda":
+                event = torch.cuda.Event(enable_timing=True)
+                event.record(torch.cuda.current_stream(b["obs"].device))
+                return event
+            return None
+
+        def gpu_finish(key, event):
+            if event is not None:
+                end = gpu_start()
+                gpu_events.append((key, event, end))
+
         started = time.perf_counter() if profile else 0.0
+        gpu_started = gpu_start()
         # La referencia BC está en eval y congelada: obs y normalizadores de
         # ese modelo no cambian durante PPO. Cache local, nunca en checkpoint.
         bc_logp = None
@@ -1109,16 +1130,20 @@ class MultiTrainer:
                     bc_logp[start:start + len(chunk)].copy_(chunk)
         if profile:
             timings["bc_cache"] = time.perf_counter() - started
+            gpu_finish("bc_cache", gpu_started)
         for _ in range(p["epochs"]):
             perm = torch.randperm(n, device=b["obs"].device)
             for s in range(0, n - mb + 1, mb):
                 i = perm[s:s + mb]
                 started = time.perf_counter() if profile else 0.0
-                obs = (torch.index_select(b["obs"], 0, i, out=obs_buffer) if cpu_fast else b["obs"][i])
+                gpu_started = gpu_start()
+                obs = (torch.index_select(b["obs"], 0, i, out=obs_buffer) if reuse_obs else b["obs"][i])
                 if profile:
                     now = time.perf_counter()
                     timings["gather"] += now - started
                     started = now
+                    gpu_finish("gather", gpu_started)
+                    gpu_started = gpu_start()
                 logits, v = self.model(obs)
                 dist = torch.distributions.Categorical(logits=logits, validate_args=False)
                 ratio = torch.exp(dist.log_prob(b["act"][i]) - b["logp"][i])
@@ -1139,15 +1164,20 @@ class MultiTrainer:
                     now = time.perf_counter()
                     timings["forward_loss"] += now - started
                     started = now
+                    gpu_finish("forward_loss", gpu_started)
+                    gpu_started = gpu_start()
                 loss.backward()
                 if profile:
                     now = time.perf_counter()
                     timings["backward"] += now - started
                     started = now
+                    gpu_finish("backward", gpu_started)
+                    gpu_started = gpu_start()
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), p["max_grad_norm"])
                 self.opt.step()
                 if profile:
                     timings["optimizer"] += time.perf_counter() - started
+                    gpu_finish("optimizer", gpu_started)
                 with torch.no_grad():
                     agg += torch.stack((pg, vl, ent, ((ratio - 1) - torch.log(ratio)).mean(),
                                         ((ratio - 1).abs() > p["clip"]).float().mean(), bc_kl))
@@ -1156,6 +1186,12 @@ class MultiTrainer:
         result = dict(zip(keys, (agg / max(cnt, 1)).cpu().tolist()))
         if profile:
             result.update({f"timing/update_{key}_seconds": value for key, value in timings.items()})
+            # La descarga de agg ya sincronizó el stream. Sin synchronize adicional.
+            gpu_timings = dict.fromkeys(timings, 0.0)
+            for key, start, end in gpu_events:
+                gpu_timings[key] += start.elapsed_time(end) / 1000
+            if gpu_events:
+                result.update({f"timing/update_gpu_{key}_seconds": value for key, value in gpu_timings.items()})
         return result
 
 
