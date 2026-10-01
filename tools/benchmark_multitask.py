@@ -82,6 +82,7 @@ def main():
                     help="legacy: decisiones anteriores; eager: un muestreo; auto/graph: CUDA Graph (graph exige captura)")
     ap.add_argument("--profile-rollout", action="store_true", help="Desglose inclusivo por componente (añade overhead)")
     ap.add_argument("--no-reuse-ppo-batch", action="store_true", help="Preparación anterior: asignar/pinear cada lote para comparar")
+    ap.add_argument("--no-cache-bc-logits", action="store_true", help="Recalcular referencia BC en cada época PPO para comparar CPU")
     args = ap.parse_args()
     if args.iters < 1 or args.warmup < 1:
         ap.error("iters y warmup deben ser positivos (Numba necesita calentamiento)")
@@ -101,6 +102,8 @@ def main():
     cfg.setdefault("runtime", {}).setdefault("optimize_rollout", True)
     if args.baseline:
         cfg["runtime"]["optimize_rollout"] = False
+    if args.no_cache_bc_logits:
+        cfg["runtime"]["cache_bc_logits_cpu"] = False
     if args.baseline or args.no_reuse_ppo_batch:
         cfg["runtime"]["reuse_ppo_batch"] = False
     else:

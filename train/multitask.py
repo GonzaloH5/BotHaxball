@@ -972,6 +972,17 @@ class MultiTrainer:
         agg = torch.zeros(len(keys), device=b["obs"].device)
         cnt = 0
         bc_coef = getattr(self, "bc_coef", 0.0)
+        # La referencia BC está en eval y congelada: obs y normalizadores de
+        # ese modelo no cambian durante PPO. Cache local, nunca en checkpoint.
+        bc_logp = None
+        if (bc_coef > 0 and b["obs"].device.type == "cpu" and p["epochs"] > 1
+                and self.cfg.get("runtime", {}).get("cache_bc_logits_cpu", False)):
+            with torch.no_grad():
+                for start in range(0, n, mb):
+                    chunk = torch.log_softmax(self.bc_model.logits(b["obs"][start:start + mb]), -1)
+                    if bc_logp is None:
+                        bc_logp = chunk.new_empty((n, chunk.shape[-1]))
+                    bc_logp[start:start + len(chunk)].copy_(chunk)
         for _ in range(p["epochs"]):
             perm = torch.randperm(n, device=b["obs"].device)
             for s in range(0, n - mb + 1, mb):
@@ -987,7 +998,8 @@ class MultiTrainer:
                 bc_kl = loss.new_zeros(())
                 if bc_coef > 0:
                     with torch.no_grad():
-                        lb = torch.log_softmax(self.bc_model.logits(b["obs"][i]), -1)
+                        lb = (bc_logp[i] if bc_logp is not None else
+                              torch.log_softmax(self.bc_model.logits(b["obs"][i]), -1))
                     bc_kl = (lb.exp() * (lb - torch.log_softmax(logits, -1))).sum(-1).mean()
                     loss = loss + bc_coef * bc_kl
                 self.opt.zero_grad(set_to_none=True)

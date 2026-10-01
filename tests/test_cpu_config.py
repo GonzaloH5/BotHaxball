@@ -10,5 +10,5 @@ def test_cpu_profile_preserves_training_contract():
     original = load_config(root / "train/config_runpod.yaml")
     expected = copy.deepcopy(original)
     expected["ppo"].update(device="cpu", torch_threads=8, numba_threads=12)
-    expected["runtime"].update(cuda_decisions="legacy", reuse_ppo_batch=False)
+    expected["runtime"].update(cuda_decisions="legacy", reuse_ppo_batch=False, cache_bc_logits_cpu=True)
     assert load_config(root / "train/config_cpu.yaml") == expected

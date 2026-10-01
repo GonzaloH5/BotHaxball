@@ -8,3 +8,4 @@ ppo:
 runtime:
   cuda_decisions: legacy
   reuse_ppo_batch: false
+  cache_bc_logits_cpu: true  # una inferencia BC por muestra/lote, reutilizada en épocas PPO

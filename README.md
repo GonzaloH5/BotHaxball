@@ -243,6 +243,31 @@ No cumple la comparación estricta de aprendizaje conservado. La RAM libre por s
 sola no garantiza una mejora. Los objetivos 5.7–6k o superiores se verifican en el
 Pod antes de adoptar una configuración; las mediciones locales no los demuestran.
 
+#### Referencia BC reutilizada durante el update CPU
+
+`config_cpu.yaml` activa `runtime.cache_bc_logits_cpu=true`. La referencia BC está
+congelada y en eval: se calculan sus log-probabilidades una vez por lote, en bloques
+del tamaño de minibatch, y se reutilizan en las épocas PPO. El cache vive sólo durante
+ese update y se reconstruye con las observaciones del siguiente lote. Se mantienen
+la fórmula KL, coeficiente BC, optimizador, muestras, permutaciones y número de updates.
+Las diferencias de tamaño/orden de inferencia pueden introducir redondeos de coma
+flotante; no se promete una trayectoria bit a bit idéntica. CUDA y recurrente conservan
+su ruta; con BC desactivada o una sola época no se crea cache.
+
+Para 106.496 muestras y 18 acciones float32 reserva ~7,3 MiB adicionales. La medición
+aportada del Pod fue 4.147 pasos/s reales, rollout 13,064 s, prep 0,149 s y update
+10,109 s, con Torch 8/física 12. No se ha medido todavía la aceleración de este cache.
+Guardar/detener el entrenamiento y comparar desde el mismo checkpoint, sin cambiar hilos:
+
+```bash
+python -m pytest tests/test_cpu_bc_cache.py tests/test_cpu_config.py -q
+python -m tools.benchmark_multitask --config train/config_cpu.yaml --warmup 3 --iters 15 --no-cache-bc-logits
+python -m tools.benchmark_multitask --config train/config_cpu.yaml --warmup 3 --iters 15
+```
+
+Repetir en orden inverso si hay ruido. Si mejora, reanudar con el perfil CPU habitual.
+Para desactivarlo al entrenar: `--override runtime.cache_bc_logits_cpu=false`.
+
 ### Entrenamiento CPU + GPU en Runpod
 
 El reparto de rivales compensa las fracciones entre rollouts: un 5% de scripted
