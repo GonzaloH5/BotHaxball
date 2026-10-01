@@ -354,7 +354,7 @@ cooperación existente. Los pases ya requieren retención/utilidad, controlan
 devoluciones y tienen un cap por posesión de 0,01 por defecto; no se agregan pagos
 por tocar, despejar, atajar o completar cualquier pase.
 
-La nueva Φ usa cuatro roles geométricos: arquero/líbero, presión/conductor y dos
+La Φ original (formation_version=1) usa cuatro roles geométricos: arquero/líbero, presión/conductor y dos
 apoyos/coberturas diagonales. Las zonas se desplazan con pelota y ventaja geométrica
 de control; ataque abre el equipo y defensa lo compacta. Se evalúan las 24
 asignaciones: cada jugador ocupa un solo rol, sin identidades permanentes, con
@@ -362,7 +362,7 @@ una banda de tolerancia en lugar de un punto exacto. No se añaden IDs de roles 
 la observación ni una red separada por posición. La guía puede ser imperfecta:
 no es una formación óptima demostrada ni una rotación con memoria/histeresis.
 
-Φ combina **65% estructura + 35% balance de amenaza/peligro**, acotada en [0,1].
+Φ v1 combina **65% estructura + 35% balance de amenaza/peligro**, acotada en [0,1].
 Amenaza usa distancia al arco, apertura angular, control geométrico y cobertura
 de tres líneas de tiro. Es una heurística, NO una probabilidad de gol calibrada.
 Los compañeros reciben la misma diferencia de potencial; no bonos individuales
@@ -387,9 +387,79 @@ Estilos R3 existentes: **0 equilibrado, 1 agresivo, 2 conservador**. La guía ac
 mantener el estilo mezclado de cada rival durante todo el partido, en lugar de
 cambiarlo tras cada gol/reset PPO; se alterna al reiniciar un partido completo.
 La liga y PFSP siguen intactos. No se inventaron tres nuevos bots ni se supone
-que cubren todos los estilos humanos. La observación/reglas del agente no cambian.
+que cubren todos los estilos humanos. No se agregan features privados al agente.
 `rs4_4v4` es `rs_one` con saques simplificados, sin faltas/slides/tiros libres;
 `glh_4v4` y `rs_4v4` son modalidades distintas del catálogo.
+
+#### RS4 v2: córners, bloque dinámico e imitación específica
+
+La configuración recibida el 01/10 conserva `bc_reference: runs/bc2/bc.pt`: la
+rama hereda el generalista y su imitador, no selecciona automáticamente las recs RS4.
+Hay una copia actualizada, sin modificar el original, en
+`reports/rs4_config_v2_20261001.yaml`. Mantiene PPO, BC y el comienzo del decay.
+Es preferible actualizar el config vivo del Pod, con el entrenamiento detenido:
+
+```bash
+python -m tools.upgrade_rs4 --config runs/rs4/config.yaml --renew-guide
+python -u -m train.multitask --config runs/rs4/config.yaml --run rs4 --resume
+```
+
+El actualizador guarda un backup único de config. `--renew-guide` es explícito:
+abre una fase v2 de guía **0.08 → 0 en 200M pasos desde latest**, sin reiniciar LR,
+entropía, Adam, pesos o dificultad. Sin ese flag mantiene el decay anterior; si ya
+llegó a cero, cambiar sólo formación no tendrá efecto. No repetir renew-guide.
+La versión de métricas RS4 pasa a 2 y limpia ventanas no comparables, no la dificultad.
+También aplica retención de checkpoints 5/30 minutos y 6 históricos.
+
+**Córners/saques:** antes del plazo el rival sigue bloqueado. No se pudo reproducir
+un robo a los 2–3 segundos con las reglas actuales. Se corrigió otra debilidad:
+en RS One 4v4, vencer el plazo ya no deja la pelota libre para el rival, sino que
+termina el episodio PPO y reinicia posiciones sin inventar un gol. Es la misma
+regla en entrenamiento/evaluación/replays. En el perfil v2 se penaliza al equipo
+que no ejecutó con -0.25 y se añade potencial compartido de acercamiento acotado
+a 0.05. No se fuerza ninguna tecla ni se mueve al ejecutor hacia la pelota.
+El bonus de córner útil sigue requiriendo ejecución hacia dentro y continuidad.
+El log/TensorBoard muestra intentos, córners útiles y expiraciones por color;
+los números de consola corresponden al rollout actual, no al partido que se observa.
+
+**Bloque:** v2 combina 50% estructura/50% amenaza-peligro. Un último hombre móvil
+adelanta con pelota avanzada y ventaja de acceso; al perder esa ventaja recupera
+profundidad. Hay portador/presionante, apoyo de balance detrás y amenaza por delante.
+Se prueban las 24 asignaciones y las dos orientaciones laterales; no hay identidades
+fijas ni sesgo de banda. Sigue siendo una heurística geométrica, sin posesión real,
+memoria de transiciones ni promesa de aprender presión orientada perfecta.
+
+**Grabaciones e imitador RS4 independiente:**
+
+```bash
+python -m tools.fetch_mrhost_replays --query Rsx4 --team-size 4 --folder rsx4 --stadium rs_one --min-duration 120 --max-results 100
+python -m tools.build_bc_dataset --folders rsx4 --stadium rs_one --team-size 4 --out data/bc_rs4_v2
+python -m train.bc --run bc_rs4_v2_20261001 --config runs/rs4/config.yaml --data-dir data/bc_rs4_v2 --folders rsx4 --stadium rs_one --team-size 4 --init-from runs/bc2/bc.pt --epochs 4 --lr 0.0001 --threads 4
+```
+
+`--team-size` del downloader exige algún tramo 4v4, mientras que el filtro de BC
+descarta **todas** las filas de otros formatos. El conversor filtra cada tramo por
+`rs_one` y 4v4, incluso cuando se cambia el mapa durante el replay; el nuevo dataset
+queda separado del general. El filtro BC exige `rs_one`, no sólo una carpeta llamada
+rsx4; shards antiguos con powershot se excluyen.
+La validación se separa por replay. El fine-tuning copia pesos/normalizadores de
+BC y entrena un imitador nuevo; no toca el PPO ni sobrescribe bc2.
+La descarga es resumible: aumentar max-results revisa también duplicados ya presentes.
+Los archivos descargados, datasets y el nuevo imitador no se incluyen automáticamente
+en un git pull. Hay que copiarlos al Pod o ejecutar este flujo allí.
+
+Se generó localmente un imitador RS4, con mejor acierto humano validado;
+eso **no demuestra** mayor winrate. Tras probarlo y disponer del archivo en el Pod,
+para cambiar sólo la referencia (sin reiniciar la política PPO):
+
+```bash
+python -u -m train.multitask --config runs/rs4/config.yaml --run rs4 --resume --override bc_reference=runs/bc_rs4_v2_20261001/bc.pt
+```
+
+El override explícito evita que preserve_bc_reference restaure bc2. No usar
+`--init-from` en train.multitask para aplicar esta referencia. Volver a bc2 con el
+mismo override permite retirar la referencia nueva, no deshace aprendizaje realizado.
+Si se exige gate scripted R3, regenerar su informe tras cambiar haxball_env.py.
 
 Comparar, con entrenamiento detenido, contra cada estilo y el padre congelado:
 
@@ -415,6 +485,29 @@ esta guía en la PC local. Si el config guardado exige gate R3, cambiar
 
 Restaurar la config del backup permite retirar la guía; no revierte el aprendizaje
 ya realizado. El generalista `parent.pt`/`runs/multi/latest.pt` permanece intacto.
+
+#### Salidas defensivas RS4
+
+El perfil táctico usa `reward.rs4_defensive_out_scale=0.2`: reduce la penalización
+base de salida (normalmente -0.10) a -0.02 sólo en **laterales** tras contacto único
+en juego abierto, en zona propia (`x < -0.55 * goal_x` en coordenadas del equipo),
+con rival a menos de `0.12 * goal_x` y contacto de hace como máximo 120 ticks.
+La presión se estima con posiciones rivales al inicio de la decisión (hasta tres
+ticks antes con frame_skip=3), no con una predicción de gol. Contactos posteriores
+reemplazan el contexto; contactos ambiguos lo invalidan. No hay bonus por despejar.
+Líneas de fondo/córners, pelotas trabadas y pérdidas sin esa evidencia mantienen
+la penalización normal. No cambia física, posesión ni saque concedido.
+El valor por defecto 1 conserva el comportamiento anterior y las otras modalidades.
+
+Para una rama RS4 ya configurada, detener guardando y, tras actualizar el código,
+reanudar sin volver a ejecutar el configurador ni reiniciar el decay:
+
+```bash
+python -u -m train.multitask --config runs/rs4/config.yaml --run rs4 --resume --override reward.rs4_defensive_out_scale=0.2
+```
+
+Con `reward.rs4_defensive_out_scale=1.0` se retira sólo este cambio. La formación
+táctica no se ha modificado: su sesgo conservador requiere evaluación aparte.
 
 Esta es una rama de **entrenamiento**, no otra arquitectura ni una rama Git.
 `tools.prepare_rs4` crea un run separado desde un checkpoint PPO completo y su

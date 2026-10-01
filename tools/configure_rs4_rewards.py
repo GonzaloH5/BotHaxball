@@ -36,7 +36,9 @@ def configure(run="rs4"):
     profile = load_config(PROFILE)
     cfg["rs4_tactics"] = copy.deepcopy(profile["rs4_tactics"])
     cfg["rs4_tactics"]["start_steps"] = int(checkpoint["steps"])
-    for key in ("w_near_ball", "kick_to_goal", "w_spread", "team_spread_floor"):
+    cfg.setdefault("task_metric_versions", {})["rs4_4v4"] = profile["task_metric_versions"]["rs4_4v4"]
+    for key in ("w_near_ball", "kick_to_goal", "w_spread", "team_spread_floor", "rs4_defensive_out_scale",
+                "rs4_restart_approach", "rs4_restart_stall"):
         cfg["reward"][key] = profile["reward"][key]
     validate(cfg)
     # Backup único y publicación atómica; jamás cambiar latest.pt/parent.pt.

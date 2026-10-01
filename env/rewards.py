@@ -27,6 +27,9 @@ class RewardConfig:
     kickoff_stall: float = 0.5      # penalidad al equipo que no saca a tiempo (evita "trabar" el partido)
     w_spread: float = 0.3           # Φ de separación entre compañeros (sólo con equipos >1)
     out_penalty: float = 0.1        # pelota afuera: -out_penalty al equipo que la tocó último
+    rs4_defensive_out_scale: float = 1.0  # opt-in: lateral defensivo bajo presión, nunca bonus
+    rs4_restart_approach: float = 0.0  # potencial compartido de acercamiento al ejecutor más próximo
+    rs4_restart_stall: float = 0.0     # >0: timeout de saque RS4 termina episodio, sin robo posterior
     kickoff_approach: float = 1.0   # durante el saque propio: premio por acercarse a la pelota
                                     # (progreso en fracción de spawnDistance; llegar ~ +1). No decae.
     gamma: float = 0.995

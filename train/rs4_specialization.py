@@ -9,6 +9,8 @@ def validate(cfg):
     tasks = {name for stage in cfg["stages"] for name in stage["tasks"]}
     if tasks != {"rs4_4v4"}:
         raise ValueError("rs4_tactics sólo se permite en la rama exclusiva rs4_4v4")
+    if setting.get("formation_version", 1) not in (1, 2):
+        raise ValueError("formation_version debe ser 1 o 2")
     for key in ("coef", "coef_final"):
         value = setting[key]
         if not math.isfinite(value) or not 0 <= value <= 0.25:

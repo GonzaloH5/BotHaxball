@@ -226,6 +226,7 @@ def test_configure_tactics_is_opt_in_preserves_ppo_and_checkpoints(source_run):
     resumed = MultiTrainer(cfg, "rs4", True)
     try:
         assert resumed.slots[0].env.rcfg.rs4_tactical_coef == .12
+        assert resumed.slots[0].env.rcfg.rs4_defensive_out_scale == .2
         assert resumed.slots[0].env.hold_scripted_style_for_match
         resumed.iterate()
     finally:

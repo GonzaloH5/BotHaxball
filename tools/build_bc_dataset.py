@@ -184,7 +184,8 @@ def replay_stadium(hbs: Path, meta: dict) -> tuple[str, int]:
     return str(path), n_discs
 
 
-def process_replay(file: Path, meta: dict, stride: int, tmp: Path, loaders: dict, rng, cat: dict) -> dict | None:
+def process_replay(file: Path, meta: dict, stride: int, tmp: Path, loaders: dict, rng, cat: dict,
+                   stadium_filter=None, team_size=None) -> dict | None:
     node("bridge/replay_to_jsonl.js", file, "--out", tmp, "--max-minutes", 120)
     jsonl = max(tmp.glob("*.jsonl"), key=lambda p: p.stat().st_mtime)
     # el admin puede cambiar el mapa a mitad del replay: cada tick usa el estadio vigente (eventos stadium_change)
@@ -215,10 +216,14 @@ def process_replay(file: Path, meta: dict, stride: int, tmp: Path, loaders: dict
         _, path, n_discs, m = changes[bisect.bisect_right(frames, t["frame"]) - 1]
         if m is None:
             continue
+        if stadium_filter is not None and m["stadium"] != stadium_filter:
+            continue
         players = sorted(t["players"], key=lambda p: (p["team"], p["id"]))
         n_red = sum(p["team"] == 1 for p in players)
         n_blue = len(players) - n_red
         if n_red == 0 or n_red != n_blue or any(p["disc"] < 0 for p in players):
+            continue
+        if team_size is not None and n_red != team_size:
             continue
         if len(t["discs"]) != n_discs + len(players):  # layout inesperado: se saltea el tick
             continue
@@ -270,7 +275,13 @@ def main():
     ap.add_argument("--folders", default=None)
     ap.add_argument("--limit", type=int, default=0, help="máximo de replays por carpeta (0 = todos)")
     ap.add_argument("--overwrite", action="store_true")
+    ap.add_argument("--stadium", default=None, help="filtra cada tramo, incluso cambios de mapa dentro del replay")
+    ap.add_argument("--team-size", type=int, default=None)
+    ap.add_argument("--out", default=None, help="dataset separado; RS4: data/bc_rs4_v2")
     a = ap.parse_args()
+    if a.team_size is not None and a.team_size < 1:
+        ap.error("--team-size debe ser >=1")
+    out_root = Path(a.out).resolve() if a.out else OUT
     cat = catalog_by_name()
     folders = a.folders.split(",") if a.folders else sorted(p.name for p in SRC.iterdir() if p.is_dir())
     rng = np.random.default_rng(0)
@@ -300,18 +311,26 @@ def main():
                     continue
                 if a.limit and done >= a.limit:
                     break
-                out = OUT / folder / (Path(r["name"]).stem + ".npz")
+                out = out_root / folder / (Path(r["name"]).stem + ".npz")
                 if out.exists() and not a.overwrite:
+                    if a.stadium or a.team_size:
+                        with np.load(out) as cached:
+                            old_stadium = str(cached["selection_stadium"]) if "selection_stadium" in cached else ""
+                            old_team = int(cached["selection_team_size"]) if "selection_team_size" in cached else 0
+                        if old_stadium != (a.stadium or "") or old_team != (a.team_size or 0):
+                            raise ValueError(f"{out}: filtros distintos o desconocidos; usar --out en un directorio nuevo")
                     done += 1
                     continue
-                res = process_replay(Path(r["file"]), meta, a.stride, tmp, loaders, rng, cat)
+                res = process_replay(Path(r["file"]), meta, a.stride, tmp, loaders, rng, cat,
+                                     a.stadium, a.team_size)
                 if res is None:
                     print(f"  {folder}/{r['name']}: sin muestras (equipos desparejos todo el partido?)")
                     continue
                 out.parent.mkdir(parents=True, exist_ok=True)
                 lag_arrays = {f"act_lag{lag}".replace("-", "m"): np.concatenate(v) for lag, v in res["lags"].items()}
                 np.savez_compressed(out, act=np.concatenate(res["act"]), T=np.concatenate(res["T"]), **lag_arrays,
-                                    weight=np.float32(WEIGHTS.get(folder, 1.0)), stadium=meta["stadium"],
+                                    weight=np.float32(WEIGHTS.get(folder, 1.0)), stadium=a.stadium or meta["stadium"],
+                                    selection_stadium=a.stadium or "", selection_team_size=a.team_size or 0,
                                     powershot=meta["powershot"], out_of_bounds=meta["out_of_bounds"],
                                     **{f"obs_{i}": o for i, o in enumerate(res["obs"])})
                 n = sum(len(x) for x in res["act"])
@@ -321,7 +340,7 @@ def main():
                       f"({res['n_ticks'] / 3600:.0f} min)", flush=True)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
-    print(f"\ntotal nuevo: {total:,} muestras en {OUT}")
+    print(f"\ntotal nuevo: {total:,} muestras en {out_root}")
 
 
 if __name__ == "__main__":

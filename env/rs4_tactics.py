@@ -40,7 +40,46 @@ def _threat(ball, attackers, defenders, gx, gh):
 
 
 @njit(cache=True)
-def components(player_pos, player_team, ball_pos, gx, fh, gh):
+def dynamic_targets(ball, control, gx, fh, gh, wing=1.0):
+    """Último hombre móvil, portador/presión, balance y profundidad.
+
+    Control geométrico, NO posesión real. Evaluar ambos wings evita sesgo vertical.
+    El bloque sólo sube mucho si pelota y ventaja de acceso permiten atacar.
+    """
+    advance = min(1.0, max(0.0, .5 + .5 * ball[0] / gx))
+    attack = control * advance
+    targets = np.empty((4, 2))
+    targets[0, 0] = max(-.96 * gx, min((-.94 + .72 * attack) * gx, ball[0] - .48 * gx))
+    targets[0, 1] = max(-.6 * gh, min(.6 * gh, .22 * ball[1]))
+    targets[1, 0] = max(-.9 * gx, min(.9 * gx, ball[0] - .06 * (1 - control) * gx))
+    targets[1, 1] = max(-.9 * fh, min(.9 * fh, ball[1]))
+    targets[2, 0] = max(-.82 * gx, min(.75 * gx, ball[0] - (.30 - .14 * control) * gx))
+    targets[3, 0] = max(-.78 * gx, min(.88 * gx, ball[0] + (.02 + .36 * control) * gx))
+    width = (.16 + .18 * control) * fh
+    targets[2, 1] = max(-.8 * fh, min(.8 * fh, .40 * ball[1] - wing * width))
+    targets[3, 1] = max(-.8 * fh, min(.8 * fh, .40 * ball[1] + wing * width))
+    return targets
+
+
+@njit(cache=True)
+def _formation_score(own, targets, gx, version):
+    costs = np.empty((4, 4))
+    weights = (0.20, 0.25, 0.25, 0.30) if version == 2 else (0.30, 0.20, 0.25, 0.25)
+    for p in range(4):
+        for role in range(4):
+            distance = math.hypot(own[p, 0] - targets[role, 0], own[p, 1] - targets[role, 1])
+            costs[p, role] = weights[role] * (1 - math.exp(-max(0.0, distance - 0.06 * gx) / (0.22 * gx)))
+    best = 1e30
+    for assignment in ASSIGNMENTS:
+        cost = 0.0
+        for role in range(4):
+            cost += costs[assignment[role], role]
+        best = min(best, cost)
+    return 1.0 - best
+
+
+@njit(cache=True)
+def components(player_pos, player_team, ball_pos, gx, fh, gh, version=1):
     """(N,2,3): estructura, amenaza rival, peligro propio; cada término en [0,1]."""
     n = len(ball_pos)
     result = np.empty((n, 2, 3), dtype=np.float64)
@@ -75,20 +114,13 @@ def components(player_pos, player_team, ball_pos, gx, fh, gh):
             for role in (2, 3):
                 targets[role, 0] = support_x
                 targets[role, 1] = max(-0.80 * fh, min(0.80 * fh, 0.40 * ball[1] + (2 * role - 5) * width))
-            costs = np.empty((4, 4))
-            weights = (0.30, 0.20, 0.25, 0.25)
-            for p in range(4):
-                for role in range(4):
-                    distance = math.hypot(own[p, 0] - targets[role, 0], own[p, 1] - targets[role, 1])
-                    # Zona, no punto exacto. Un jugador no puede llenar dos roles.
-                    costs[p, role] = weights[role] * (1 - math.exp(-max(0.0, distance - 0.06 * gx) / (0.22 * gx)))
-            best = 1e30
-            for assignment in ASSIGNMENTS:
-                cost = 0.0
-                for role in range(4):
-                    cost += costs[assignment[role], role]
-                best = min(best, cost)
-            result[row, team, 0] = 1.0 - best
+            if version == 2:
+                left = dynamic_targets(ball, control, gx, fh, gh, -1.0)
+                right = dynamic_targets(ball, control, gx, fh, gh, 1.0)
+                result[row, team, 0] = max(_formation_score(own, left, gx, version),
+                                           _formation_score(own, right, gx, version))
+            else:
+                result[row, team, 0] = _formation_score(own, targets, gx, version)
             result[row, team, 1] = _threat(ball, own, opp, gx, gh)
             result[row, team, 2] = _threat(ball * np.array([-1., 1.]),
                                           opp * np.array([-1., 1.]), own * np.array([-1., 1.]), gx, gh)

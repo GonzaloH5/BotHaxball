@@ -175,6 +175,24 @@ class HaxballEnv:
         self.hold_scripted_style_for_match = False
         self.scripted_match_id = np.zeros(self.N, dtype=np.int64)
         self._rs4_phi = None
+        self.rs4_formation_version = 1
+        # Regla RS4 compartida por entrenamiento/evaluación/replays, incluso sin shaping.
+        self.restart_timeout_terminal = stadium == "rs_one" and self.T == 4 and self.rules is None
+        for value in (self.rcfg.rs4_restart_approach, self.rcfg.rs4_restart_stall):
+            if not np.isfinite(value) or not 0 <= value <= 1:
+                raise ValueError("Recompensas de saque RS4 deben estar en [0,1]")
+        if (self.rcfg.rs4_restart_approach or self.rcfg.rs4_restart_stall) and (
+                stadium != "rs_one" or self.T != 4 or self.rules is not None):
+            raise ValueError("Recompensas de saque RS4 sólo se admiten en rs_one 4v4 soccer")
+        scale = self.rcfg.rs4_defensive_out_scale
+        if not np.isfinite(scale) or not 0 < scale <= 1:
+            raise ValueError("rs4_defensive_out_scale debe estar en (0,1]")
+        if scale != 1 and (stadium != "rs_one" or self.T != 4 or self.rules is not None):
+            raise ValueError("rs4_defensive_out_scale sólo se admite en rs_one 4v4 soccer")
+        self._defensive_out_team = np.full(self.N, -1, dtype=np.int64)
+        self._defensive_out_tick = np.full(self.N, -1000, dtype=np.int64)
+        self._out_pressure_players = None
+        self._out_pressure_open = None
         if self.rcfg.rs4_tactical_coef and (stadium != "rs_one" or self.T != 4):
             raise ValueError("rs4_tactical_coef sólo se admite en rs_one 4v4")
 
@@ -269,6 +287,8 @@ class HaxballEnv:
         self.last_touch[idx] = -1
         self.last_touch_player[idx] = -1
         self.last_touch_pos[idx] = 0.0
+        self._defensive_out_team[idx] = -1
+        self._defensive_out_tick[idx] = -1000
 
         self.last_pass_sender[idx] = -1
         self.last_pass_receiver[idx] = -1
@@ -503,10 +523,20 @@ class HaxballEnv:
         if self.optimize_callbacks:
             from .rollout_callbacks import piece_post
             sim = self.sim
-            return piece_post(goal, sim.ball_pos, sim.ball_vel, sim.player_pos, sim.player_vel,
+            old_kind = self.setpiece_kind.copy() if self.restart_timeout_terminal else None
+            failed, previous = piece_post(goal, sim.ball_pos, sim.ball_vel, sim.player_pos, sim.player_vel,
                               sim.player_team, sim.kicked, self.setpiece_team, self.setpiece_kind,
                               self.setpiece_ticks, self.setpiece_limit, self.setpiece_pos,
                               self.goal_kick_speed, *self._piece_geometry())
+            if self.restart_timeout_terminal and failed.any():
+                # Mantener el bloqueo hasta el reset al final de ESTA decisión.
+                # Nunca dar al rival los ticks restantes de frame_skip para robar.
+                self.setpiece_team[failed] = previous[failed]
+                self.setpiece_kind[failed] = old_kind[failed]
+                sim.ball_pos[failed] = self.setpiece_pos[failed]
+                sim.ball_vel[failed] = 0
+                self._protect_setpieces()
+            return failed, previous
         active = self.setpiece_team >= 0
         owner = self.setpiece_team.copy()
         self.setpiece_ticks[active] += 1
@@ -535,7 +565,7 @@ class HaxballEnv:
         timed_out = active & ~kicked_by_taker & (self.setpiece_ticks >= self.setpiece_limit) & (goal == 0)
         released = active & (
             kicked_by_taker
-            | timed_out
+            | (timed_out & (not self.restart_timeout_terminal))
             | (goal != 0)
         )
 
@@ -767,12 +797,27 @@ class HaxballEnv:
             return out
         from .rs4_tactics import components
         values = components(self.sim.player_pos, self.sim.player_team, self.sim.ball_pos,
-                            self.goal_x, self.field_h, self.sim.st.goal_half_height)
-        phi = 0.65 * values[..., 0] + 0.35 * (0.5 + 0.5 * (values[..., 1] - values[..., 2]))
+                            self.goal_x, self.field_h, self.sim.st.goal_half_height,
+                            self.rs4_formation_version)
+        structure_weight = 0.50 if self.rs4_formation_version == 2 else 0.65
+        phi = structure_weight * values[..., 0] + (1 - structure_weight) * (
+            0.5 + 0.5 * (values[..., 1] - values[..., 2]))
         out[:] = self.rcfg.rs4_tactical_coef * phi[:, self.sim.player_team]
         # Guía de juego abierto: nunca pagar por esperar/invadir un saque.
         out[self.sim.kickoff | (self.setpiece_team >= 0)] = 0
         return out
+
+    def _rs4_restart_potential(self):
+        phi = np.zeros((self.N, self.P))
+        active = self.setpiece_team >= 0
+        if self.rcfg.rs4_restart_approach and active.any():
+            distance = np.linalg.norm(self.sim.player_pos - self.setpiece_pos[:, None], axis=-1)
+            for team in (0, 1):
+                own = self.sim.player_team == team
+                nearest = distance[:, own].min(axis=1)
+                value = self.rcfg.rs4_restart_approach * (1 - np.clip(nearest / (2 * self.goal_x), 0, 1))
+                phi[:, own] = np.where(active & (self.setpiece_team == team), value, 0)[:, None]
+        return phi
 
     def _spread_potential(self):
         """Φ de separación: distancia media al compañero más cercano (tope 25% del ancho), en [0,1].
@@ -888,6 +933,8 @@ class HaxballEnv:
 
     def _cooperation_touch_reward(self, tch, touch_ball_pos=None, _accumulator=None):
         """Detecta candidatos de pase; el reward llega tras retención."""
+        if self.rcfg.rs4_defensive_out_scale != 1:
+            self._record_defensive_out_touch(tch, touch_ball_pos)
         if self.optimize_callbacks:
             from .rollout_callbacks import touch_passes
             sim = self.sim
@@ -988,6 +1035,41 @@ class HaxballEnv:
             self.last_touch_pos[n] = event_pos
         return bonus, events
 
+    def _record_defensive_out_touch(self, touches, ball_pos=None):
+        """Contexto observable, no crédito por una supuesta parada.
+
+        Posiciones rivales al inicio de la decisión para igualar ruta fused/referencia.
+        Contactos ambiguos invalidan el descuento; cada contacto posterior lo reemplaza.
+        """
+        positions = self._out_pressure_players
+        if positions is None:
+            positions = self.sim.player_pos
+        ball = self.sim.ball_pos if ball_pos is None else ball_pos
+        for row in np.flatnonzero(touches.any(axis=1)):
+            self._defensive_out_team[row] = -1
+            ids = np.flatnonzero(touches[row])
+            if (len(ids) != 1 or self.sim.kickoff[row] or self.setpiece_team[row] >= 0
+                    or (self._out_pressure_open is not None and not self._out_pressure_open[row])):
+                continue
+            team = int(self.sim.player_team[ids[0]])
+            own_x = ball[row, 0] * (1 if team == 0 else -1)
+            rivals = positions[row, self.sim.player_team != team]
+            pressure = np.linalg.norm(rivals - ball[row], axis=1).min()
+            if own_x < -0.55 * self.goal_x and pressure <= 0.12 * self.goal_x:
+                self._defensive_out_team[row] = team
+                self._defensive_out_tick[row] = self.ticks[row]
+
+    def _out_penalty_scale(self, side, stuck):
+        scale = np.ones(self.N)
+        if self.rcfg.rs4_defensive_out_scale != 1:
+            age = self.ticks - self._defensive_out_tick
+            eligible = (side & ~stuck & (self.setpiece_team < 0) & ~self.sim.kickoff
+                        & (self.last_touch >= 0)
+                        & (self._defensive_out_team == self.last_touch)
+                        & (age >= 0) & (age <= 120))
+            scale[eligible] = self.rcfg.rs4_defensive_out_scale
+        return scale
+
     @staticmethod
     def _callback_events(events):
         return {name: events[i] for i, name in enumerate(
@@ -1014,6 +1096,10 @@ class HaxballEnv:
         # para el premio de saque: quién saca y a qué distancia estaba antes de moverse
         own_ko = self.sim.kickoff[:, None] & (self.sim.kickoff_team[:, None] == self.sim.player_team[None, :])
         d_before = self._team_ball_dist()
+        restart_phi_before = self._rs4_restart_potential() if self.rcfg.rs4_restart_approach else None
+        if self.rcfg.rs4_defensive_out_scale != 1:
+            self._out_pressure_players = self.sim.player_pos.copy()
+            self._out_pressure_open = ~self.sim.kickoff & (self.setpiece_team < 0)
 
         goal = np.zeros(self.N, dtype=np.int64)
         kicked = np.zeros((self.N, self.P), dtype=bool)
@@ -1070,6 +1156,8 @@ class HaxballEnv:
         corner_attempts = np.zeros((self.N, 2), dtype=np.int64)
         corner_successes = np.zeros((self.N, 2), dtype=np.int64)
         restart_timeouts = np.zeros((self.N, 2), dtype=np.int64)
+        restart_failed = np.zeros(self.N, dtype=bool)
+        restart_failed_team = np.full(self.N, -1, dtype=np.int64)
 
         if fused and self.T > 1:
             for k in range(self.frame_skip):
@@ -1178,8 +1266,11 @@ class HaxballEnv:
                         self.pending_corner_origin[good] = self.setpiece_pos[good]
 
                 setpiece_timeout, timeout_owner = self._setpiece_post_tick(g)
+                new_timeout = setpiece_timeout & ~restart_failed
+                restart_failed_team[new_timeout] = timeout_owner[new_timeout]
+                restart_failed |= setpiece_timeout
                 for team_id in (0, 1):
-                    restart_timeouts[:, team_id] += setpiece_timeout & (timeout_owner == team_id)
+                    restart_timeouts[:, team_id] += new_timeout & (timeout_owner == team_id)
 
             kicked |= self.sim.kicked
             tch = self.sim.touch
@@ -1223,6 +1314,9 @@ class HaxballEnv:
         team_sign = self.sign[None, :]                  # +1 rojo, -1 azul
         rew = rc.goal * goal[:, None] * team_sign       # gol del rojo = +1 rojo / -1 azul
         rew += cooperation_reward
+        if rc.rs4_restart_stall:
+            rew -= rc.rs4_restart_stall * (
+                restart_failed[:, None] & (restart_failed_team[:, None] == self.sim.player_team[None, :]))
 
         if rc.corner_execute > 0:
 
@@ -1311,9 +1405,10 @@ class HaxballEnv:
             stuck = self.stuck_ticks >= self.stuck_limit
             out = ~scored & (side | end | stuck)
             loser = (self.last_touch[:, None] == self.sim.player_team[None, :]) & out[:, None]
-            rew = rew - rc.out_penalty * loser
+            rew = rew - rc.out_penalty * self._out_penalty_scale(side, stuck)[:, None] * loser
             if out.any():
                 self._set_piece(np.where(out)[0])
+                self._defensive_out_team[out] = -1
 
         self.match_ticks += self.frame_skip
         self.match_score[goal == 1, 0] += 1
@@ -1322,8 +1417,14 @@ class HaxballEnv:
         final_score = np.full((self.N, 2), -1, dtype=np.int64)
         final_score[match_done] = self.match_score[match_done]
         timeout = self.ticks >= self.max_ticks
-        done = scored | timeout | stall | match_done
-        truncated = (timeout | match_done) & ~scored & ~stall
+        restart_terminal = restart_failed & self.restart_timeout_terminal
+        done = scored | timeout | stall | match_done | restart_terminal
+        truncated = (timeout | match_done) & ~scored & ~stall & ~restart_terminal
+        if rc.rs4_restart_approach:
+            # Después de crear nuevos saques; incluir ambos extremos de la transición.
+            after = self._rs4_restart_potential()
+            absorbing_restart = done & ~truncated
+            rew += rc.gamma * np.where(absorbing_restart[:, None], 0, after) - restart_phi_before
         tactical_reward = None
         if rc.rs4_tactical_coef != 0 or self._rs4_phi is not None:
             next_tactical = self._rs4_potential()
@@ -1370,6 +1471,8 @@ class HaxballEnv:
                 "ps_kicked": self.sim.ps_kicked.copy(), "final_obs": final_obs, "kicked": kicked}
         if tactical_reward is not None:
             info["rs4_tactical_reward"] = tactical_reward.copy()
+        if self.restart_timeout_terminal:
+            info["rs4_restart_failed"] = restart_terminal.copy()
         if rules is not None:
             info["rules"] = {k: v.copy() for k, v in rules.ev.items()}
         return obs, rew.astype(np.float32), done, info
