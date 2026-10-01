@@ -106,10 +106,15 @@ class RoutedPolicyInference:
             raise ValueError(f"Unknown inference backend {mode}")
         if max_policies < 1 or max_policies > 4:
             raise ValueError("RS4 v3 permits one to four neural policies per rollout")
-        self.device, self.mode, self.max_policies = torch.device(device), mode, max_policies
+        self.device = torch.device(device)
+        if self.device.type == "cuda" and self.device.index is None:
+            self.device = torch.device("cuda", torch.cuda.current_device())
+
+        self.mode, self.max_policies = mode, max_policies
         self.controllers, self.graphs = {}, {}
         self.generation = 0
         self.graph_input_rows = self.graph_padding_rows = 0
+
 
     def register(self, key, model, total_rows):
         if total_rows < 1:
