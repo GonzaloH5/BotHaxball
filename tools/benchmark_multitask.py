@@ -75,6 +75,7 @@ def main():
     ap.add_argument("--iters", type=int, default=5)
     ap.add_argument("--warmup", type=int, default=2)
     ap.add_argument("--device", choices=("cpu", "cuda"))
+    ap.add_argument("--torch-threads", type=int, help="Hilos CPU de Torch (inferencia y update)")
     ap.add_argument("--numba-threads", type=int)
     ap.add_argument("--baseline", action="store_true", help="Ruta de referencia sin optimizaciones del rollout")
     ap.add_argument("--decision-backend", choices=DECISION_BACKENDS,
@@ -86,14 +87,20 @@ def main():
         ap.error("iters y warmup deben ser positivos (Numba necesita calentamiento)")
     if args.numba_threads is not None and args.numba_threads < 1:
         ap.error("numba-threads debe ser positivo")
+    if args.torch_threads is not None and args.torch_threads < 1:
+        ap.error("torch-threads debe ser positivo")
     if args.baseline and args.decision_backend not in (None, "legacy"):
         ap.error("--baseline usa decisiones legacy; comparar sólo inferencia sin --baseline")
     cfg = copy.deepcopy(load_config(args.config))
     if args.device:
         cfg["ppo"]["device"] = args.device
+    if args.torch_threads is not None:
+        cfg["ppo"]["torch_threads"] = args.torch_threads
     if args.numba_threads is not None:
         cfg["ppo"]["numba_threads"] = args.numba_threads
-    cfg.setdefault("runtime", {})["optimize_rollout"] = not args.baseline
+    cfg.setdefault("runtime", {}).setdefault("optimize_rollout", True)
+    if args.baseline:
+        cfg["runtime"]["optimize_rollout"] = False
     if args.baseline or args.no_reuse_ppo_batch:
         cfg["runtime"]["reuse_ppo_batch"] = False
     else:
@@ -145,6 +152,8 @@ def main():
             measured = records[args.warmup:]
             samples = sum(row[0] for row in measured)
             print(f"\n{samples / elapsed:,.0f} pasos/s reales | {elapsed / args.iters:.3f} s/iter")
+            print(f"muestras útiles: {samples:,} total | {samples / args.iters:,.1f}/iter "
+                  f"| mínimo {min(row[0] for row in measured):,} | máximo {max(row[0] for row in measured):,}")
             for index, name in ((1, "rollout"), (2, "preparación/GAE"), (3, "update")):
                 print(f"{name}: {sum(row[index] for row in measured) / args.iters:.3f} s/iter")
             if trainer.device.type == "cuda":

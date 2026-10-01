@@ -17,7 +17,6 @@
     "aha_3v3",
     "futsal_4v4",
     "rs4_4v4",
-    "jjrs_6v6",
     "futsal_5v5",
     "futsal_7v7"
   ],
@@ -27,5 +26,5 @@
     "grav": 0.1
   },
   "checkpoint": "runs\\multi\\latest.pt",
-  "steps": 2869117440
+  "steps": 2912822912
 }

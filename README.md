@@ -195,6 +195,54 @@ El acierto de imitación no es una tasa de victorias; evaluar también juego y s
 
 Rendimiento medido en esta PC (sólo CPU): la red se lleva ~90% del tiempo (`python -m tools.profile_train`). 8 hilos de torch es lo óptimo.
 
+### Pod sólo CPU (i5-10400F, 6 núcleos / 12 hilos)
+
+`train/config_cpu.yaml` conserva PPO, referencia BC, recompensas, liga y currículo de
+`config_runpod.yaml`, con CPU, Torch 8 y física 12. Es la baseline informada del nuevo
+host (~5.2k pasos útiles/s; rollout ~13 s, prep ~0.13 s, update ~7 s), no un óptimo
+verificado. No cambia `env.agents=1152`, rollout 128, epochs 3 ni minibatch 8192.
+Este perfil conserva el currículo normal; si el run usa otro reparto/perfil o una
+referencia BC distinta, conservar esa configuración y cambiar sólo dispositivo e hilos.
+
+Guardar y detener el entrenamiento con Ctrl+C, esperar `guardado` y medir sin otros
+entrenamientos, replays ni benchmarks concurrentes. Desde la raíz del Pod, en Bash:
+
+```bash
+# Baseline: copia temporal del mismo checkpoint, sin alterar latest.pt.
+python -m tools.benchmark_multitask --config train/config_cpu.yaml --torch-threads 8 --numba-threads 12 --warmup 3 --iters 15
+
+# Primero física, manteniendo Torch en 8; pruebas secuenciales.
+for n in 4 6 8 10 12; do
+  python -m tools.benchmark_multitask --config train/config_cpu.yaml --torch-threads 8 --numba-threads "$n" --warmup 3 --iters 15
+done
+
+# Luego Torch; sustituir 12 por la mejor física del barrido anterior.
+for t in 4 6 8 10 12; do
+  python -m tools.benchmark_multitask --config train/config_cpu.yaml --torch-threads "$t" --numba-threads 12 --warmup 3 --iters 15
+done
+
+# Perfil inclusivo CPU (añade overhead): usar aquí los hilos ganadores.
+python -m tools.benchmark_multitask --config train/config_cpu.yaml --torch-threads 8 --numba-threads 12 --warmup 3 --iters 15 --profile-rollout
+
+# Reanudar; sustituir los hilos por los valores verificados en el Pod.
+python -m train.multitask --config train/config_cpu.yaml --run multi --resume --override ppo.torch_threads=8 ppo.numba_threads=12
+```
+
+Comparar `pasos/s reales` (muestras útiles divididas por tiempo total), las muestras
+por iteración y las tres fases. Cada prueba carga el mismo checkpoint y descarta
+su aprendizaje temporal. Repetir baseline y finalistas en orden inverso para medir
+ruido del host. El total incluye también log y trabajo fuera de las tres fases.
+Rollout y update alternan: menos hilos de física no libera automáticamente CPU
+durante PPO; cualquier beneficio de los pools de hilos debe comprobarse.
+`--profile-rollout` sirve para multitarea CPU; `tools.profile_train` mide el entrenador
+antiguo de una sola tarea. No sumar tiempos inclusivos de padres e hijos.
+
+Cambiar cantidad de entornos queda como experimento separado: cambia las muestras
+por actualización, los minibatches y los redondeos del reparto de tareas/rivales.
+No cumple la comparación estricta de aprendizaje conservado. La RAM libre por sí
+sola no garantiza una mejora. Los objetivos 5.7–6k o superiores se verifican en el
+Pod antes de adoptar una configuración; las mediciones locales no los demuestran.
+
 ### Entrenamiento CPU + GPU en Runpod
 
 El reparto de rivales compensa las fracciones entre rollouts: un 5% de scripted
