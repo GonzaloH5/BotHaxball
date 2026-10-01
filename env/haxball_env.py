@@ -172,6 +172,7 @@ class HaxballEnv:
         self.optimize_rollout = optimize_rollout
         self.optimize_reward_geometry = optimize_rollout
         self.optimize_callbacks = optimize_rollout
+        self.optimize_rs4 = optimize_rollout
         self.hold_scripted_style_for_match = False
         self.scripted_match_id = np.zeros(self.N, dtype=np.int64)
         self._rs4_phi = None
@@ -791,23 +792,43 @@ class HaxballEnv:
         out[self.sim.kickoff | (self.setpiece_team >= 0)] = 0.0
         return out
 
-    def _rs4_potential(self):
-        out = np.zeros((self.N, self.P))
+    def _rs4_potential(self, indices=None):
+        # Un reset sólo cambia esas filas. Saques protegidos tienen potencial cero.
+        rows = np.arange(self.N) if indices is None else np.asarray(indices, dtype=np.int64)
+        out = np.zeros((len(rows), self.P))
         if self.rcfg.rs4_tactical_coef == 0:
             return out
         from .rs4_tactics import components
-        values = components(self.sim.player_pos, self.sim.player_team, self.sim.ball_pos,
+        if self.optimize_rs4:
+            active = ~self.sim.kickoff[rows] & (self.setpiece_team[rows] < 0)
+            selected = rows[active]
+            if not len(selected):
+                return out
+            if indices is None and active.all():
+                players, ball = self.sim.player_pos, self.sim.ball_pos
+            else:
+                players, ball = self.sim.player_pos[selected], self.sim.ball_pos[selected]
+        else:
+            active = slice(None)
+            players = self.sim.player_pos if indices is None else self.sim.player_pos[rows]
+            ball = self.sim.ball_pos if indices is None else self.sim.ball_pos[rows]
+        values = components(players, self.sim.player_team, ball,
                             self.goal_x, self.field_h, self.sim.st.goal_half_height,
                             self.rs4_formation_version)
         structure_weight = 0.50 if self.rs4_formation_version == 2 else 0.65
         phi = structure_weight * values[..., 0] + (1 - structure_weight) * (
             0.5 + 0.5 * (values[..., 1] - values[..., 2]))
-        out[:] = self.rcfg.rs4_tactical_coef * phi[:, self.sim.player_team]
+        out[active] = self.rcfg.rs4_tactical_coef * phi[:, self.sim.player_team]
         # Guía de juego abierto: nunca pagar por esperar/invadir un saque.
-        out[self.sim.kickoff | (self.setpiece_team >= 0)] = 0
+        out[self.sim.kickoff[rows] | (self.setpiece_team[rows] >= 0)] = 0
         return out
 
     def _rs4_restart_potential(self):
+        if self.optimize_rs4 and self.optimize_callbacks:
+            from .rs4_rollout import restart_potential
+            return restart_potential(self.sim.player_pos, self.sim.player_team,
+                                     self.setpiece_team, self.setpiece_pos,
+                                     self.goal_x, self.rcfg.rs4_restart_approach)
         phi = np.zeros((self.N, self.P))
         active = self.setpiece_team >= 0
         if self.rcfg.rs4_restart_approach and active.any():
@@ -1045,6 +1066,15 @@ class HaxballEnv:
         if positions is None:
             positions = self.sim.player_pos
         ball = self.sim.ball_pos if ball_pos is None else ball_pos
+        if self.optimize_rs4 and self.optimize_callbacks:
+            from .rs4_rollout import record_defensive_touch
+            open_before = (self._out_pressure_open if self._out_pressure_open is not None
+                           else np.ones(self.N, dtype=bool))
+            record_defensive_touch(touches, positions, ball, self.sim.player_team,
+                                   self.sim.kickoff, self.setpiece_team, open_before,
+                                   self.ticks, self.goal_x, self._defensive_out_team,
+                                   self._defensive_out_tick)
+            return
         for row in np.flatnonzero(touches.any(axis=1)):
             self._defensive_out_team[row] = -1
             ids = np.flatnonzero(touches[row])
@@ -1098,7 +1128,10 @@ class HaxballEnv:
         d_before = self._team_ball_dist()
         restart_phi_before = self._rs4_restart_potential() if self.rcfg.rs4_restart_approach else None
         if self.rcfg.rs4_defensive_out_scale != 1:
-            self._out_pressure_players = self.sim.player_pos.copy()
+            if self._out_pressure_players is None:
+                self._out_pressure_players = self.sim.player_pos.copy()
+            else:
+                np.copyto(self._out_pressure_players, self.sim.player_pos)
             self._out_pressure_open = ~self.sim.kickoff & (self.setpiece_team < 0)
 
         goal = np.zeros(self.N, dtype=np.int64)
@@ -1451,8 +1484,11 @@ class HaxballEnv:
         self._phi = (self._potentials() if len(idx) or out.any() or not self.optimize_rollout
                      else (phi_ball, phi_near, phi_spread, phi_defense))
         if self._rs4_phi is not None and len(idx):
-            refreshed = self._rs4_potential()
-            self._rs4_phi[idx] = refreshed[idx]
+            if self.optimize_rs4:
+                self._rs4_phi[idx] = self._rs4_potential(idx)
+            else:
+                refreshed = self._rs4_potential()
+                self._rs4_phi[idx] = refreshed[idx]
         if len(idx) and self.optimize_rollout:
             obs = final_obs.copy()
             obs[idx] = self.observe(idx)

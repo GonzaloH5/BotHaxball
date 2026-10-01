@@ -486,6 +486,49 @@ esta guía en la PC local. Si el config guardado exige gate R3, cambiar
 Restaurar la config del backup permite retirar la guía; no revierte el aprendizaje
 ya realizado. El generalista `parent.pt`/`runs/multi/latest.pt` permanece intacto.
 
+#### Menos coste de rollout RS4 v2
+
+Con `runtime.optimize_rollout=true`, las optimizaciones RS4 se activan por defecto
+(`runtime.optimize_rs4=true`). No cambian las recompensas, pesos, decay, PPO,
+acciones, observaciones ni reglas de saques:
+
+- Contactos defensivos y potencial de aproximación a saques compilados con Numba,
+  float64 sin fastmath. Se conserva la referencia NumPy.
+- La formación sólo se calcula en juego abierto: en saques protegidos su potencial
+  ya era cero. Tras un reset sólo se refrescan las filas reiniciadas.
+- Se reutiliza el buffer de posiciones al inicio de la decisión; sigue siendo una
+  copia independiente de la física, con la misma antigüedad de contexto.
+- La formación v2 reutiliza los costes de GK/presión entre bandas, manteniendo
+  las dos orientaciones y las 24 asignaciones por orientación.
+
+Actualizar el código con el entrenamiento detenido y reanudar **con el config
+actual guardado**. No renovar la guía, ampliar el presupuesto ni cambiar BC para
+aplicar esta optimización. La primera compilación Numba no mide velocidad estable.
+
+```bash
+python -u -m train.multitask --config runs/rs4/config.yaml --run rs4 --resume
+```
+
+Para comparar en el Pod, sin entrenamientos concurrentes y usando el mismo checkpoint:
+
+```bash
+python -m tools.benchmark_multitask --config runs/rs4/config.yaml --checkpoint runs/rs4/latest.pt --warmup 3 --iters 15 --no-optimize-rs4
+python -m tools.benchmark_multitask --config runs/rs4/config.yaml --checkpoint runs/rs4/latest.pt --warmup 3 --iters 15
+```
+
+Repetir en orden inverso. Ambos descartan sus updates en copias temporales.
+El flag recupera los callbacks NumPy y el recálculo de formación en lote completo;
+el ahorro interno de costes comunes de roles se comparte entre ambas rutas.
+`--profile-rollout` incluye formación/amenaza, aproximación a saques y contactos
+defensivos RS4; sus tiempos son inclusivos, no sumarlos con entorno total.
+Para volver a la ruta de referencia en entrenamiento: `--override runtime.optimize_rs4=false`.
+
+Medición local CPU (no PPO/CUDA): 144 partidos, 4 hilos de física, R3 en ambos
+equipos y guía .08; el tiempo de `env.step` pasó de 6.322 a 3.430 ms/lote respecto
+al código anterior, con transiciones idénticas. No es una promesa de mejora de
+steps/s del entrenamiento en el Pod. Detalles en
+[`reports/rs4_rollout_optimization_20261001.md`](reports/rs4_rollout_optimization_20261001.md).
+
 #### Salidas defensivas RS4
 
 El perfil táctico usa `reward.rs4_defensive_out_scale=0.2`: reduce la penalización

@@ -51,7 +51,10 @@ class RolloutProfile:
                                   ("_advance_pending_passes", "retención de pases"),
                                   ("_cooperation_touch_reward", "contactos/pases"),
                                   ("_setpiece_pre_tick", "protección de saques"),
-                                  ("_setpiece_post_tick", "finalización de saques")):
+                                  ("_setpiece_post_tick", "finalización de saques"),
+                                  ("_rs4_potential", "formación/amenaza RS4"),
+                                  ("_rs4_restart_potential", "aproximación a saques RS4"),
+                                  ("_record_defensive_out_touch", "contactos defensivos RS4")):
                 self.wrap(slot.env, method, f"{label} (dentro de entorno)")
             self.wrap(slot.env.sim, "step", "física (dentro de entorno)")
             self.wrap(slot.env.sim, "step_frames", "física (dentro de entorno)")
@@ -99,6 +102,7 @@ def main():
     ap.add_argument("--profile-rollout", action="store_true", help="Desglose inclusivo por componente (añade overhead)")
     ap.add_argument("--no-reward-geometry", action="store_true", help="Geometría de rewards NumPy para comparar, sin cambiar física/red/PPO")
     ap.add_argument("--no-callbacks", action="store_true", help="Callbacks de saques/cooperación de referencia; conserva geometría y CUDA")
+    ap.add_argument("--no-optimize-rs4", action="store_true", help="Callbacks RS4 NumPy y formación en lote completo; conserva rewards/PPO")
     ap.add_argument("--no-reuse-capture-pool", action="store_true", help="Crear stream/pool nuevos en cada captura CUDA para comparar")
     ap.add_argument("--no-reuse-minibatch-obs", action="store_true", help="Asignar observaciones nuevas en cada minibatch CUDA para comparar")
     ap.add_argument("--no-reuse-ppo-batch", action="store_true", help="Preparación anterior: asignar/pinear cada lote para comparar")
@@ -134,6 +138,8 @@ def main():
         cfg["runtime"]["optimize_reward_geometry"] = False
     if args.no_callbacks:
         cfg["runtime"]["optimize_callbacks"] = False
+    if args.no_optimize_rs4:
+        cfg["runtime"]["optimize_rs4"] = False
     if args.no_reuse_capture_pool:
         cfg["runtime"]["reuse_cuda_capture_pool"] = False
     if args.no_reuse_minibatch_obs:

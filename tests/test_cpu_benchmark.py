@@ -12,7 +12,8 @@ def test_summary_excludes_warmup_and_preserves_source(tmp_path, monkeypatch):
     source = tmp_path / "original.pt"
     source.write_bytes(b"original checkpoint")
     output = tmp_path / "result.json"
-    cfg = dict(ppo={}, runtime={"optimize_cpu": True, "cache_bc_logits_cpu": True},
+    cfg = dict(ppo={}, runtime={"optimize_cpu": True, "cache_bc_logits_cpu": True,
+                              "optimize_rs4": True},
                log={}, league={}, schedule={})
     monkeypatch.setattr(benchmark, "ROOT", tmp_path)
     monkeypatch.setattr(benchmark, "load_config", lambda path: cfg)
@@ -24,6 +25,7 @@ def test_summary_excludes_warmup_and_preserves_source(tmp_path, monkeypatch):
             assert config["ppo"] == dict(device="cpu", torch_threads=4, numba_threads=6)
             assert config["runtime"]["optimize_cpu"] is False
             assert config["runtime"]["cache_bc_logits_cpu"] is True
+            assert config["runtime"]["optimize_rs4"] is False
             checkpoint = tmp_path / "runs" / run / "latest.pt"
             assert checkpoint.read_bytes() == source.read_bytes()
             checkpoint.write_bytes(b"temporary learner")
@@ -43,7 +45,7 @@ def test_summary_excludes_warmup_and_preserves_source(tmp_path, monkeypatch):
 
     monkeypatch.setattr(benchmark, "MultiTrainer", Trainer)
     monkeypatch.setattr(sys, "argv", ["benchmark", "--device", "cpu", "--torch-threads", "4",
-                                      "--numba-threads", "6", "--no-optimize-cpu", "--warmup", "1",
+                                      "--numba-threads", "6", "--no-optimize-cpu", "--no-optimize-rs4", "--warmup", "1",
                                       "--iters", "2", "--checkpoint", str(source),
                                       "--json-output", str(output)])
     benchmark.main()
@@ -57,3 +59,4 @@ def test_summary_excludes_warmup_and_preserves_source(tmp_path, monkeypatch):
     assert source.read_bytes() == b"original checkpoint"
     assert not list((tmp_path / "runs").iterdir())
     assert cfg["runtime"]["optimize_cpu"] is True  # CLI no muta el objeto original
+    assert cfg["runtime"]["optimize_rs4"] is True

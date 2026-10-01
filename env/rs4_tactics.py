@@ -62,13 +62,18 @@ def dynamic_targets(ball, control, gx, fh, gh, wing=1.0):
 
 
 @njit(cache=True)
-def _formation_score(own, targets, gx, version):
+def _formation_costs(own, targets, gx, version):
     costs = np.empty((4, 4))
     weights = (0.20, 0.25, 0.25, 0.30) if version == 2 else (0.30, 0.20, 0.25, 0.25)
     for p in range(4):
         for role in range(4):
             distance = math.hypot(own[p, 0] - targets[role, 0], own[p, 1] - targets[role, 1])
             costs[p, role] = weights[role] * (1 - math.exp(-max(0.0, distance - 0.06 * gx) / (0.22 * gx)))
+    return costs
+
+
+@njit(cache=True)
+def _assignment_score(costs):
     best = 1e30
     for assignment in ASSIGNMENTS:
         cost = 0.0
@@ -76,6 +81,24 @@ def _formation_score(own, targets, gx, version):
             cost += costs[assignment[role], role]
         best = min(best, cost)
     return 1.0 - best
+
+
+@njit(cache=True)
+def _formation_score(own, targets, gx, version):
+    return _assignment_score(_formation_costs(own, targets, gx, version))
+
+
+@njit(cache=True)
+def _formation_v2_score(own, left, right, gx):
+    left_costs = _formation_costs(own, left, gx, 2)
+    right_costs = left_costs.copy()
+    # GK y presión son idénticos entre bandas: sólo cambian balance y profundidad.
+    for p in range(4):
+        for role in (2, 3):
+            weight = 0.25 if role == 2 else 0.30
+            distance = math.hypot(own[p, 0] - right[role, 0], own[p, 1] - right[role, 1])
+            right_costs[p, role] = weight * (1 - math.exp(-max(0.0, distance - 0.06 * gx) / (0.22 * gx)))
+    return max(_assignment_score(left_costs), _assignment_score(right_costs))
 
 
 @njit(cache=True)
@@ -101,25 +124,24 @@ def components(player_pos, player_team, ball_pos, gx, fh, gh, version=1):
                 near_a = min(near_a, math.hypot(own[p, 0] - ball[0], own[p, 1] - ball[1]))
                 near_b = min(near_b, math.hypot(opp[p, 0] - ball[0], opp[p, 1] - ball[1]))
             control = 1.0 / (1.0 + math.exp(max(-10.0, min(10.0, (near_a - near_b) / (0.10 * gx)))))
-            advance = min(1.0, max(0.0, 0.5 + 0.5 * ball[0] / gx))
-            attack = 0.6 * control + 0.4 * advance
-            targets = np.empty((4, 2))
-            # Arquero/líbero, presión/conductor, dos apoyos/coberturas diagonales.
-            targets[0, 0] = (-0.94 + 0.10 * attack) * gx
-            targets[0, 1] = max(-0.6 * gh, min(0.6 * gh, 0.30 * ball[1]))
-            targets[1, 0] = max(-0.90 * gx, min(0.90 * gx, ball[0]))
-            targets[1, 1] = max(-0.90 * fh, min(0.90 * fh, ball[1]))
-            support_x = max(-0.78 * gx, min(0.82 * gx, ball[0] + (-0.25 + 0.35 * attack) * gx))
-            width = (0.20 + 0.16 * attack) * fh
-            for role in (2, 3):
-                targets[role, 0] = support_x
-                targets[role, 1] = max(-0.80 * fh, min(0.80 * fh, 0.40 * ball[1] + (2 * role - 5) * width))
             if version == 2:
                 left = dynamic_targets(ball, control, gx, fh, gh, -1.0)
                 right = dynamic_targets(ball, control, gx, fh, gh, 1.0)
-                result[row, team, 0] = max(_formation_score(own, left, gx, version),
-                                           _formation_score(own, right, gx, version))
+                result[row, team, 0] = _formation_v2_score(own, left, right, gx)
             else:
+                advance = min(1.0, max(0.0, 0.5 + 0.5 * ball[0] / gx))
+                attack = 0.6 * control + 0.4 * advance
+                targets = np.empty((4, 2))
+                # Arquero/líbero, presión/conductor, dos apoyos/coberturas diagonales.
+                targets[0, 0] = (-0.94 + 0.10 * attack) * gx
+                targets[0, 1] = max(-0.6 * gh, min(0.6 * gh, 0.30 * ball[1]))
+                targets[1, 0] = max(-0.90 * gx, min(0.90 * gx, ball[0]))
+                targets[1, 1] = max(-0.90 * fh, min(0.90 * fh, ball[1]))
+                support_x = max(-0.78 * gx, min(0.82 * gx, ball[0] + (-0.25 + 0.35 * attack) * gx))
+                width = (0.20 + 0.16 * attack) * fh
+                for role in (2, 3):
+                    targets[role, 0] = support_x
+                    targets[role, 1] = max(-0.80 * fh, min(0.80 * fh, 0.40 * ball[1] + (2 * role - 5) * width))
                 result[row, team, 0] = _formation_score(own, targets, gx, version)
             result[row, team, 1] = _threat(ball, own, opp, gx, gh)
             result[row, team, 2] = _threat(ball * np.array([-1., 1.]),

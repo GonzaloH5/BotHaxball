@@ -324,6 +324,9 @@ class MultiTrainer:
             env.optimize_callbacks = bool(
                 getattr(self, "optimize_rollout", True)
                 and self.cfg.get("runtime", {}).get("optimize_callbacks", True))
+            env.optimize_rs4 = bool(
+                getattr(self, "optimize_rollout", True)
+                and self.cfg.get("runtime", {}).get("optimize_rs4", True))
             env.hold_scripted_style_for_match = bool(
                 self.cfg.get("rs4_tactics", {}).get("hold_styles_for_match", False))
             env.rs4_formation_version = self.cfg.get("rs4_tactics", {}).get("formation_version", 1)
