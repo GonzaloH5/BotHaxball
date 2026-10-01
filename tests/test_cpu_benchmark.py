@@ -51,6 +51,8 @@ def test_summary_excludes_warmup_and_preserves_source(tmp_path, monkeypatch):
     benchmark.main()
     result = json.loads(output.read_text())
     assert result["samples"] == 500
+    assert result["warmup_samples"] == 100
+    assert result["diagnostic_ppo_samples"] == 600
     assert result["samples_per_iteration"] == [200, 300]
     assert result["learning_metrics"]["entropy"] == 1.9
     assert result["cpu_seconds"] >= 0

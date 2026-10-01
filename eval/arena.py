@@ -14,7 +14,7 @@ import itertools
 
 import numpy as np
 
-from env.haxball_env import HaxballEnv
+from env.haxball_env import HaxballEnv, RESTART_EVENT_NAMES
 from env.rewards import RewardConfig
 
 from .agents import env_config, env_kwargs, make_agent, reset_agents
@@ -27,6 +27,9 @@ def play(agent_red, agent_blue, n_games=128, minutes=3.0, n_per_team=1, stadium=
     if n_games < 1 or frame_skip < 1 or ticks < frame_skip:
         raise ValueError("Se requiere al menos un partido y una decisión por partido")
     kwargs = dict(env_kw or {})
+    # El currículo de posiciones iniciales es sólo de entrenamiento, incluso
+    # si el llamador pasa opciones del checkpoint.
+    kwargs["corner_reset_prob"] = 0.0
     kwargs.setdefault("kickoff_timeout", 180)
     env = HaxballEnv(n_games, n_per_team, stadium, frame_skip, max_ticks=7200,
                      random_reset_prob=0.0, reward=RewardConfig(shaping_coef=0.0), seed=seed,
@@ -37,8 +40,7 @@ def play(agent_red, agent_blue, n_games=128, minutes=3.0, n_per_team=1, stadium=
     obs = env.observe()
     reset_agents((agent_red, agent_blue), env)
     event_totals = {name: np.zeros(2, dtype=np.int64) for name in
-                    ("passes", "progressive_passes", "pass_chains", "turnovers",
-                     "corner_attempts", "corner_successes", "restart_timeouts")}
+                    ("passes", "progressive_passes", "pass_chains", "turnovers") + RESTART_EVENT_NAMES}
     red = np.arange(env.T)
     blue = np.arange(env.T, env.P)
     for _ in range(ticks // frame_skip):

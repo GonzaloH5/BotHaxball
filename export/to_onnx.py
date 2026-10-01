@@ -63,7 +63,7 @@ def make_fixture_universal(model, tasks=FIXTURE_TASKS, per_task: int = 6):
     for name in tasks:
         t = catalog[name]
         geoms.setdefault(t.stadium, geometry(t.stadium))
-        env = make_env(t, 1, t.n_entities, seed=7, random_reset_prob=0.5)
+        env = make_env(t, 1, t.n_entities, seed=7, random_reset_prob=0.5, corner_curriculum=False)
         obs = env.reset()
         memory = model.initial_state(env.P) if recurrent else None
         stride = 1 if recurrent else 9
@@ -140,8 +140,18 @@ def export_universal(args, ck, model, out: Path):
             # powershot del script (sim/physics.py): para estimar sus features en salas reales
             "ps_cfg": {"charge": 96, "power_inv": 2.3, "grav": 0.1},
             "checkpoint": str(args.ckpt), "steps": ck.get("steps")}
+    if ck.get("rs4_migration") or ck.get("rs4_program_state") or ck.get("program_state"):
+        meta["training_program"] = "rs4_v3"
+        meta["frozen_normalizers"] = bool(ck.get("frozen_normalizers", True))
+        meta["memory_contract"] = {
+            "previous_action": "actually_executed_action",
+            "sentinel": model.n_actions,
+            "reset_on": ["episode_end", "controller_change", "player_change"],
+            "scope": "one_state_per_player_and_policy",
+        }
     out.with_suffix(".json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
-    fx = make_fixture_universal(model)
+    fixture_tasks = ["rs4_4v4"] if meta.get("training_program") == "rs4_v3" else FIXTURE_TASKS
+    fx = make_fixture_universal(model, tasks=fixture_tasks)
     (out.parent / "fixture.json").write_text(json.dumps(fx), encoding="utf-8")
     import onnxruntime as ort
     sess = ort.InferenceSession(str(out.with_suffix(".onnx")))
@@ -157,7 +167,7 @@ def export_universal(args, ck, model, out: Path):
             err = max(err, float(np.abs(result[1] - np.array(f["memory_out"], dtype=np.float32)).max()))
         err = max(err, float(np.abs(got - np.array(f["logits"], dtype=np.float32)).max()))
     print(f"exportado {out.with_suffix('.onnx')} (obs universal, {len(fx['states'])} estados de "
-          f"{len(FIXTURE_TASKS)} tareas); error máx ONNX vs torch: {err:.2e}")
+          f"{len(fixture_tasks)} tareas); error máx ONNX vs torch: {err:.2e}")
     assert err < 1e-3, err
 
 

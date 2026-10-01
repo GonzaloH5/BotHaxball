@@ -124,10 +124,26 @@ def components(player_pos, player_team, ball_pos, gx, fh, gh, version=1):
                 near_a = min(near_a, math.hypot(own[p, 0] - ball[0], own[p, 1] - ball[1]))
                 near_b = min(near_b, math.hypot(opp[p, 0] - ball[0], opp[p, 1] - ball[1]))
             control = 1.0 / (1.0 + math.exp(max(-10.0, min(10.0, (near_a - near_b) / (0.10 * gx)))))
-            if version == 2:
+            if version >= 2:
                 left = dynamic_targets(ball, control, gx, fh, gh, -1.0)
                 right = dynamic_targets(ball, control, gx, fh, gh, 1.0)
                 result[row, team, 0] = _formation_v2_score(own, left, right, gx)
+                if version >= 3:
+                    # Geometry constraints rather than identities: one accesses
+                    # the ball, a different player covers depth, and two offer
+                    # distinct lateral/progressive outlets. The assignment is
+                    # recomputed from positions every decision.
+                    pressure = 1.0 - math.exp(-near_a / (.14 * gx))
+                    depth = 0.0
+                    spread = 0.0
+                    for p in range(4):
+                        if own[p, 0] < ball[0] - .14 * gx:
+                            depth = max(depth, math.exp(-abs(own[p, 1] - .35 * ball[1]) / (.45 * fh)))
+                        for q in range(p + 1, 4):
+                            spread = max(spread, min(1.0, abs(own[p, 1] - own[q, 1]) / (.6 * fh)))
+                    coverage = (1 - control) * depth + control * (.5 * depth + .5 * spread)
+                    result[row, team, 0] = (.55 * result[row, team, 0]
+                                            + .25 * coverage + .20 * (1 - pressure))
             else:
                 advance = min(1.0, max(0.0, 0.5 + 0.5 * ball[0] / gx))
                 attack = 0.6 * control + 0.4 * advance

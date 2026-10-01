@@ -1,0 +1,132 @@
+# Plantilla; nunca entrenar directamente. tools.prepare_rs4_v3 ancla y migra.
+extends: config_rs4_tactical.yaml
+run_name: rs4_v3
+model:
+  type: set
+ppo:
+  torch_threads: 2
+  numba_threads: 4
+  rollout_len: 128
+  minibatch: 8192
+  epochs: 3
+  gamma: 0.998
+  gae_lambda: 0.97
+  clip: 0.2
+  lr: 0.0001
+  lr_final: 0.00005
+  ent_coef: 0.003
+  ent_coef_final: 0.001
+  bc_kl_coef: 0.005
+  bc_kl_final: 0.001
+  sequence_length: 32
+runtime:
+  freeze_normalizers: true
+  optimize_rollout: true
+  preserve_bc_reference: true
+  cuda_decisions: auto
+  rs4_v3: true
+league:
+  max_size: 24
+  match_pfsp: true
+  mixture: [0.20, 0.40, 0.20, 0.20]
+  opponents_per_iter: 4
+  snapshot_every_steps: 50_000_000
+log:
+  every: 25
+  checkpoint_interval_seconds: 300
+  checkpoint_history_interval_seconds: 1800
+  checkpoint_keep: 6
+  replay_every: 0
+task_metric_versions: {rs4_4v4: 3}
+rs4_tactics:
+  coef: 0.08
+  coef_final: 0.0
+  formation_version: 2
+reward:
+  rs4_restart_stall: 0.25
+  rs4_restart_approach: 0.05
+rs4_program:
+  version: 3
+  start_steps: 0
+  total_budget_steps: 6_000_000_000
+  branch_budget_steps: 5_800_000_000
+  pilot_steps: 200_000_000
+  evaluation_every_steps: 100_000_000
+  snapshot_every_steps: 50_000_000
+  recovery_steps: 400_000_000
+  recovery_block_steps: 100_000_000
+  final_unassisted_steps: 200_000_000
+  transition_steps: 10_000_000
+  lr:
+    initial: 0.0001
+    minimum: 0.00005
+    maximum: 0.0002
+    low_kl: 0.0008
+    high_kl: 0.006
+    epoch_stop_kl: 0.012
+    every_iterations: 25
+    increase: 1.1
+    decrease: 0.8
+  entropy: {initial: 0.003, final: 0.001}
+  bc: {initial: 0.005, final: 0.001}
+  phases:
+    - id: A
+      name: Fundamentos_y_saques
+      steps: 800_000_000
+      exercises: 0.40
+      guide: 0.08
+      scripted: 0.50
+      selfplay: 0.20
+      pool: 0.30
+      teammates: 0.10
+      exercise_weights: {corner: 0.45, throw_in: 0.25, goal_kick: 0.30}
+    - id: B
+      name: Defensa_y_transiciones
+      steps: 1_000_000_000
+      exercises: 0.30
+      guide: 0.06
+      scripted: 0.35
+      selfplay: 0.25
+      pool: 0.40
+      teammates: 0.15
+      exercise_weights: {defense: 0.55, defensive_transition: 0.30, corner: 0.15}
+    - id: C
+      name: Ataque_colectivo
+      steps: 1_200_000_000
+      exercises: 0.30
+      guide: 0.05
+      scripted: 0.25
+      selfplay: 0.30
+      pool: 0.45
+      teammates: 0.20
+      exercise_weights: {build_up: 0.40, attack: 0.40, offensive_transition: 0.20}
+    - id: D
+      name: Juego_integrado
+      steps: 1_200_000_000
+      exercises: 0.20
+      guide: 0.035
+      scripted: 0.15
+      selfplay: 0.30
+      pool: 0.55
+      teammates: 0.25
+      exercise_weights: {corner: 0.20, defense: 0.25, attack: 0.30, build_up: 0.25}
+    - id: E
+      name: Companeros_heterogeneos
+      steps: 1_000_000_000
+      exercises: 0.20
+      guide: 0.02
+      scripted: 0.15
+      selfplay: 0.25
+      pool: 0.60
+      teammates: 0.35
+      exercise_weights: {build_up: 0.35, attack: 0.35, defense: 0.30}
+    - id: F
+      name: Consolidacion
+      steps: 600_000_000
+      exercises: 0.05
+      guide: 0.0
+      scripted: 0.10
+      selfplay: 0.25
+      pool: 0.65
+      teammates: 0.35
+      exercise_weights: {corner: 0.20, defense: 0.25, attack: 0.30, build_up: 0.25}

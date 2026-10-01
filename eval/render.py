@@ -49,6 +49,7 @@ def record(agent_red, agent_blue, minutes=2.0, n_per_team=1, stadium="classic", 
     """Graba tick a tick. Usa el mismo entorno que el entrenamiento (con frame_skip=1 y la
     acción repetida `frame_skip` ticks), así goles, pelota afuera y saques se comportan igual."""
     kwargs = dict(env_kw or {})
+    kwargs["corner_reset_prob"] = 0.0  # los replays no usan el currículo de entrenamiento
     kwargs.setdefault("kickoff_timeout", 180)
     env = HaxballEnv(1, n_per_team, stadium, 1, max_ticks=7200, random_reset_prob=0.0,
                      reward=RewardConfig(shaping_coef=0.0), seed=seed, **kwargs)
@@ -62,15 +63,27 @@ def record(agent_red, agent_blue, minutes=2.0, n_per_team=1, stadium="classic", 
     a = np.zeros((1, env.P), dtype=np.int64)
     s = env.sim
     stalls = 0
+    decision_active = False
     for t in range(int(minutes * 3600)):
         if t % frame_skip == 0:
             a[:, red] = agent_red(env, obs, red)
             a[:, blue] = agent_blue(env, obs, blue)
+            decision_active = True
         obs, _, done, info = env.step(a)
+        if decision_active:
+            seen = set()
+            for agent in (agent_red, agent_blue):
+                if id(agent) not in seen and hasattr(agent, "record_executed"):
+                    agent.record_executed(env, info.get("executed_actions", a))
+                seen.add(id(agent))
         stalls += int(info["stall"].sum())
         if done.any():
             reset_agents((agent_red, agent_blue), env, done)
             a[done] = 0
+            # A terminal may land between repeated physics ticks. Preserve the
+            # recurrent reset sentinel until a new policy decision, rather than
+            # treating intervening neutral rendering ticks as policy actions.
+            decision_active = False
         comba = int(s.ps_comba[0]) if s.ps_on else 0
         frames.append([round(float(v), 1) for v in s.pos[0, [0, *range(s.first_player, s.K)]].ravel()]
                       + [int(k) for k in (a[0] >= 9)] + [comba, int(env.score[0, 0]), int(env.score[0, 1])])

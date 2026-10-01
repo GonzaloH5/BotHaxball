@@ -25,6 +25,10 @@ MIRROR_ACTION = np.concatenate([_MIRROR_MOVE, _MIRROR_MOVE + 9])
 POS_SCALE = 400.0
 VEL_SCALE = 5.0
 
+# Contadores observacionales; no forman parte del estado que recibe la política.
+RESTART_EVENT_NAMES = ("corner_opportunities", "corner_curriculum_starts", "corner_attempts",
+                       "corner_successes", "corner_timeouts", "restart_timeouts")
+
 
 N_PS_FEATS = 6  # entradas extra con powershot: cargada, progreso de carga, invMass, gravedad (2), soy quien carga
 
@@ -139,6 +143,8 @@ class HaxballEnv:
         self.pending_corner_team = np.full(self.N, -1, dtype=np.int64)
         self.pending_corner_age = np.zeros(self.N, dtype=np.int64)
         self.pending_corner_origin = np.zeros((self.N, 2), dtype=np.float64)
+        self._corner_reported = np.zeros(self.N, dtype=bool)
+        self._corner_from_curriculum = np.zeros(self.N, dtype=bool)
         self.field_h = st.field_half_h
         self.stuck_ticks = np.zeros(self.N, dtype=np.int64)  # pelota casi quieta pegada a una línea
         self.setpiece_dist = 50.0      # los rivales del que saca se corren a esta distancia
@@ -198,7 +204,7 @@ class HaxballEnv:
             raise ValueError("rs4_tactical_coef sólo se admite en rs_one 4v4")
 
     # ----------------------------------------------------------------- reset
-    def _reset_envs(self, idx, kickoff_team=None):
+    def _reset_envs(self, idx, kickoff_team=None, *, corner_eligible=None):
         if len(idx) == 0:
             return
 
@@ -216,13 +222,15 @@ class HaxballEnv:
         # Algunos resets empiezan directamente en un córner.
         corner_mask = np.zeros(len(idx), dtype=bool)
 
-        # Un reset con equipo de saque explícito (gol, evaluación o test de
-        # kickoff) nunca debe convertirse aleatoriamente en córner.
-        if self.corner_reset_prob > 0 and kickoff_team is None:
-            corner_mask = (
-                self.rng.random(len(idx))
-                < self.corner_reset_prob
-            )
+        # Por defecto, un saque explícito (gol/evaluación) nunca se sustituye.
+        # step habilita explícitamente sólo las filas de entrenamiento sin gol.
+        if self.corner_reset_prob > 0:
+            eligible = (np.full(len(idx), kickoff_team is None, dtype=bool)
+                        if corner_eligible is None else np.asarray(corner_eligible, dtype=bool))
+            if eligible.shape != (len(idx),):
+                raise ValueError("corner_eligible debe tener una entrada por entorno reiniciado")
+            if eligible.any():
+                corner_mask[eligible] = self.rng.random(int(eligible.sum())) < self.corner_reset_prob
 
         corner_idx = idx[corner_mask]
         normal_idx = idx[~corner_mask]
@@ -302,6 +310,8 @@ class HaxballEnv:
         self.pending_corner_team[idx] = -1
         self.pending_corner_age[idx] = 0
         self.pending_corner_origin[idx] = 0.0
+        self._corner_reported[idx] = False
+        self._corner_from_curriculum[idx] = False
 
         self.stuck_ticks[idx] = 0
 
@@ -372,6 +382,8 @@ class HaxballEnv:
 
             self.setpiece_team[n] = taker
             self.setpiece_kind[n] = 2
+            self._corner_reported[n] = False
+            self._corner_from_curriculum[n] = True
             self.setpiece_ticks[n] = 0
             self.setpiece_pos[n] = nb
 
@@ -437,6 +449,8 @@ class HaxballEnv:
             sim.kick_cancel[n] = False
             self.setpiece_team[n] = taker
             self.setpiece_kind[n] = kind
+            self._corner_reported[n] = False
+            self._corner_from_curriculum[n] = False
             self.setpiece_ticks[n] = 0
             self.setpiece_pos[n] = nb
             # En mapas grandes el ejecutor puede necesitar más de 7 s sólo para llegar.
@@ -815,7 +829,7 @@ class HaxballEnv:
         values = components(players, self.sim.player_team, ball,
                             self.goal_x, self.field_h, self.sim.st.goal_half_height,
                             self.rs4_formation_version)
-        structure_weight = 0.50 if self.rs4_formation_version == 2 else 0.65
+        structure_weight = 0.50 if self.rs4_formation_version >= 2 else 0.65
         phi = structure_weight * values[..., 0] + (1 - structure_weight) * (
             0.5 + 0.5 * (values[..., 1] - values[..., 2]))
         out[active] = self.rcfg.rs4_tactical_coef * phi[:, self.sim.player_team]
@@ -824,6 +838,9 @@ class HaxballEnv:
         return out
 
     def _rs4_restart_potential(self):
+        if self.rcfg.rs4_reward_version >= 3:
+            from .rs4_v3 import restart_potential
+            return restart_potential(self)
         if self.optimize_rs4 and self.optimize_callbacks:
             from .rs4_rollout import restart_potential
             return restart_potential(self.sim.player_pos, self.sim.player_team,
@@ -900,7 +917,8 @@ class HaxballEnv:
                 self.pending_pass_progress, self.last_pass_sender, self.last_pass_receiver,
                 self.coop_reward_spent, int(ticks), rc.team_pass_hold_ticks, self.field_w,
                 rc.team_pass_success, rc.team_pass_value, rc.team_pass_chain,
-                rc.team_pass_return_min_usefulness, rc.team_pass_possession_cap, bonus, storage)
+                rc.team_pass_return_min_usefulness, rc.team_pass_possession_cap, bonus, storage,
+                rc.rs4_pass_participant)
             return bonus, events
         bonus = np.zeros((self.N, self.P), dtype=np.float64)
         events = self._empty_cooperation_events()
@@ -940,6 +958,11 @@ class HaxballEnv:
             if paid > 0:
                 bonus[n, teams == team] += paid
                 self.coop_reward_spent[n, team] += paid
+                credit = min(self.rcfg.rs4_pass_participant,
+                             max(0.0, self.rcfg.team_pass_possession_cap - self.coop_reward_spent[n, team]))
+                bonus[n, sender] += credit
+                bonus[n, receiver] += credit
+                self.coop_reward_spent[n, team] += credit
             events["passes"][n, team] += 1
             if usefulness > 0.10:
                 events["progressive_passes"][n, team] += 1
@@ -1188,6 +1211,14 @@ class HaxballEnv:
         accumulator = (cooperation_reward, cooperation_events) if self.optimize_callbacks else None
         corner_attempts = np.zeros((self.N, 2), dtype=np.int64)
         corner_successes = np.zeros((self.N, 2), dtype=np.int64)
+        corner_timeouts = np.zeros((self.N, 2), dtype=np.int64)
+        # Una oportunidad se cuenta una sola vez, antes de la primera decisión
+        # jugada desde ese córner (natural o de currículo), no en cada tick.
+        new_corner = (self.setpiece_team >= 0) & (self.setpiece_kind == 2) & ~self._corner_reported
+        corner_opportunities = (new_corner[:, None]
+                                & (self.setpiece_team[:, None] == np.arange(2))).astype(np.int64)
+        corner_curriculum_starts = corner_opportunities * self._corner_from_curriculum[:, None]
+        self._corner_reported[new_corner] = True
         restart_timeouts = np.zeros((self.N, 2), dtype=np.int64)
         restart_failed = np.zeros(self.N, dtype=bool)
         restart_failed_team = np.full(self.N, -1, dtype=np.int64)
@@ -1231,6 +1262,7 @@ class HaxballEnv:
                 if simplified
                 else world_act
             )
+            executed_world_act = tick_act
 
             if simplified:
                 corner_active = (
@@ -1304,6 +1336,7 @@ class HaxballEnv:
                 restart_failed |= setpiece_timeout
                 for team_id in (0, 1):
                     restart_timeouts[:, team_id] += new_timeout & (timeout_owner == team_id)
+                    corner_timeouts[:, team_id] += new_timeout & corner_active & (timeout_owner == team_id)
 
             kicked |= self.sim.kicked
             tch = self.sim.touch
@@ -1476,7 +1509,10 @@ class HaxballEnv:
             # recibe el saque el equipo que recibió el gol (como en HaxBall)
             # tras un gol saca el que lo recibió (como en HaxBall); si no, al azar
             kt = np.where(goal[idx] == 1, 1, np.where(goal[idx] == -1, 0, self.rng.integers(0, 2, len(idx))))
-            self._reset_envs(idx, kickoff_team=kt)
+            if self.corner_reset_prob > 0:
+                self._reset_envs(idx, kickoff_team=kt, corner_eligible=~scored[idx])
+            else:
+                self._reset_envs(idx, kickoff_team=kt)
         if match_done.any():
             self.match_ticks[match_done] = 0
             self.match_score[match_done] = 0
@@ -1494,8 +1530,10 @@ class HaxballEnv:
             obs[idx] = self.observe(idx)
         else:
             obs = self.observe() if len(idx) else final_obs
-        events = {**cooperation_events, "corner_attempts": corner_attempts,
-                  "corner_successes": corner_successes,
+        events = {**cooperation_events, "corner_opportunities": corner_opportunities,
+                  "corner_curriculum_starts": corner_curriculum_starts,
+                  "corner_attempts": corner_attempts, "corner_successes": corner_successes,
+                  "corner_timeouts": corner_timeouts,
                   "restart_timeouts": restart_timeouts + np.column_stack((stall & (stall_team == 0),
                                                                            stall & (stall_team == 1))).astype(np.int64)}
         if rules is not None:
@@ -1505,6 +1543,11 @@ class HaxballEnv:
         info = {"goal": goal, "truncated": truncated, "stall": stall, "out": out,
                 "match_done": match_done, "final_score": final_score, "events": events,
                 "ps_kicked": self.sim.ps_kicked.copy(), "final_obs": final_obs, "kicked": kicked}
+        # The final tick's actually applied action, in each player's own frame.
+        # In particular a protected rival's kick input is stripped before it is
+        # remembered by a recurrent controller.
+        applied = world_act if fused else executed_world_act
+        info["executed_actions"] = np.where(self.sign[None, :] < 0, MIRROR_ACTION[applied], applied)
         if tactical_reward is not None:
             info["rs4_tactical_reward"] = tactical_reward.copy()
         if self.restart_timeout_terminal:

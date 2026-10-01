@@ -48,7 +48,7 @@ def evaluate_restarts(agent, opponent, task="rs4_4v4", trials=8, seed=0, policy_
         for team in (0, 1):
             for side in (-1, 1):
                 env = make_env(t, trials, max(t.n_entities, 15), seed=seed + kind * 100 + team * 10 + side,
-                               random_reset_prob=0, optimize_rollout=True)
+                               random_reset_prob=0, optimize_rollout=True, corner_curriculum=False)
                 env.reset()
                 origin = _setup(env, team, kind, side)
                 obs = env.observe()

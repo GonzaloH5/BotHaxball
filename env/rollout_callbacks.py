@@ -77,7 +77,7 @@ def piece_post(goal, ball, velocity, pp, pv, teams, kicked, owner, kind, ticks,
 @njit(cache=True)
 def advance_passes(pp, teams, sender, receiver, pending_team, age, progress,
                    last_sender, last_receiver, spent, ticks, hold, field_w,
-                   success, value, chain_reward, return_threshold, cap, bonus, events):
+                   success, value, chain_reward, return_threshold, cap, bonus, events, participant=0.0):
     n_rows, players, _ = pp.shape
     for n in range(n_rows):
         if pending_team[n] < 0:
@@ -112,6 +112,10 @@ def advance_passes(pp, teams, sender, receiver, pending_team, age, progress,
                 if teams[p] == t:
                     bonus[n, p] += paid
             spent[n, t] += paid
+            credit = min(participant, max(0.0, cap - spent[n, t]))
+            bonus[n, s] += credit
+            bonus[n, r] += credit
+            spent[n, t] += credit
         events[0, n, t] += 1
         if usefulness > 0.10:
             events[1, n, t] += 1

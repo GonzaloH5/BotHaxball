@@ -31,6 +31,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from bots.scripted import scripted_actions
 from env.rewards import RewardConfig
+from env.haxball_env import RESTART_EVENT_NAMES
 from env.tasks import load_catalog, make_env
 
 from .league import League
@@ -52,6 +53,7 @@ class TaskSlot:
     def __init__(self, task, env):
         self.task, self.env = task, env
         self.N, self.P, self.T = env.N, env.P, env.T
+        self.rs4_restart_log_events = np.zeros((len(RESTART_EVENT_NAMES), 2), dtype=np.int64)
         self.opp_stage = 0
         self.wr_window: list[tuple[int, int]] = []
         self.match_window: list[tuple[int, int, int, int, int, int]] = []
@@ -836,7 +838,7 @@ class MultiTrainer:
             s.buf = cache
             s.pool_goals = {}
             s.rs4_reward_sum = s.rs4_reward_abs_sum = 0.0
-            s.rs4_restart_events = np.zeros((3, 2), dtype=np.int64)
+            s.rs4_restart_events = np.zeros((len(RESTART_EVENT_NAMES), 2), dtype=np.int64)
         self._policy_groups = None
         self._reset_decision_graph()
         if self.optimize_rollout:
@@ -851,8 +853,8 @@ class MultiTrainer:
                 b = s.buf
                 b["obs"][t], b["act"][t], b["logp"][t], b["val"][t] = o, acts, logp, val
                 o2, rew, done, info = s.env.step(acts)
-                if s.task.name == "rs4_4v4" and cfg.get("rs4_tactics"):
-                    for event_index, event_name in enumerate(("corner_attempts", "corner_successes", "restart_timeouts")):
+                if s.task.name == "rs4_4v4":
+                    for event_index, event_name in enumerate(RESTART_EVENT_NAMES):
                         s.rs4_restart_events[event_index] += info["events"][event_name].sum(axis=0)
                 if "rs4_tactical_reward" in info:
                     tactical = info["rs4_tactical_reward"]
@@ -944,16 +946,18 @@ class MultiTrainer:
             self.spawn_replay(historical)
         log_start = time.perf_counter()
         stats["timing/maintenance_seconds"] = log_start - update_end
-        if cfg.get("rs4_tactics"):
-            for slot in self.slots:
-                if slot.task.name == "rs4_4v4":
+        for slot in self.slots:
+            if slot.task.name == "rs4_4v4":
+                slot.rs4_restart_log_events += slot.rs4_restart_events
+                if cfg.get("rs4_tactics"):
                     count = L * slot.N * slot.P
                     stats["rs4/tactical_coef"] = slot.env.rcfg.rs4_tactical_coef
                     stats["rs4/tactical_reward_mean"] = slot.rs4_reward_sum / count
                     stats["rs4/tactical_reward_abs_mean"] = slot.rs4_reward_abs_sum / count
-                    for event_index, event_name in enumerate(("corner_attempts", "corner_successes", "restart_timeouts")):
-                        for team_index, color in enumerate(("red", "blue")):
-                            stats[f"rs4/{event_name}_{color}"] = int(slot.rs4_restart_events[event_index, team_index])
+                for event_index, event_name in enumerate(RESTART_EVENT_NAMES):
+                    for team_index, color in enumerate(("red", "blue")):
+                        stats[f"rs4/{event_name}_{color}"] = int(slot.rs4_restart_events[event_index, team_index])
+                        stats[f"rs4/window_{event_name}_{color}"] = int(slot.rs4_restart_log_events[event_index, team_index])
         self.log(stats, lr, n, t_roll, t_upd)
         log_end = time.perf_counter()
         self.maybe_rebalance_or_advance()
@@ -1115,13 +1119,19 @@ class MultiTrainer:
                 print(f"      RS4 guía {stats['rs4/tactical_coef']:.4f} | "
                       f"reward táctico medio {stats['rs4/tactical_reward_mean']:+.6f} | "
                       f"absoluto {stats['rs4/tactical_reward_abs_mean']:.6f} | "
-                      f"formación v{self.cfg.get('rs4_tactics', {}).get('formation_version', 1)}", flush=True)
-                if "rs4/corner_attempts_red" in stats:
-                    print(f"      RS4 saques (rollout) | córners rojo "
-                          f"{stats['rs4/corner_attempts_red']}/{stats['rs4/corner_successes_red']} "
-                          f"azul {stats['rs4/corner_attempts_blue']}/{stats['rs4/corner_successes_blue']} "
-                          f"(intentos/útiles) | expiraciones rojo/azul "
-                          f"{stats['rs4/restart_timeouts_red']}/{stats['rs4/restart_timeouts_blue']}", flush=True)
+                      f"formación v{stats.get('rs4/formation_version', self.cfg.get('rs4_tactics', {}).get('formation_version', 1))}", flush=True)
+            if "rs4/window_corner_opportunities_red" in stats:
+                fields = ("corner_opportunities", "corner_curriculum_starts", "corner_attempts",
+                          "corner_successes", "corner_timeouts")
+                counts = ["/".join(str(stats[f"rs4/window_{event}_{color}"]) for event in fields)
+                          for color in ("red", "blue")]
+                print("      RS4 córners (desde último log; oportunidades/currículo/intentos/útiles/expirados) "
+                      f"| rojo {counts[0]} azul {counts[1]}", flush=True)
+                print("      RS4 expiraciones de todos los saques (desde último log), rojo/azul "
+                      f"{stats['rs4/window_restart_timeouts_red']}/{stats['rs4/window_restart_timeouts_blue']}", flush=True)
+                for slot in self.slots:
+                    if slot.task.name == "rs4_4v4":
+                        slot.rs4_restart_log_events.fill(0)
             cells = []
             for s in self.slots:
                 wr, ng = s.winrate()
@@ -1271,7 +1281,10 @@ def main():
     if any(ov.split("=", 1)[0] == "bc_reference" for ov in args.override):
         cfg.setdefault("runtime", {})["preserve_bc_reference"] = False
     trainer_class = MultiTrainer
-    if cfg["model"].get("type") == "recurrent_set":
+    if cfg.get("rs4_program"):
+        from .rs4_trainer import RS4V3Trainer
+        trainer_class = RS4V3Trainer
+    elif cfg["model"].get("type") == "recurrent_set":
         from .recurrent_ppo import RecurrentTrainer
         trainer_class = RecurrentTrainer
     trainer_class(cfg, args.run or cfg["run_name"], args.resume, args.init_from).train()

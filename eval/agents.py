@@ -44,6 +44,11 @@ class ModelAgent:
             previous[:, players] = a.reshape(env.N, len(players))
         return a.numpy().reshape(obs.shape[0], len(players))
 
+    def record_executed(self, env, actions):
+        if getattr(self.model, "is_recurrent", False) and env in self._states:
+            _, previous = self._states[env]
+            previous.copy_(torch.as_tensor(actions, dtype=torch.long, device=previous.device))
+
 
 class ScriptedAgent:
     def __init__(self, eps: float = 0.0, seed: int = 0, policy: str = "r2", style: int = -1):

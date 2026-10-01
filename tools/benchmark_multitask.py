@@ -20,6 +20,36 @@ from train.multitask import ROOT, MultiTrainer
 from train.runtime import cpu_budget, load_config
 
 
+def trainer_class(cfg):
+    """Keep the legacy factory injectable, but benchmark each real architecture."""
+    if cfg.get("rs4_program"):
+        from train.rs4_trainer import RS4V3Trainer
+        return RS4V3Trainer
+    if cfg.get("model", {}).get("type") == "recurrent_set":
+        from train.recurrent_ppo import RecurrentTrainer
+        return RecurrentTrainer
+    return MultiTrainer
+
+
+def acceptance(summary, reference=None, minimum_speed_ratio=0.7, max_memory_gib=None):
+    """An explicit speed/memory rejection; never adjusts PPO to pass a gate."""
+    reasons, ratio = [], None
+    if reference is not None:
+        baseline = float(reference["steps_per_second"])
+        if baseline <= 0:
+            raise ValueError("Reference throughput must be positive")
+        if summary.get("comparison_contract") != reference.get("comparison_contract"):
+            reasons.append("different PPO, environment or frozen-teammate comparison contract")
+        ratio = float(summary["steps_per_second"]) / baseline
+        if ratio < minimum_speed_ratio:
+            reasons.append(f"useful throughput ratio {ratio:.3f} < {minimum_speed_ratio:.3f}")
+    memory = summary.get("cuda_peak_allocated_gib", 0.0)
+    if max_memory_gib is not None and memory > max_memory_gib:
+        reasons.append(f"CUDA allocated memory {memory:.3f} GiB > {max_memory_gib:.3f} GiB")
+    return dict(accepted=not reasons, reasons=reasons, useful_speed_ratio=ratio,
+                minimum_speed_ratio=minimum_speed_ratio, max_memory_gib=max_memory_gib)
+
+
 class RolloutProfile:
     """Tiempos inclusivos opcionales; sin sincronizaciones CUDA adicionales.
 
@@ -61,7 +91,9 @@ class RolloutProfile:
             self.wrap(slot.env.sim, "step_frames_with_touches", "física (dentro de entorno)")
 
     def wrap(self, owner, attr, label):
-        original = getattr(owner, attr)
+        original = getattr(owner, attr, None)
+        if original is None:  # Different trainers expose different optimized paths.
+            return
         self.originals.append((owner, attr, original))
 
         def measured(*args, **kwargs):
@@ -109,6 +141,10 @@ def main():
     ap.add_argument("--no-cache-bc-logits", action="store_true", help="Recalcular referencia BC en cada época PPO para comparar CPU")
     ap.add_argument("--no-optimize-cpu", action="store_true", help="Desactivar agrupamiento CPU y buffer de minibatch; conserva cache BC")
     ap.add_argument("--json-output", type=Path, help="Guardar resumen para barridos de hilos")
+    ap.add_argument("--reference-json", type=Path, help="Rechazar diferencias de mezcla/PPO o pérdida de velocidad excesiva")
+    ap.add_argument("--minimum-speed-ratio", type=float, default=0.7)
+    ap.add_argument("--max-memory-gib", type=float, help="Límite explícito de VRAM asignada, sin reducir PPO")
+    ap.add_argument("--companion-fraction", type=float, help="Misma fracción de equipos mixtos para comparar candidatos RS4 v3")
     args = ap.parse_args()
     if args.iters < 1 or args.warmup < 1:
         ap.error("iters y warmup deben ser positivos (Numba necesita calentamiento)")
@@ -118,6 +154,12 @@ def main():
         ap.error("torch-threads debe ser positivo")
     if args.baseline and args.decision_backend not in (None, "legacy"):
         ap.error("--baseline usa decisiones legacy; comparar sólo inferencia sin --baseline")
+    if not 0 < args.minimum_speed_ratio <= 1:
+        ap.error("minimum-speed-ratio debe estar en (0, 1]")
+    if args.max_memory_gib is not None and args.max_memory_gib <= 0:
+        ap.error("max-memory-gib debe ser positivo")
+    if args.companion_fraction is not None and not 0 <= args.companion_fraction <= 1:
+        ap.error("companion-fraction debe estar entre 0 y 1")
     cfg = copy.deepcopy(load_config(args.config))
     if args.device:
         cfg["ppo"]["device"] = args.device
@@ -126,6 +168,16 @@ def main():
     if args.numba_threads is not None:
         cfg["ppo"]["numba_threads"] = args.numba_threads
     cfg.setdefault("runtime", {}).setdefault("optimize_rollout", True)
+    cfg["runtime"]["benchmark"] = True
+    if cfg.get("rs4_program"):
+        # A pilot-end checkpoint has already reached its original 200M segment.
+        # Extend only this disposable copy's segment, never source config/ledger.
+        program = cfg["rs4_program"]
+        cfg["ppo"]["total_steps"] = program["start_steps"] + program["branch_budget_steps"]
+    if args.companion_fraction is not None:
+        if not cfg.get("rs4_program"):
+            ap.error("companion-fraction requiere un programa RS4 v3")
+        cfg["runtime"]["benchmark_companion_fraction"] = args.companion_fraction
     if args.baseline:
         cfg["runtime"]["optimize_rollout"] = False
         cfg["runtime"]["optimize_cpu"] = False
@@ -166,7 +218,7 @@ def main():
         saved_config = Path(args.checkpoint).parent / "config.yaml"
         if cfg["runtime"].get("preserve_bc_reference", False) and saved_config.exists():
             shutil.copy2(saved_config, Path(directory) / "config.yaml")
-        trainer = MultiTrainer(cfg, Path(directory).name, resume=True)
+        trainer = trainer_class(cfg)(cfg, Path(directory).name, resume=True)
         profile = RolloutProfile(trainer) if args.profile_rollout else None
         decision_profile = (CudaDecisionProfile(trainer.device)
                             if args.profile_rollout and trainer.device.type == "cuda" else None)
@@ -178,14 +230,14 @@ def main():
 
         def log(stats, lr, n, rollout, update):
             records.append((n, rollout, stats.get("timing/prepare_seconds", 0.0), update,
-                            stats.get("timing/cuda_capture_seconds", 0.0),
-                            stats.get("runtime/cuda_graph_captures", 0),
-                            stats.get("runtime/cuda_graph_replays", 0)))
+                            stats.get("timing/cuda_capture_seconds", stats.get("cuda_graph/capture_seconds", 0.0)),
+                            stats.get("runtime/cuda_graph_captures", stats.get("cuda_graph/captures", 0)),
+                            stats.get("runtime/cuda_graph_replays", stats.get("cuda_graph/replays", 0))))
             batch_stats.append({key: value for key, value in stats.items()
                                 if key.startswith("timing/ppo_batch_") or key == "runtime/ppo_batch_allocations"})
             update_timings.append({key: value for key, value in stats.items()
                                    if key.startswith("timing/update_") and key != "timing/update_seconds"})
-            learning_stats.append({key: stats[key] for key in ("entropy", "approx_kl", "clipfrac", "bc_kl")})
+            learning_stats.append({key: stats.get(key, 0.0) for key in ("entropy", "approx_kl", "clipfrac", "bc_kl")})
             original_log(stats, lr, n, rollout, update)
 
         trainer.log = log
@@ -227,6 +279,8 @@ def main():
             print("PPO (media): " + " | ".join(f"{k} {v:.5f}" for k, v in metrics.items()))
             from numba import get_num_threads
             summary = dict(samples=samples, elapsed_seconds=elapsed, steps_per_second=samples / elapsed,
+                           warmup_samples=sum(row[0] for row in records[:args.warmup]),
+                           diagnostic_ppo_samples=sum(row[0] for row in records),
                            samples_per_iteration=[row[0] for row in measured],
                            rollout_seconds=sum(row[1] for row in measured) / args.iters,
                            prepare_seconds=sum(row[2] for row in measured) / args.iters,
@@ -235,6 +289,28 @@ def main():
                            device=str(trainer.device), config=str(args.config), checkpoint=str(args.checkpoint),
                            warmup=args.warmup, iters=args.iters, runtime=cfg.get("runtime", {}),
                            extra_seconds=extras, learning_metrics=metrics)
+            summary["model_config"] = trainer.model.config() if hasattr(trainer, "model") else cfg.get("model", {})
+            summary["comparison_contract"] = {
+                "env": cfg.get("env", {}),
+                "ppo": {key: cfg.get("ppo", {}).get(key) for key in
+                        ("rollout_len", "epochs", "minibatch", "gamma", "gae_lambda", "clip")},
+                "frozen_teammates": cfg["runtime"].get("benchmark_companion_fraction",
+                                                        cfg.get("rs4_program", {}).get("phases", [])),
+                "seed": cfg.get("seed"),
+                "precision": dict(dtype="float32", amp=False,
+                                  matmul_allow_tf32=torch.backends.cuda.matmul.allow_tf32,
+                                  cudnn_allow_tf32=torch.backends.cudnn.allow_tf32),
+            }
+            summary["cuda_peak_allocated_gib"] = (torch.cuda.max_memory_allocated(trainer.device) / 2**30
+                                                  if trainer.device.type == "cuda" else 0.0)
+            summary["cuda_peak_reserved_gib"] = (torch.cuda.max_memory_reserved(trainer.device) / 2**30
+                                                 if trainer.device.type == "cuda" else 0.0)
+            if hasattr(trainer, "program"):
+                settings = trainer.program.settings()
+                summary["rs4_profile"] = {key: settings[key] for key in
+                    ("phase_id", "exercise_fraction", "frozen_teammates_fraction", "opponent_mix")}
+                if args.companion_fraction is not None:
+                    summary["rs4_profile"]["frozen_teammates_fraction"] = args.companion_fraction
             summary.update(cpu_seconds=cpu_seconds, cpu_core_equivalents=cpu_cores,
                            cpu_budget=budget, cpu_budget_percent=100 * cpu_cores / budget)
             summary.update(cuda_capture_seconds=sum(row[4] for row in measured) / args.iters,
@@ -244,6 +320,10 @@ def main():
                 summary["update_profile_seconds"] = {
                     key: sum(row[key] for row in update_timings[args.warmup:]) / args.iters
                     for key in update_timings[-1]}
+            reference = json.loads(args.reference_json.read_text(encoding="utf-8")) if args.reference_json else None
+            summary["acceptance"] = acceptance(summary, reference, args.minimum_speed_ratio, args.max_memory_gib)
+            summary["memory_gate_passed"] = (args.max_memory_gib is not None
+                                              and summary["cuda_peak_allocated_gib"] <= args.max_memory_gib)
             if args.json_output:
                 args.json_output.parent.mkdir(parents=True, exist_ok=True)
                 args.json_output.write_text(json.dumps(summary, indent=2), encoding="utf-8")
@@ -252,8 +332,9 @@ def main():
                 captures, replays = (sum(row[i] for row in measured) / args.iters for i in (5, 6))
                 print(f"decisiones CUDA: {trainer.cuda_decisions} | capturas {captures:.1f}/iter | replays {replays:.0f}/iter")
                 print(f"preparación/captura graph: {sum(row[4] for row in measured) / args.iters:.3f} s/iter (incluida en rollout)")
-                if trainer._decision_graph is not None and trainer._decision_graph.disabled_reason is not None:
-                    print(f"fallback eager: {trainer._decision_graph.disabled_reason}")
+                decision_engine = getattr(trainer, "inference", getattr(trainer, "_decision_graph", None))
+                if decision_engine is not None and decision_engine.disabled_reason is not None:
+                    print(f"fallback eager: {decision_engine.disabled_reason}")
                 print(f"buffers PPO reutilizados: {trainer._batch_transfer is not None}")
                 print(f"pool/stream de captura reutilizados: {cfg['runtime'].get('reuse_cuda_capture_pool', True)} "
                       f"| obs de minibatch reutilizadas: {cfg['runtime'].get('reuse_minibatch_obs', True)}")
@@ -272,6 +353,8 @@ def main():
                 if trainer.cuda_decisions == "legacy":
                     print("\nNota: en legacy, inferencia también incluye los muestreos; su fase muestreo no es comparable por separado.")
                 decision_profile.report(args.iters)
+            if not summary["acceptance"]["accepted"]:
+                raise SystemExit("Benchmark rechazado: " + "; ".join(summary["acceptance"]["reasons"]))
         finally:
             trainer._decision_profile = None
             if profile:

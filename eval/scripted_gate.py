@@ -34,7 +34,7 @@ def _forced_restart(task, kind, trials, seed):
     t = catalog[task]
     rows = trials * 4  # ambos equipos x ambos lados
     env = make_env(t, rows, max(t.n_entities, 15), seed=seed,
-                   random_reset_prob=0, optimize_rollout=True)
+                   random_reset_prob=0, optimize_rollout=True, corner_curriculum=False)
     env.reset()
     sim = env.sim
     sim.kickoff[:] = False

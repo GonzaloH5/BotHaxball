@@ -19,6 +19,7 @@ import numpy as np
 import torch
 
 from env.tasks import load_catalog
+from env.haxball_env import RESTART_EVENT_NAMES
 
 from .agents import make_agent
 from .arena import play
@@ -45,8 +46,7 @@ def eval_task(agent, opp, task, games, minutes, seed=0, action_delay_max=0):
     a, b = legs
     wins, draws, losses = a["wins"] + b["losses"], a["draws"] + b["draws"], a["losses"] + b["wins"]
     n = wins + draws + losses
-    event_names = ("passes", "progressive_passes", "pass_chains", "turnovers",
-                   "corner_attempts", "corner_successes", "restart_timeouts")
+    event_names = ("passes", "progressive_passes", "pass_chains", "turnovers") + RESTART_EVENT_NAMES
     events_a = a.get("events_red", {})
     events_b = b.get("events_blue", {})
     event_counts = {name: int(events_a.get(name, 0)) + int(events_b.get(name, 0))

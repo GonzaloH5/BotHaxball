@@ -2,6 +2,15 @@
 
 Bot de HaxBall entrenado con aprendizaje por refuerzo: PPO, self-play, liga de rivales (PFSP) y currículo.
 
+### RS4 v3: especialización larga
+
+Programa nuevo de **6B pasos útiles compartidos**, dos pilotos de200M y seis fases
+con evaluación independiente, saques recurrentes y compañeros congelados.
+No reutilizar preparadores antiguos ni arrancar con `--init-from`.
+La ruta recurrente sólo se selecciona si supera las pruebas de calidad y conserva
+al menos70% del throughput medido en el Pod.
+Ver [infraestructura, límites y comandos](reports/rs4_v3_implementation.md).
+
 ### Guía defensiva de JJRS 6v6
 
 `config_multi.yaml` (heredado por RunPod) habilita **sólo en `jjrs_6v6`**
@@ -420,7 +429,8 @@ que no ejecutó con -0.25 y se añade potencial compartido de acercamiento acota
 a 0.05. No se fuerza ninguna tecla ni se mueve al ejecutor hacia la pelota.
 El bonus de córner útil sigue requiriendo ejecución hacia dentro y continuidad.
 El log/TensorBoard muestra intentos, córners útiles y expiraciones por color;
-los números de consola corresponden al rollout actual, no al partido que se observa.
+la consola acumula desde el último log (ver «Córners: currículo continuo»),
+no corresponde al partido que se observa. TensorBoard conserva también cada rollout.
 
 **Bloque:** v2 combina 50% estructura/50% amenaza-peligro. Un último hombre móvil
 adelanta con pelota avanzada y ventaja de acceso; al perder esa ventaja recupera
@@ -534,6 +544,64 @@ atribuye causalmente el cambio al LR sin un control entrenado con el LR anterior
 El JSON conserva las claves generalist/specialist por compatibilidad, mientras
 que `reference_label` y consola identifican **RS4 anterior**. No hay promoción
 automática, evaluación concurrente ni entrenamiento iniciado por el preparador.
+
+#### Córners: currículo continuo y contadores específicos
+
+Corregido un fallo: `corner_reset_prob: 0.05` se aplicaba al arranque, pero todos
+los reinicios automáticos pasaban un equipo de saque explícito y omitían ese
+currículo. Ahora el **5% de los reinicios sin gol** puede empezar en córner,
+además del reset inicial. Incluye fin de episodio/partido y saques expirados;
+no sustituye el saque tras un gol. El dueño del córner y la banda se sortean,
+sin ejecutar acciones por el aprendiz ni añadir información privada a la observación.
+No se cambian PPO, recompensas, LR, BC, guía, presupuesto ni checkpoints.
+Sí cambia la distribución de experiencias: las trayectorias RS4 con la misma
+semilla ya no serán las de la versión anterior.
+
+Las evaluaciones y los replays no usan córners artificiales. `eval.arena` y
+`eval.render` fuerzan probabilidad cero; las pruebas de saques/gate pasan
+`corner_curriculum=False` a `make_env`. Los córners naturales siguen disponibles.
+
+El log del entrenador `train.multitask` acumula **todas las iteraciones desde la
+última línea impresa**, no sólo el último rollout:
+
+```text
+RS4 córners (desde último log; oportunidades/currículo/intentos/útiles/expirados) | rojo 12/4/2/1/7 azul ...
+RS4 expiraciones de todos los saques (desde último log), rojo/azul ...
+```
+
+En ese ejemplo se ofrecieron 12 córners rojos, 4 de currículo; se patearon 2,
+1 cumplió el criterio de ejecución útil y 7 expiraron sin ejecución. Una
+oportunidad se cuenta una vez al jugar la primera decisión desde ese córner;
+un córner creado al final de un paso se cuenta en el siguiente. Los contadores
+pueden cruzar ventanas: un intento en una ventana puede resultar útil después.
+No son tasas de éxito de una cohorte cerrada; no interpretar `útiles/intentos`
+de una sola línea como una probabilidad. Azul mezcla los rivales asignados
+(scripted, liga o self-play); sus éxitos no demuestran aprendizaje del rojo.
+
+TensorBoard conserva `rs4/corner_attempts_*`, `corner_successes_*` y
+`restart_timeouts_*` por rollout. Añade `corner_opportunities_*`,
+`corner_curriculum_starts_*`, `corner_timeouts_*` y sus variantes
+`rs4/window_<evento>_<red|blue>` acumuladas entre logs. Los JSON de evaluación
+incluyen también los nuevos eventos. Las expiraciones de córner son un
+subconjunto de las de todos los saques, no se deben sumar ambas.
+
+Reanudar el mismo experimento; no ejecutar otra vez el preparador ni renovar la guía.
+Después de publicar estos cambios y con el entrenamiento detenido/guardado en el Pod:
+
+```bash
+git pull --ff-only
+python -m pytest tests/test_rs4_corner_curriculum.py tests/test_rs4_rollout.py -q
+# Sólo si el config exige scripted_readiness.required: true: regenerar su report.
+python -m eval.scripted_gate --out reports/scripted_r3_gate.json
+python -u -m train.multitask --config runs/rs4_adapt/config.yaml --run rs4_adapt --resume
+```
+
+Se conserva el límite actual. El cambio garantiza práctica recurrente, **no**
+que el bot aprenda a sacar córners en un número determinado de pasos. Comprobar
+primero que `currículo` siga aumentando y luego que el rojo ejecute córners
+útiles; el aumento de expiraciones por sí solo no es progreso. El rendimiento
+durante entrenamiento incluye posiciones artificiales y no es directamente
+comparable con el log anterior: para comparar fuerza usar `tools.evaluate_rs4`.
 
 #### Menos coste de rollout RS4 v2
 
