@@ -9,7 +9,7 @@ import yaml
 from bots.scripted import scripted_actions
 from .multitask import MultiTrainer, SELF, POOL, SCRIPTED
 from .ppo_selfplay import lerp
-from .runtime import annealing_fraction
+from .runtime import annealing_fraction, learning_rate
 
 
 def pack_sequences(buffer, learner, length):
@@ -120,7 +120,7 @@ class RecurrentTrainer(MultiTrainer):
         if not hasattr(self, "_obs"):
             self._obs = [s.env.reset() for s in self.slots]
         fraction = annealing_fraction(self.steps, p)
-        lr = lerp(p["lr"], p["lr_final"], fraction)
+        lr = learning_rate(self.steps, p)
         for group in self.opt.param_groups:
             group["lr"] = lr
         entropy_coef = lerp(p["ent_coef"], p["ent_coef_final"], fraction)

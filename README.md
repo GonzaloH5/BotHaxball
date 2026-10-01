@@ -486,6 +486,55 @@ esta guía en la PC local. Si el config guardado exige gate R3, cambiar
 Restaurar la config del backup permite retirar la guía; no revierte el aprendizaje
 ya realizado. El generalista `parent.pt`/`runs/multi/latest.pt` permanece intacto.
 
+#### Fase de adaptación RS4 con calendario LR propio
+
+El especialista heredó el calendario global del generalista. Tras 3,000M pasos,
+su LR ya es ~0.00005; ampliar total_steps no la sube. Para probar adaptación más
+rápida sin tocar el run actual, preparar **una copia detenida**:
+
+```bash
+# Primero Ctrl+C en el entrenamiento y esperar "guardado en .../latest.pt".
+python -m tools.prepare_rs4_adaptation --source runs/rs4/latest.pt --run rs4_adapt
+python -u -m train.multitask --config runs/rs4_adapt/config.yaml --run rs4_adapt --resume
+```
+
+Por defecto, `rs4_adapt` prueba LR **0.0001 → LR efectiva anterior (~0.00005)**
+durante **200M pasos adicionales**, y se detiene al completar ese presupuesto.
+Sólo se modifica el LR: gamma, GAE, epochs, minibatch, clip, entropía, BC,
+rewards, física, rivales, ventanas de métricas y decay de guía siguen iguales.
+`latest.pt` es una copia byte a byte: conserva pesos, normalizadores, Adam,
+liga, pasos/iteraciones y contadores de etapa. `parent.pt` congela el **RS4 actual**,
+no el antiguo generalista. `runs/rs4` y el BC no se modifican.
+
+El ancla está en `ppo.lr_schedule.start_steps` y no se recalcula al reanudar.
+El calendario global sigue controlando entropía/BC; la guía mantiene su ancla
+anterior y **no se renueva**. El log añade `lr` y TensorBoard
+`training/learning_rate`/`training/lr_phase_steps`. Después de llegar al final,
+ampliar el presupuesto conserva el LR final, no reinicia la fase.
+El preparador rechaza runs existentes, fuentes mixtas y fuentes con una fase LR
+ya activa. El trainer rechaza arrancar pesos nuevos con un ancla de continuación,
+`--init-from`, un latest ausente o un checkpoint anterior al ancla.
+
+No repetir el preparador para continuar; usar el mismo comando --resume. Para
+volver a la baseline, detener rs4_adapt y reanudar runs/rs4/config.yaml en run rs4.
+Esto cambia explícitamente la dinámica de aprendizaje, no es una optimización de
+velocidad. No garantiza subir KL, reducir empates o resolver los córners.
+
+Revisar aproximadamente tras 50M y 100M pasos nuevos, detenidos y guardados:
+
+```bash
+python -m tools.evaluate_rs4 --run rs4_adapt --styles --games 128 --minutes 2 --seed 51
+python -m tools.evaluate_rs4 --run rs4_adapt --styles --games 128 --minutes 2 --seed 73
+```
+
+Compara la copia entrenada contra el RS4 congelado previo, con iguales rivales,
+semillas y ambos colores. Evalúa puntos, victorias/empates/derrotas y replays de
+saques; no juzgar sólo KL. Esta comparación detecta regresión/progreso, pero no
+atribuye causalmente el cambio al LR sin un control entrenado con el LR anterior.
+El JSON conserva las claves generalist/specialist por compatibilidad, mientras
+que `reference_label` y consola identifican **RS4 anterior**. No hay promoción
+automática, evaluación concurrente ni entrenamiento iniciado por el preparador.
+
 #### Menos coste de rollout RS4 v2
 
 Con `runtime.optimize_rollout=true`, las optimizaciones RS4 se activan por defecto

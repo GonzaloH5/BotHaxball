@@ -64,6 +64,29 @@ def annealing_fraction(steps, ppo):
     return min(1.0, max(0.0, steps / horizon))
 
 
+def learning_rate(steps, ppo):
+    """Fase LR opt-in con ancla global fija; no reinicia entropía/BC ni Adam."""
+    schedule = ppo.get("lr_schedule")
+    if schedule is None:
+        fraction = annealing_fraction(steps, ppo)
+        return ppo["lr"] + (ppo["lr_final"] - ppo["lr"]) * fraction
+    if not isinstance(schedule, dict):
+        raise ValueError("ppo.lr_schedule debe ser un diccionario")
+    required = ("start_steps", "duration_steps", "initial", "final")
+    if any(key not in schedule for key in required):
+        raise ValueError("lr_schedule requiere start_steps/duration_steps/initial/final")
+    for key in required:
+        value = schedule[key]
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not np.isfinite(value):
+            raise ValueError(f"lr_schedule.{key} debe ser un número finito")
+    if schedule["start_steps"] < 0 or schedule["duration_steps"] <= 0:
+        raise ValueError("Horizonte lr_schedule inválido")
+    if not 0 < schedule["final"] <= schedule["initial"]:
+        raise ValueError("lr_schedule exige 0 < final <= initial")
+    fraction = min(1.0, max(0.0, (steps - schedule["start_steps"]) / schedule["duration_steps"]))
+    return schedule["initial"] + (schedule["final"] - schedule["initial"]) * fraction
+
+
 class CudaRolloutTransfer:
     """Buffers pinned reutilizables: una subida de obs y una bajada de decisiones por tick.
 

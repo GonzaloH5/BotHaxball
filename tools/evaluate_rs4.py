@@ -54,6 +54,7 @@ def evaluate(run="rs4", checkpoint=None, opponents=None, games=128, minutes=2.0,
                 frozen_opponents.append(str(frozen))
                 identities.append(dict(rival=str(source), sha256=file_hash(frozen)))
         summary = dict(task=TASK, games=games, minutes=minutes, seed=seed,
+                       reference_label=manifest.get("reference_label", "generalista"),
                        generalist_sha256=file_hash(baseline), specialist_sha256=file_hash(specialist),
                        candidate=str(candidate), opponents=identities, results=[])
         # eval.matrix alterna rojo/azul y fija RNG de políticas y entorno por semilla.
@@ -92,7 +93,7 @@ def main():
                           str(ROOT / "runs" / args.run / "parent.pt")]
     output, summary = evaluate(args.run, args.checkpoint, args.opponents, args.games, args.minutes, args.seed)
     for row in summary["results"]:
-        print(f"{row['opponent']['rival']}: generalista {row['generalist']['points']:.3f}, "
+        print(f"{row['opponent']['rival']}: {summary.get('reference_label', 'generalista')} {row['generalist']['points']:.3f}, "
               f"especialista {row['specialist']['points']:.3f}, delta {row['points_delta']:+.3f}")
     print(f"Resultados: {output / 'summary.json'}")
     print("Repetir con otras semillas; una diferencia pequeña no demuestra superioridad.")

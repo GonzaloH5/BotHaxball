@@ -38,7 +38,7 @@ from .checkpoints import atomic_torch_save, maybe_save_checkpoints
 from .cuda_decisions import DECISION_BACKENDS, CudaDecisionGraph, sample_decisions
 from .model import SetActorCritic, build_model
 from .ppo_selfplay import lerp, resolve_device
-from .runtime import CudaRolloutTransfer, PpoBatchTransfer, annealing_fraction, batch_to_device, cpu_budget, load_config
+from .runtime import CudaRolloutTransfer, PpoBatchTransfer, annealing_fraction, batch_to_device, cpu_budget, learning_rate, load_config
 from .rs4_specialization import coefficient as rs4_coefficient, validate as validate_rs4_tactics
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -113,8 +113,15 @@ class MultiTrainer:
             raise ValueError(f"runtime.cuda_decisions debe ser uno de {DECISION_BACKENDS}")
         self._decision_profile = None
         self.run_dir = ROOT / "runs" / run
-        self.run_dir.mkdir(parents=True, exist_ok=True)
         p, r = cfg["ppo"], cfg["reward"]
+        learning_rate(0, p)  # validar el calendario antes de crear/escribir el run
+        phase = p.get("lr_schedule")
+        if phase is not None and phase["start_steps"] > 0:
+            if not resume or init_from:
+                raise ValueError("Una fase LR anclada requiere --resume; no iniciar pesos nuevos con --init-from")
+            if not (self.run_dir / "latest.pt").is_file():
+                raise ValueError("La fase LR requiere el latest.pt de su run; no crear un modelo nuevo")
+        self.run_dir.mkdir(parents=True, exist_ok=True)
         budget = cpu_budget()
         threads = p.get("torch_threads", 8)
         auto_threads = 2 if resolve_device(p.get("device")).type == "cuda" else 8
@@ -201,6 +208,8 @@ class MultiTrainer:
                 self._restore_league(ck, include_learner=True)
             print(f"modelo inicial: {init_from} (migración compatible)" +
                   (f", regularizado con KL x{p['bc_kl_coef']}" if self.bc_model is not None else ""))
+        if phase is not None and self.steps < phase["start_steps"]:
+            raise ValueError("El checkpoint es anterior al ancla LR; usar el checkpoint preparado para esta fase")
         (self.run_dir / "config.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
         self.build_envs()
         self.writer = SummaryWriter(str(self.run_dir / "tb"))
@@ -799,7 +808,7 @@ class MultiTrainer:
         if not hasattr(self, "_obs"):
             self._obs = [s.env.reset() for s in self.slots]
         frac = annealing_fraction(self.steps, p)
-        lr = lerp(p["lr"], p["lr_final"], frac)
+        lr = learning_rate(self.steps, p)
         for g in self.opt.param_groups:
             g["lr"] = lr
         ent_coef = lerp(p["ent_coef"], p["ent_coef_final"], frac)
@@ -1078,6 +1087,10 @@ class MultiTrainer:
         w.add_scalar("training/goal_elo", self.league.learner_elo, self.steps)
         w.add_scalar("sps", sps, self.steps)
         w.add_scalar("shaping_coef", self.rcfg.shaping_coef, self.steps)
+        w.add_scalar("training/learning_rate", lr, self.steps)
+        if self.cfg.get("ppo", {}).get("lr_schedule") is not None:
+            phase = self.cfg["ppo"]["lr_schedule"]
+            w.add_scalar("training/lr_phase_steps", max(0, self.steps - phase["start_steps"]), self.steps)
         for s in self.slots:
             wr, goals = s.winrate()
             points, games, record, scoreless = s.match_performance()
@@ -1097,7 +1110,7 @@ class MultiTrainer:
             print(f"it {self.iteration:5d} | etapa {self.stage} | pasos {self.steps / 1e6:7.1f}M | {sps:6.0f}/s "
                   f"(rollout {t_roll:.1f}s prep {stats.get('timing/prepare_seconds', 0.0):.2f}s upd {t_upd:.1f}s) | elo por goles {self.league.learner_elo:5.0f} | "
                   f"ent {stats['entropy']:.2f} | KL {stats.get('approx_kl', 0):.4f} "
-                  f"clip {stats.get('clipfrac', 0):.3f} | shaping {self.rcfg.shaping_coef:.2f}", flush=True)
+                  f"clip {stats.get('clipfrac', 0):.3f} | lr {lr:.2e} | shaping {self.rcfg.shaping_coef:.2f}", flush=True)
             if "rs4/tactical_coef" in stats:
                 print(f"      RS4 guía {stats['rs4/tactical_coef']:.4f} | "
                       f"reward táctico medio {stats['rs4/tactical_reward_mean']:+.6f} | "
