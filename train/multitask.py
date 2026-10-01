@@ -315,6 +315,9 @@ class MultiTrainer:
             env.optimize_reward_geometry = bool(
                 getattr(self, "optimize_rollout", True)
                 and self.cfg.get("runtime", {}).get("optimize_reward_geometry", True))
+            env.optimize_callbacks = bool(
+                getattr(self, "optimize_rollout", True)
+                and self.cfg.get("runtime", {}).get("optimize_callbacks", True))
             slot = TaskSlot(t, env)
             # intro_step: paso global en que la tarea entró. Tareas nuevas = ahora; estados guardados antes de
             # existir este campo = 0 (estaban desde el principio o se comportaban así hasta ahora)

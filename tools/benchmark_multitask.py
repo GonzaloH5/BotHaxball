@@ -98,6 +98,7 @@ def main():
                     help="legacy: decisiones anteriores; eager: un muestreo; auto/graph: CUDA Graph (graph exige captura)")
     ap.add_argument("--profile-rollout", action="store_true", help="Desglose inclusivo por componente (añade overhead)")
     ap.add_argument("--no-reward-geometry", action="store_true", help="Geometría de rewards NumPy para comparar, sin cambiar física/red/PPO")
+    ap.add_argument("--no-callbacks", action="store_true", help="Callbacks de saques/cooperación de referencia; conserva geometría y CUDA")
     ap.add_argument("--no-reuse-ppo-batch", action="store_true", help="Preparación anterior: asignar/pinear cada lote para comparar")
     ap.add_argument("--no-cache-bc-logits", action="store_true", help="Recalcular referencia BC en cada época PPO para comparar CPU")
     ap.add_argument("--no-optimize-cpu", action="store_true", help="Desactivar agrupamiento CPU y buffer de minibatch; conserva cache BC")
@@ -129,6 +130,8 @@ def main():
         cfg["runtime"]["optimize_cpu"] = False
     if args.no_reward_geometry:
         cfg["runtime"]["optimize_reward_geometry"] = False
+    if args.no_callbacks:
+        cfg["runtime"]["optimize_callbacks"] = False
     if args.profile_rollout:
         cfg["runtime"]["profile_update"] = True
     if args.baseline or args.no_reuse_ppo_batch:

@@ -171,6 +171,7 @@ class HaxballEnv:
 
         self.optimize_rollout = optimize_rollout
         self.optimize_reward_geometry = optimize_rollout
+        self.optimize_callbacks = optimize_rollout
 
     # ----------------------------------------------------------------- reset
     def _reset_envs(self, idx, kickoff_team=None):
@@ -444,6 +445,12 @@ class HaxballEnv:
         proporciones 840/1150 y 320/600, como la geometría RS de referencia.
         """
         sim = self.sim
+        if self.optimize_callbacks:
+            from .rollout_callbacks import protect_pieces
+            protect_pieces(sim.player_pos, sim.player_vel, sim.player_team,
+                           self.setpiece_team, self.setpiece_kind, self.setpiece_pos,
+                           *self._piece_geometry())
+            return
         pp, pv = sim.player_pos, sim.player_vel
         active = self.setpiece_team >= 0
         if not active.any():
@@ -471,12 +478,25 @@ class HaxballEnv:
         pv[near] = 0.0
 
     def _setpiece_pre_tick(self, actions):
+        if self.optimize_callbacks:
+            from .rollout_callbacks import piece_pre
+            sim = self.sim
+            return piece_pre(actions, sim.player_pos, sim.player_vel, sim.player_team,
+                             self.setpiece_team, self.setpiece_kind, self.setpiece_pos,
+                             *self._piece_geometry())
         self._protect_setpieces()
         blocked = ((self.setpiece_team[:, None] >= 0)
                    & (self.setpiece_team[:, None] != self.sim.player_team[None, :]))
         return np.where(blocked, actions % 9, actions)
 
     def _setpiece_post_tick(self, goal):
+        if self.optimize_callbacks:
+            from .rollout_callbacks import piece_post
+            sim = self.sim
+            return piece_post(goal, sim.ball_pos, sim.ball_vel, sim.player_pos, sim.player_vel,
+                              sim.player_team, sim.kicked, self.setpiece_team, self.setpiece_kind,
+                              self.setpiece_ticks, self.setpiece_limit, self.setpiece_pos,
+                              self.goal_kick_speed, *self._piece_geometry())
         active = self.setpiece_team >= 0
         owner = self.setpiece_team.copy()
         self.setpiece_ticks[active] += 1
@@ -520,6 +540,12 @@ class HaxballEnv:
 
         self._protect_setpieces()
         return timed_out, owner
+
+    def _piece_geometry(self):
+        rp = self.sim.st.player["radius"]
+        return (max(self.setpiece_dist, rp + self.sim.st.ball["radius"] + 5.0),
+                self.field_w * (840.0 / 1150) - rp,
+                self.field_h * (320.0 / 600) + rp)
 
     def reset(self) -> np.ndarray:
         self.score[:] = 0
@@ -762,6 +788,8 @@ class HaxballEnv:
 
     def _empty_cooperation_events(self):
         shape = (self.N, 2)
+        if self.optimize_callbacks:
+            return self._callback_events(np.zeros((4, *shape), dtype=np.int64))
         return {name: np.zeros(shape, dtype=np.int64) for name in
                 ("passes", "progressive_passes", "pass_chains", "turnovers")}
 
@@ -770,8 +798,20 @@ class HaxballEnv:
         for key, value in source.items():
             target[key] += value
 
-    def _advance_pending_passes(self, ticks=1):
+    def _advance_pending_passes(self, ticks=1, _accumulator=None):
         """Confirma transferencias sólo tras una breve retención del receptor."""
+        if self.optimize_callbacks:
+            from .rollout_callbacks import advance_passes
+            rc = self.rcfg
+            bonus, events, storage = self._cooperation_outputs(_accumulator)
+            advance_passes(
+                self.sim.player_pos, self.sim.player_team, self.pending_pass_sender,
+                self.pending_pass_receiver, self.pending_pass_team, self.pending_pass_age,
+                self.pending_pass_progress, self.last_pass_sender, self.last_pass_receiver,
+                self.coop_reward_spent, int(ticks), rc.team_pass_hold_ticks, self.field_w,
+                rc.team_pass_success, rc.team_pass_value, rc.team_pass_chain,
+                rc.team_pass_return_min_usefulness, rc.team_pass_possession_cap, bonus, storage)
+            return bonus, events
         bonus = np.zeros((self.N, self.P), dtype=np.float64)
         events = self._empty_cooperation_events()
         active = self.pending_pass_team >= 0
@@ -822,8 +862,20 @@ class HaxballEnv:
             self.pending_pass_progress[n] = 0.0
         return bonus, events
 
-    def _cooperation_touch_reward(self, tch, touch_ball_pos=None):
+    def _cooperation_touch_reward(self, tch, touch_ball_pos=None, _accumulator=None):
         """Detecta candidatos de pase; el reward llega tras retención."""
+        if self.optimize_callbacks:
+            from .rollout_callbacks import touch_passes
+            sim = self.sim
+            bonus, events, storage = self._cooperation_outputs(_accumulator)
+            touch_passes(
+                tch, sim.ball_pos if touch_ball_pos is None else touch_ball_pos,
+                sim.player_team, sim.kickoff, self.setpiece_team, self.last_touch_player,
+                self.last_touch_pos, self.pending_pass_sender, self.pending_pass_receiver,
+                self.pending_pass_team, self.pending_pass_age, self.pending_pass_progress,
+                self.last_pass_sender, self.last_pass_receiver, self.coop_reward_spent,
+                self.field_w, self.rcfg.team_pass_min_dist_frac, bonus, storage)
+            return bonus, events
         bonus = np.zeros((self.N, self.P), dtype=np.float64)
         events = self._empty_cooperation_events()
 
@@ -912,6 +964,19 @@ class HaxballEnv:
             self.last_touch_pos[n] = event_pos
         return bonus, events
 
+    @staticmethod
+    def _callback_events(events):
+        return {name: events[i] for i, name in enumerate(
+            ("passes", "progressive_passes", "pass_chains", "turnovers"))}
+
+    def _cooperation_outputs(self, accumulator):
+        if accumulator is None:
+            bonus = np.zeros((self.N, self.P), dtype=np.float64)
+            events = self._empty_cooperation_events()
+        else:
+            bonus, events = accumulator
+        return bonus, events, events["passes"].base
+
     def step(self, actions: np.ndarray):
         actions = np.asarray(actions, dtype=np.int64)
         world_act = actions.copy()
@@ -977,24 +1042,28 @@ class HaxballEnv:
             dtype=np.float64,
         )
         cooperation_events = self._empty_cooperation_events()
+        accumulator = (cooperation_reward, cooperation_events) if self.optimize_callbacks else None
         corner_attempts = np.zeros((self.N, 2), dtype=np.int64)
         corner_successes = np.zeros((self.N, 2), dtype=np.int64)
         restart_timeouts = np.zeros((self.N, 2), dtype=np.int64)
 
         if fused and self.T > 1:
             for k in range(self.frame_skip):
-                pending_reward, pending_events = self._advance_pending_passes(1)
-                cooperation_reward += pending_reward
-                self._merge_events(cooperation_events, pending_events)
+                pending_reward, pending_events = self._advance_pending_passes(1, accumulator)
+                if accumulator is None:
+                    cooperation_reward += pending_reward
+                    self._merge_events(cooperation_events, pending_events)
                 tch = fused_touches[:, k]
 
                 if tch.any():
                     touch_reward, touch_events = self._cooperation_touch_reward(
                         tch,
                         fused_touch_pos[:, k],
+                        accumulator,
                     )
-                    cooperation_reward += touch_reward
-                    self._merge_events(cooperation_events, touch_events)
+                    if accumulator is None:
+                        cooperation_reward += touch_reward
+                        self._merge_events(cooperation_events, touch_events)
 
         for k in range(0 if fused else self.frame_skip):
             if self.action_delay_max > 0:
@@ -1030,9 +1099,10 @@ class HaxballEnv:
             goal = np.where(goal == 0, g, goal)
 
             if self.T > 1:
-                pending_reward, pending_events = self._advance_pending_passes(1)
-                cooperation_reward += pending_reward
-                self._merge_events(cooperation_events, pending_events)
+                pending_reward, pending_events = self._advance_pending_passes(1, accumulator)
+                if accumulator is None:
+                    cooperation_reward += pending_reward
+                    self._merge_events(cooperation_events, pending_events)
 
             if rules is not None:
                 rules.post_tick(world_act, goal)
@@ -1091,9 +1161,10 @@ class HaxballEnv:
             tch = self.sim.touch
 
             if tch.any():
-                touch_reward, touch_events = self._cooperation_touch_reward(tch)
-                cooperation_reward += touch_reward
-                self._merge_events(cooperation_events, touch_events)
+                touch_reward, touch_events = self._cooperation_touch_reward(tch, _accumulator=accumulator)
+                if accumulator is None:
+                    cooperation_reward += touch_reward
+                    self._merge_events(cooperation_events, touch_events)
 
                 for t in (0, 1):
                     self.last_touch[

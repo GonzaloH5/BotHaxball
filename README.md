@@ -324,6 +324,50 @@ esta optimización.
 
 ### Entrenamiento CPU + GPU en Runpod
 
+#### Rollout: callbacks compilados de saques y cooperación
+
+La comparación aportada del Pod validó la geometría anterior: **37.286 → 43.014
+pasos/s reales (+15,4%)**, rollout **2,061 → 1,746 s**, mismas 97.920 muestras/iter.
+Es una comparación de dos mediciones secuenciales, no un óptimo global demostrado.
+El perfil posterior midió 1,198 s de entorno total, 0,282 s sólo en RS4,
+0,175 s de contactos/retención de pases y 0,113 s de callbacks de saques.
+Estos últimos están incluidos en los entornos: no sumar todos esos tiempos.
+
+`runtime.optimize_callbacks=true` (por defecto con rollout optimizado) ejecuta
+protección/pre/post-tick de saques y detección/retención de pases en kernels Numba
+seriales, float64 y sin fastmath. Conserva cada tick: distancia y barrera de área,
+patadas bloqueadas, liberación por patada/gol/timeout y velocidad mínima de saque
+de arco. Los contactos simultáneos, candidatos de pase, retención, cadenas,
+devoluciones, intercepciones y límite de recompensa conservan sus reglas.
+
+Durante `step`, los callbacks acumulan directamente en un lote de reward/eventos
+del paso, evitando arrays/diccionarios temporales y cuatro sumas por evento.
+Ese lote es nuevo por paso: las llamadas públicas a los helpers y los datos
+devueltos no se sobrescriben en pasos posteriores. No se altera PPO, física,
+currículo, modelo, referencia BC, RNG ni cantidad de muestras. La captura CUDA
+continúa invalidándose después de cada rollout, evitando pesos/normalizadores viejos.
+
+Con el código actualizado y el entrenamiento **detenido y guardado**, comparar
+desde el mismo checkpoint, sin carga concurrente:
+
+```bash
+# Referencia: conserva la geometría optimizada y todas las optimizaciones CUDA.
+python -m tools.benchmark_multitask --config train/config_gpu_overnight.yaml --numba-threads 4 --warmup 3 --iters 15 --no-callbacks
+python -m tools.benchmark_multitask --config train/config_gpu_overnight.yaml --numba-threads 4 --warmup 3 --iters 15
+```
+
+Repetir en orden inverso si hay ruido. Ambas pruebas usan copias temporales;
+`latest.pt` no recibe sus updates. Para comparar el perfil, agregar
+`--profile-rollout` a **ambos** (añade overhead). Para desactivar sólo callbacks
+al entrenar: `--override runtime.optimize_callbacks=false`.
+Con `runtime.optimize_rollout=false` también se usa la referencia de callbacks.
+El flag `--no-reward-geometry` no desactiva estos callbacks: mide otro componente.
+
+Microbenchmarks locales de 512 pasos de entorno dieron +17,3% en Futsal 3v3,
++12,3% en 5v5, +6,4% en 7v7 y +61,8% en RS4. **No son mejoras del entrenamiento
+completo ni mediciones de la GPU del Pod**. Detalle:
+`reports/rollout_callbacks_20261001.md`.
+
 #### Rollout: geometría de recompensas y diagnóstico de CPU
 
 El log aportado del nuevo Pod se mantiene en 35–40k pasos/s, con rollout 1,9–2,2 s,
