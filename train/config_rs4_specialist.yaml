@@ -1,0 +1,9 @@
+# Plantilla de especialización. Crear run con tools.prepare_rs4 antes de reanudar.
+# El preparador conserva config/modelo/PPO del run fuente y aplica sólo esta etapa.
+extends: config_gpu_overnight.yaml
+run_name: rs4
+stages:
+  - name: RS4_especializacion
+    tasks: [rs4_4v4]
+    fixed_weights: true
+    weights: {rs4_4v4: 1.0}

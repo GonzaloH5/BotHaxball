@@ -324,6 +324,78 @@ esta optimización.
 
 ### Entrenamiento CPU + GPU en Runpod
 
+#### Rama especializada RS4, independiente del generalista
+
+Esta es una rama de **entrenamiento**, no otra arquitectura ni una rama Git.
+`tools.prepare_rs4` crea un run separado desde un checkpoint PPO completo y su
+`config.yaml` guardado. Conserva modelo, normalizadores, Adam, liga, pasos e
+iteraciones globales, dificultad/ventanas RS4, recompensas, PPO y configuración
+de rivales. Sólo cambia el reparto a **100% RS4**, la etapa manual a 0 y su contador
+a 0. Los entornos se reconstruyen; no es continuación exacta de los mismos partidos.
+Las demás modalidades no reciben práctica en esta rama y pueden degradarse.
+
+No modifica `runs/multi/latest.pt`, no reinicia desde BC y no inicia entrenamiento.
+Rechaza destinos existentes: para reanudar una rama NO ejecutar otra vez el preparador.
+Guarda en `runs/rs4/`: `latest.pt` independiente, `parent.pt` congelado (copia exacta
+del generalista), `parent_config.yaml`, `config.yaml` resuelto y `specialization.json`
+con hash y procedencia. Conserva todos los snapshots de la liga; sus estadísticas
+heredadas no deben interpretarse como una evaluación nueva exclusivamente RS4.
+
+En el Pod, detener/guardar el generalista con un solo Ctrl+C y esperar. Después
+de actualizar el código, preparar una vez:
+
+```bash
+python -m pytest tests/test_rs4_specialist.py -q
+python -m tools.prepare_rs4 --source runs/multi/latest.pt --run rs4 --additional-steps 500000000
+```
+
+500 millones es un presupuesto inicial configurable, no un umbral de calidad.
+El límite global se fija a pasos del padre + ese presupuesto. El horizonte anterior
+de LR/entropía/BC se conserva, incluso si la config vieja no tenía `schedule_steps`.
+El preparador usa la config GUARDADA del padre, no sustituye sus hiperparámetros por
+los defaults de la plantilla `train/config_rs4_specialist.yaml`.
+
+Entrenar y reanudar usando siempre la config generada:
+
+```bash
+python -u -m train.multitask --config runs/rs4/config.yaml --run rs4 --resume
+```
+
+Para dejarlo en segundo plano (no lanzar también el comando foreground):
+
+```bash
+nohup .venv/bin/python -u -m train.multitask --config runs/rs4/config.yaml --run rs4 --resume > "runs/rs4/train-$(date +%Y%m%d-%H%M%S).log" 2>&1 &
+tail -n 50 -f "$(ls -t runs/rs4/train-*.log | head -n 1)"
+```
+
+No entrenar generalista y especialista simultáneamente en el mismo Pod al medir
+rendimiento. `Ctrl+C` en tail sólo cierra tail, no el entrenamiento en segundo plano.
+Los runs, TensorBoard (`runs/rs4/tb`) y checkpoints periódicos son independientes.
+No se versionan automáticamente los artefactos nuevos de `runs/rs4`.
+
+Evaluación pareada, con entrenamiento pausado/guardado para evitar competencia:
+
+```bash
+python -m tools.evaluate_rs4 --run rs4 --games 128 --minutes 2 --seed 51
+python -m tools.evaluate_rs4 --run rs4 --games 128 --minutes 2 --seed 73
+```
+
+Ambos modelos juegan RS4 contra los mismos rivales: `scripted:r3` y `parent.pt`.
+Cada evaluación fija semillas, alterna rojo/azul y mantiene muestreo estocástico.
+Congela candidato y rivales en copias temporales, comprueba hash del padre y guarda
+informes únicos en `runs/rs4/evaluations/rs4_*/summary.json`, con hashes, puntos,
+G-E-P, goles y eventos. El padre enfrentándose a sí mismo es sólo una referencia,
+no un test de progreso. No reemplaza automáticamente al generalista ni declara
+superioridad estadística por una pequeña diferencia de puntos.
+`--checkpoint runs/rs4/ckpt_XXXXXX.pt` permite evaluar un candidato histórico;
+`--opponents scripted:r3 ruta/rival_congelado.pt` permite añadir rivales comunes.
+Usar checkpoints locales de confianza: PyTorch carga estos archivos con pickle.
+
+Para volver al generalista, reanudar `multi` con su perfil habitual; jamás copiar
+el especialista sobre `runs/multi/latest.pt`. RS4 sigue usando el presupuesto de
+agentes y las optimizaciones del padre, pero la cantidad de muestras útiles por
+iteración puede variar con el reparto de rivales y el nuevo tamaño de observación.
+
 #### Menos asignaciones CUDA y perfil del update
 
 Última medición aportada: callbacks **45.378 → 48.374 pasos/s reales (+6,6%)**,
