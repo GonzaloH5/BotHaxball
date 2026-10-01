@@ -17,7 +17,7 @@ import torch
 from train import multitask
 from train.cuda_decisions import DECISION_BACKENDS, CudaDecisionProfile
 from train.multitask import ROOT, MultiTrainer
-from train.runtime import load_config
+from train.runtime import cpu_budget, load_config
 
 
 class RolloutProfile:
@@ -43,8 +43,16 @@ class RolloutProfile:
             self.wrap(trainer, method, label)
         for slot in trainer.slots:
             self.wrap(slot.env, "step", "entorno total")
+            self.wrap(slot.env, "step", f"entorno {slot.task.name} (dentro de entorno total)")
             self.wrap(slot.env, "observe", "observaciones (dentro de entorno)")
             self.wrap(slot.env, "_potentials", "potenciales (dentro de entorno)")
+            for method, label in (("_team_ball_dist", "distancia por equipo"),
+                                  ("_spread_potential", "separación por equipo"),
+                                  ("_advance_pending_passes", "retención de pases"),
+                                  ("_cooperation_touch_reward", "contactos/pases"),
+                                  ("_setpiece_pre_tick", "protección de saques"),
+                                  ("_setpiece_post_tick", "finalización de saques")):
+                self.wrap(slot.env, method, f"{label} (dentro de entorno)")
             self.wrap(slot.env.sim, "step", "física (dentro de entorno)")
             self.wrap(slot.env.sim, "step_frames", "física (dentro de entorno)")
             self.wrap(slot.env.sim, "step_frames_with_touches", "física (dentro de entorno)")
@@ -89,6 +97,7 @@ def main():
     ap.add_argument("--decision-backend", choices=DECISION_BACKENDS,
                     help="legacy: decisiones anteriores; eager: un muestreo; auto/graph: CUDA Graph (graph exige captura)")
     ap.add_argument("--profile-rollout", action="store_true", help="Desglose inclusivo por componente (añade overhead)")
+    ap.add_argument("--no-reward-geometry", action="store_true", help="Geometría de rewards NumPy para comparar, sin cambiar física/red/PPO")
     ap.add_argument("--no-reuse-ppo-batch", action="store_true", help="Preparación anterior: asignar/pinear cada lote para comparar")
     ap.add_argument("--no-cache-bc-logits", action="store_true", help="Recalcular referencia BC en cada época PPO para comparar CPU")
     ap.add_argument("--no-optimize-cpu", action="store_true", help="Desactivar agrupamiento CPU y buffer de minibatch; conserva cache BC")
@@ -118,6 +127,8 @@ def main():
         cfg["runtime"]["cache_bc_logits"] = False
     if args.no_optimize_cpu:
         cfg["runtime"]["optimize_cpu"] = False
+    if args.no_reward_geometry:
+        cfg["runtime"]["optimize_reward_geometry"] = False
     if args.profile_rollout:
         cfg["runtime"]["profile_update"] = True
     if args.baseline or args.no_reuse_ppo_batch:
@@ -173,12 +184,18 @@ def main():
                     if decision_profile:
                         decision_profile.reset()
                     start = time.perf_counter()
+                    cpu_start = time.process_time()
                 trainer.iterate()
                 iteration_timings.append(trainer._last_iteration_timings)
             elapsed = time.perf_counter() - start
+            cpu_seconds = time.process_time() - cpu_start
+            cpu_cores = cpu_seconds / elapsed
+            budget = cpu_budget()
             measured = records[args.warmup:]
             samples = sum(row[0] for row in measured)
             print(f"\n{samples / elapsed:,.0f} pasos/s reales | {elapsed / args.iters:.3f} s/iter")
+            print(f"CPU del proceso: {cpu_cores:.2f} núcleos equivalentes de {budget} disponibles "
+                  f"({100 * cpu_cores / budget:.1f}% del cupo; no el porcentaje del panel del host)")
             print(f"muestras útiles: {samples:,} total | {samples / args.iters:,.1f}/iter "
                   f"| mínimo {min(row[0] for row in measured):,} | máximo {max(row[0] for row in measured):,}")
             for index, name in ((1, "rollout"), (2, "preparación/GAE"), (3, "update")):
@@ -201,6 +218,8 @@ def main():
                            device=str(trainer.device), config=str(args.config), checkpoint=str(args.checkpoint),
                            warmup=args.warmup, iters=args.iters, runtime=cfg.get("runtime", {}),
                            extra_seconds=extras, learning_metrics=metrics)
+            summary.update(cpu_seconds=cpu_seconds, cpu_core_equivalents=cpu_cores,
+                           cpu_budget=budget, cpu_budget_percent=100 * cpu_cores / budget)
             if args.json_output:
                 args.json_output.parent.mkdir(parents=True, exist_ok=True)
                 args.json_output.write_text(json.dumps(summary, indent=2), encoding="utf-8")

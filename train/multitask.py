@@ -312,6 +312,9 @@ class MultiTrainer:
                            random_reset_prob=e["random_reset_prob"], kickoff_timeout=e.get("kickoff_timeout", 180),
                            action_delay_max=e.get("action_delay_max", 0),
                            optimize_rollout=getattr(self, "optimize_rollout", True))
+            env.optimize_reward_geometry = bool(
+                getattr(self, "optimize_rollout", True)
+                and self.cfg.get("runtime", {}).get("optimize_reward_geometry", True))
             slot = TaskSlot(t, env)
             # intro_step: paso global en que la tarea entró. Tareas nuevas = ahora; estados guardados antes de
             # existir este campo = 0 (estaban desde el principio o se comportaban así hasta ahora)
@@ -737,7 +740,9 @@ class MultiTrainer:
     @torch.no_grad()
     def values(self, obs: np.ndarray) -> np.ndarray:
         tensor = torch.from_numpy(obs.reshape(-1, self.obs_dim)).to(self.device)
-        if (self.device.type == "cpu" and getattr(self, "optimize_cpu", False)
+        critic_only = (self.device.type == "cpu" and getattr(self, "optimize_cpu", False)) or (
+            self.device.type == "cuda" and self.optimize_rollout)
+        if (critic_only
                 and hasattr(self.model, "value_only")):
             v = self.model.value_only(tensor)
         else:

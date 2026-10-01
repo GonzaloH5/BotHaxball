@@ -51,6 +51,9 @@ def test_summary_excludes_warmup_and_preserves_source(tmp_path, monkeypatch):
     assert result["samples"] == 500
     assert result["samples_per_iteration"] == [200, 300]
     assert result["learning_metrics"]["entropy"] == 1.9
+    assert result["cpu_seconds"] >= 0
+    assert result["cpu_budget"] >= 1
+    assert result["cpu_core_equivalents"] == result["cpu_seconds"] / result["elapsed_seconds"]
     assert source.read_bytes() == b"original checkpoint"
     assert not list((tmp_path / "runs").iterdir())
     assert cfg["runtime"]["optimize_cpu"] is True  # CLI no muta el objeto original

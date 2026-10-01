@@ -74,15 +74,17 @@ def test_grouped_cpu_keeps_sampling_order_and_learner_outputs(monkeypatch):
 
 
 @pytest.mark.parametrize("kind", ["mlp", "entity", "meanmax", "attention", "attentive_meanmax"])
-def test_grouped_bootstrap_uses_only_critic_and_preserves_order(kind):
+@pytest.mark.parametrize("device", ["cpu", pytest.param("cuda", marks=pytest.mark.skipif(
+    not torch.cuda.is_available(), reason="requiere CUDA"))])
+def test_grouped_bootstrap_uses_only_critic_and_preserves_order(kind, device):
     torch.manual_seed(42)
     width = 5 if kind == "mlp" else 5 + 3 * 8
     model = (ActorCritic(5, hidden=16, layers=1) if kind == "mlp" else
              EntityActorCritic(5, ent_dim=8, hidden=16, ent_hidden=8) if kind == "entity" else
-             SetActorCritic(5, hidden=16, ent_hidden=8, pooling=kind)).eval()
+             SetActorCritic(5, hidden=16, ent_hidden=8, pooling=kind)).to(device).eval()
     t = MultiTrainer.__new__(MultiTrainer)
-    t.model, t.device, t.obs_dim = model, torch.device("cpu"), width
-    t.optimize_rollout = True
+    t.model, t.device, t.obs_dim = model, torch.device(device), width
+    t.optimize_rollout = device == "cpu"
     observations = [np.random.default_rng(i).normal(size=(n, p, width)).astype(np.float32)
                     for i, (n, p) in enumerate(((3, 2), (2, 6), (1, 4)))]
     t.optimize_cpu = False
@@ -91,6 +93,7 @@ def test_grouped_bootstrap_uses_only_critic_and_preserves_order(kind):
     hook = model.pi.register_forward_hook(lambda *args: policy_calls.append(1))
     try:
         t.optimize_cpu = True
+        t.optimize_rollout = True
         actual = t.values_many(observations)
     finally:
         hook.remove()

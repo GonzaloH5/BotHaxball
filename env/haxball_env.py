@@ -170,6 +170,7 @@ class HaxballEnv:
             )
 
         self.optimize_rollout = optimize_rollout
+        self.optimize_reward_geometry = optimize_rollout
 
     # ----------------------------------------------------------------- reset
     def _reset_envs(self, idx, kickoff_team=None):
@@ -700,11 +701,11 @@ class HaxballEnv:
         return np.concatenate(feats, axis=-1).astype(np.float32)
 
     # ----------------------------------------------------------------- step
-    def _potentials(self):
+    def _potentials(self, player_ball_dist=None):
         sim = self.sim
         bx = sim.ball_pos[:, None, 0] * self.sign[None, :]
         by = np.broadcast_to(sim.ball_pos[:, None, 1], bx.shape)
-        d = self._team_ball_dist()
+        d = self._team_ball_dist() if player_ball_dist is None else player_ball_dist
         phi_ball, phi_near = potentials(bx, by, d, self.goal_x, self.field_w)
         return phi_ball, phi_near, self._spread_potential(), self._defense_potential()
 
@@ -728,6 +729,9 @@ class HaxballEnv:
         Premia no amontonarse; por ser de potencial no cambia la política óptima."""
         if self.T < 2:
             return np.zeros((self.N, self.P))
+        if self.optimize_reward_geometry:
+            from .reward_geometry import spread_potential
+            return spread_potential(self.sim.player_pos, self.sim.player_team, self.field_w)
         pp = self.sim.player_pos
         team = self.sim.player_team
         cap = 0.25 * self.field_w
@@ -745,6 +749,9 @@ class HaxballEnv:
         """Distancia a la pelota por agente; con compañeros, la del más cercano de su equipo
         (así el premio de acercarse lo cobra el equipo y no corren todos detrás de la pelota)."""
         sim = self.sim
+        if self.optimize_reward_geometry:
+            from .reward_geometry import team_ball_dist
+            return team_ball_dist(sim.player_pos, sim.ball_pos, sim.player_team)
         d = np.linalg.norm(sim.player_pos - sim.ball_pos[:, None], axis=-1)
         if self.T > 1:
             team = sim.player_team
@@ -1138,7 +1145,8 @@ class HaxballEnv:
             )
 
         # shaping por potencial (sólo si no hubo gol: el estado terminal tiene Φ = 0)
-        phi_ball, phi_near, phi_spread, phi_defense = self._potentials()
+        d_after = self._team_ball_dist() if self.optimize_reward_geometry else None
+        phi_ball, phi_near, phi_spread, phi_defense = self._potentials(d_after)
         phi0_ball, phi0_near, phi0_spread, phi0_defense = self._phi
         scored = goal != 0
         g = rc.gamma
@@ -1175,7 +1183,8 @@ class HaxballEnv:
         # saque propio: premio por progreso hacia la pelota. No es de potencial a propósito: si el saque
         # se corta por tiempo no hay "reembolso", así que trabar queda neto negativo frente a sacar.
         if rc.kickoff_approach > 0:
-            d_after = self._team_ball_dist()
+            if d_after is None:
+                d_after = self._team_ball_dist()
             rew = rew + rc.kickoff_approach * own_ko * (d_before - d_after) / self.sim.st.spawn_distance
 
         self.kickoff_ticks = np.where(self.sim.kickoff, self.kickoff_ticks + self.frame_skip, 0)

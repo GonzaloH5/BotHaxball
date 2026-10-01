@@ -324,6 +324,51 @@ esta optimización.
 
 ### Entrenamiento CPU + GPU en Runpod
 
+#### Rollout: geometría de recompensas y diagnóstico de CPU
+
+El log aportado del nuevo Pod se mantiene en 35–40k pasos/s, con rollout 1,9–2,2 s,
+prep ~0,06 s y update ~0,4–0,5 s: el rollout ocupa aproximadamente el 80% de esas
+fases. No se busca subir el porcentaje de CPU como objetivo independiente.
+Las tareas se avanzan secuencialmente después de recibir decisiones de la GPU;
+hay muchas llamadas pequeñas y esperas, no un trabajo paralelo continuo.
+
+Con `runtime.optimize_rollout=true`, las distancias jugador-pelota por equipo y
+el potencial de separación se calculan en kernels Numba seriales pequeños,
+float64 y sin fastmath. Evitan temporales NumPy de pares de compañeros y conservan
+la misma geometría/recompensa. La distancia posterior se reutiliza para potenciales
+y aproximación durante saques, sin calcularla dos veces. No se omiten premios de
+cooperación, separación mínima o defensa aunque el log diga `shaping 0.00`.
+El bootstrap CUDA usa sólo la cabeza de valor: no calcula logits que luego descarta.
+No cambia PPO, modelo, currículo, RNG del entorno, entornos, rollout ni épocas.
+Reducciones en float64 pueden tener redondeos mínimos; no se promete una trayectoria
+bit a bit idéntica en todas las modalidades.
+
+Para comparar sólo la geometría nueva, con entrenamiento detenido y el mismo
+checkpoint/hilos/perfil en ambos casos:
+
+```bash
+python -m tools.benchmark_multitask --config train/config_gpu_overnight.yaml --numba-threads 4 --warmup 3 --iters 15 --no-reward-geometry
+python -m tools.benchmark_multitask --config train/config_gpu_overnight.yaml --numba-threads 4 --warmup 3 --iters 15
+# Diagnóstico aparte: agrega overhead; no comparar su velocidad con las dos anteriores.
+python -m tools.benchmark_multitask --config train/config_gpu_overnight.yaml --numba-threads 4 --warmup 3 --iters 5 --profile-rollout
+```
+
+Repetir finalistas en orden inverso si hay ruido. El benchmark informa CPU del
+proceso en **núcleos equivalentes** (tiempo CPU de todos sus hilos / tiempo real)
+y porcentaje del cupo detectado por afinidad/cgroups. Es distinto del panel del host;
+el porcentaje agregado no demuestra que todos los hilos individuales estén ociosos.
+El desglose separa entornos por tarea, distancias, separación, pases y protección
+de saques, además de física/observaciones/esperas CUDA. Son tiempos inclusivos:
+no sumar padres e hijos ni tiempos CPU/GPU solapados.
+Para desactivar sólo geometría al entrenar:
+`--override runtime.optimize_reward_geometry=false`. Para volver a la referencia
+completa de rollout, conservar las opciones de vuelta documentadas abajo.
+
+La comparación local de 128 transiciones de entorno dio mejoras de 3,8% en
+Futsal 3v3, 29,9% en 5v5, 32,3% en 7v7 y 16,7% en RS4. **No mide inferencia,
+PPO ni el Pod** y no demuestra un aumento equivalente de pasos/s globales.
+Detalle: `reports/rollout_geometry_20261001.md`.
+
 #### Perfil nocturno RTX 3060 Ti + Xeon (10 hilos / 15 GB RAM)
 
 Con el código actualizado, guardar y detener la instancia anterior con **Ctrl+C una
