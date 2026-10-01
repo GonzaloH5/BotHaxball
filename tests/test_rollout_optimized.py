@@ -128,6 +128,7 @@ def test_fused_physics_events_across_ticks():
 
 
 def test_cpu_ppo_keeps_training_trajectory(tmp_path, monkeypatch):
+    from types import SimpleNamespace
     from train import multitask
     from train.runtime import load_config
     cfg = load_config(multitask.ROOT / "train/config_multi.yaml")
@@ -139,6 +140,8 @@ def test_cpu_ppo_keeps_training_trajectory(tmp_path, monkeypatch):
     cfg["log"].update(every=100, checkpoint_every=100, replay_every=0)
     cfg["curriculum"][0].update(scripted=0.25, selfplay=0.25, pool=0.5)
     monkeypatch.setattr(multitask, "ROOT", tmp_path)
+    # Los tiempos deben usar el reloj monotónico, aunque la hora del host salte.
+    monkeypatch.setattr(multitask, "time", SimpleNamespace(perf_counter=multitask.time.perf_counter))
     old_cfg = copy.deepcopy(cfg)
     old_cfg["runtime"] = {"optimize_rollout": False}
     fast = multitask.MultiTrainer(cfg, "fast", False)
@@ -150,6 +153,7 @@ def test_cpu_ppo_keeps_training_trajectory(tmp_path, monkeypatch):
             for trainer in (fast, old):
                 torch.manual_seed(1700 + iteration)
                 trainer.iterate()
+                assert all(v >= 0 for v in trainer._last_iteration_timings.values())
             assert fast.steps == old.steps
             assert fast.rng.bit_generator.state == old.rng.bit_generator.state
             for key, tensor in fast.model.state_dict().items():

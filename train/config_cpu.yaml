@@ -6,6 +6,7 @@ ppo:
   torch_threads: 8
   numba_threads: 12
 runtime:
+  optimize_cpu: true     # rivales/bootstrap agrupados y buffer de minibatch
   cuda_decisions: legacy
   reuse_ppo_batch: false
   cache_bc_logits_cpu: true  # una inferencia BC por muestra/lote, reutilizada en épocas PPO

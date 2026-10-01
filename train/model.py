@@ -89,6 +89,9 @@ class ActorCritic(nn.Module):
     def logits(self, obs: torch.Tensor) -> torch.Tensor:
         return self.pi(self.pi_body(self.norm(obs)))
 
+    def value_only(self, obs: torch.Tensor) -> torch.Tensor:
+        return self.v(self.v_body(self.norm(obs))).squeeze(-1)
+
 
 class PolicyOnly(nn.Module):
     """Para exportar a ONNX: obs crudas -> logits."""
@@ -171,6 +174,9 @@ class EntityActorCritic(nn.Module):
 
     def logits(self, obs: torch.Tensor) -> torch.Tensor:
         return self.pi(self.pi_body(self._features(obs)))
+
+    def value_only(self, obs: torch.Tensor) -> torch.Tensor:
+        return self.v(self.v_body(self._features(obs))).squeeze(-1)
 
 
 class SetActorCritic(nn.Module):
@@ -308,6 +314,9 @@ class SetActorCritic(nn.Module):
 
     def logits(self, obs: torch.Tensor) -> torch.Tensor:
         return self.pi(self.pi_body(self._features(obs)))
+
+    def value_only(self, obs: torch.Tensor) -> torch.Tensor:
+        return self.v(self.v_body(self._features(obs))).squeeze(-1)
 
 
 def build_model(config: dict) -> nn.Module:

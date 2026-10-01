@@ -120,7 +120,7 @@ def test_resume_cpu_checkpoint_and_update_with_bc_pool_and_timeouts(tmp_path, mo
         initial.save(initial.run_dir / "latest.pt")
         cfg["bc_reference"] = str(reference)
         cfg["ppo"]["device"] = device
-        cfg["runtime"] = {"cuda_decisions": backend}
+        cfg["runtime"] = {"cuda_decisions": backend, "optimize_cpu": True}
         resumed = MultiTrainer(cfg, "test", True)
         if backend == "graph":
             resumed._decision_profile = CudaDecisionProfile(resumed.device)

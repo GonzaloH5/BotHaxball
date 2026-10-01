@@ -268,6 +268,57 @@ python -m tools.benchmark_multitask --config train/config_cpu.yaml --warmup 3 --
 Repetir en orden inverso si hay ruido. Si mejora, reanudar con el perfil CPU habitual.
 Para desactivarlo al entrenar: `--override runtime.cache_bc_logits_cpu=false`.
 
+#### Rollout y minibatches CPU agrupados
+
+`runtime.optimize_cpu=true` en el perfil CPU añade una pasada por snapshot para
+todos sus rivales entre tareas (antes se repetía por tarea), un buffer reutilizable
+para las observaciones de cada decisión y un buffer de minibatch PPO con `index_select`.
+El bootstrap agrupa tareas/timeouts y calcula sólo la cabeza de valor, sin ejecutar
+la cabeza de acciones. Los sorteos mantienen su orden y tamaños por tarea/rival;
+las filas de log-probabilidades y valores del aprendiz se conservan. Los buffers se
+reconstruyen cuando cambia el tamaño y los índices cuando se reasignan rivales.
+No se cambian acciones disponibles, normalizadores, pesos del currículo, cantidades
+de muestras, pérdida, épocas ni optimizador. Las llamadas agrupadas pueden introducir
+redondeos numéricos; no se promete igualdad bit a bit de entrenamientos largos.
+CUDA y el entrenador recurrente mantienen sus rutas de decisiones y update.
+
+Las duraciones del entrenador usan ahora `perf_counter`: los saltos de hora del host
+ya no producen valores negativos como `upd -1.9s`. El resumen añade setup, mantenimiento,
+logging, reparto/avance de etapa y retorno/overhead para explicar el tiempo total.
+`--profile-rollout` también desglosa el update CPU en cache BC, selección de minibatch,
+forward/pérdida, backward y clipping/Adam, y muestra medias de entropía, KL y clipfrac.
+El log habitual de pasos/s sigue midiendo las tres fases principales; para comparar
+rendimiento de punta a punta usar `pasos/s reales` del resumen.
+
+Con entrenamiento detenido, comparar conservando el cache BC en ambos casos:
+
+```bash
+python -m pytest tests/test_cpu_rollout.py tests/test_cpu_bc_cache.py tests/test_cpu_config.py tests/test_cpu_tuning.py tests/test_cpu_benchmark.py tests/test_cuda_runtime.py tests/test_rollout_optimized.py -q
+python -m tools.benchmark_multitask --config train/config_cpu.yaml --warmup 3 --iters 15 --no-optimize-cpu
+python -m tools.benchmark_multitask --config train/config_cpu.yaml --warmup 3 --iters 15
+# Desglose: agrega overhead, usarlo separado de la comparación de velocidad.
+python -m tools.benchmark_multitask --config train/config_cpu.yaml --warmup 3 --iters 5 --profile-rollout
+# Barrido secuencial completo, misma copia fija del checkpoint en todos los procesos.
+python -m tools.tune_cpu --config train/config_cpu.yaml --warmup 3 --iters 15
+```
+
+El barrido guarda JSON en un directorio nuevo de `reports/cpu_tuning`, mide primero
+física manteniendo Torch 8, luego Torch con la mejor física, y repite el finalista
+antes de volver a medir 8/12. No modifica el YAML ni reanuda el entrenamiento. Usa
+`--torch-threads`/`--numba-threads` para otra baseline y `--threads` para otra lista de
+candidatos. La interacción entre hilos y el ruido del host pueden requerir otro barrido;
+es una búsqueda por coordenadas, no una garantía del óptimo global.
+Para volver a la ruta CPU anterior al entrenar:
+`--override runtime.optimize_cpu=false` (conserva el cache BC).
+
+Medición aportada del Pod con cache BC: 4.064 → 4.419 pasos/s reales (+8,7%), mismas
+106.496 muestras/iter. Sus tiempos por fase tenían saltos del reloj; el total del
+benchmark ya era monotónico. En ese archivo la entropía fue ~1,9–2,05 en ambas rutas,
+no 0,9. Los benchmarks entrenan copias temporales y descartan su aprendizaje.
+Una caída a 0,9 en el run real debe revisarse junto con KL, clipfrac y rendimiento por
+tarea; por sí sola no demuestra mejora ni colapso y no justifica cambiar PPO durante
+esta optimización.
+
 ### Entrenamiento CPU + GPU en Runpod
 
 El reparto de rivales compensa las fracciones entre rollouts: un 5% de scripted

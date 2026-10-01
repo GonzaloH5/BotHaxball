@@ -97,6 +97,7 @@ class MultiTrainer:
         self.cfg = cfg
         self._validate_scripted_readiness()
         self.optimize_rollout = cfg.get("runtime", {}).get("optimize_rollout", True)
+        self.optimize_cpu = cfg.get("runtime", {}).get("optimize_cpu", False)
         self.cuda_decisions = cfg.get("runtime", {}).get("cuda_decisions", "legacy")
         if self.cuda_decisions not in DECISION_BACKENDS:
             raise ValueError(f"runtime.cuda_decisions debe ser uno de {DECISION_BACKENDS}")
@@ -511,13 +512,19 @@ class MultiTrainer:
 
     def _prepare_policy_groups(self):
         """Los modos/rivales no cambian dentro del rollout: índices una vez, no 128 veces."""
-        grouped, offset = {}, 0
+        grouped, offset, sizes = {}, 0, {}
+        self._cpu_policy_routes = []
         for slot in self.slots:
+            routes = []
             slot.scripted_rows = np.flatnonzero(slot.modes == SCRIPTED) if hasattr(slot, "modes") else None
             for oid in np.unique(slot.opp_id[slot.opp_id >= 0]):
                 rows = np.where(slot.opp_id == oid)[0]
                 indices = (offset + rows[:, None] * slot.P + np.arange(slot.T, slot.P)).reshape(-1)
                 grouped.setdefault(int(oid), []).append(indices)
+                start = sizes.get(int(oid), 0)
+                sizes[int(oid)] = start + len(indices)
+                routes.append((int(oid), rows, slice(start, start + len(indices))))
+            self._cpu_policy_routes.append(routes)
             offset += slot.N * slot.P
         self._policy_groups = [(oid, torch.as_tensor(np.concatenate(chunks), device=self.device))
                                for oid, chunks in grouped.items()]
@@ -528,6 +535,8 @@ class MultiTrainer:
         """Una sola pasada de la red para los agentes de todas las tareas."""
         if self.device.type == "cuda":
             return self._act_cuda(obs_list)
+        if getattr(self, "optimize_cpu", False):
+            return self._act_cpu_grouped(obs_list)
         dev = self.device
         flat = np.concatenate([o.reshape(-1, self.obs_dim) for o in obs_list])
         logits, value = self.model(torch.from_numpy(flat).to(dev))
@@ -552,6 +561,48 @@ class MultiTrainer:
                 )
             out.append((acts, logp[k:k + n].reshape(s.N, s.P), value[k:k + n].reshape(s.N, s.P)))
             k += n
+        return out
+
+    @torch.no_grad()
+    def _act_cpu_grouped(self, obs_list):
+        """Un forward por snapshot; muestreos por tarea en el orden original."""
+        if getattr(self, "_policy_groups", None) is None:
+            self._prepare_policy_groups()
+        shape = (sum(o.shape[0] * o.shape[1] for o in obs_list), self.obs_dim)
+        flat = getattr(self, "_cpu_obs", None)
+        if flat is None or flat.shape != shape:
+            flat = self._cpu_obs = np.empty(shape, dtype=np.float32)
+        offset = 0
+        for obs in obs_list:
+            rows = obs.reshape(-1, self.obs_dim)
+            np.copyto(flat[offset:offset + len(rows)], rows)
+            offset += len(rows)
+        tensor = torch.from_numpy(flat)
+        logits, value = self.model(tensor)
+        dist = torch.distributions.Categorical(logits=logits, validate_args=False)
+        actions = dist.sample()
+        logp = dist.log_prob(actions).numpy()
+        actions, value = actions.numpy(), value.numpy()
+        opponent_logits = {
+            oid: self.league.members[oid].model.logits(tensor.index_select(0, indices))
+            for oid, indices in self._policy_groups
+        }
+        out, offset = [], 0
+        for slot, routes in zip(self.slots, self._cpu_policy_routes):
+            count = slot.N * slot.P
+            acts = actions[offset:offset + count].reshape(slot.N, slot.P)
+            for oid, rows, group_slice in routes:
+                dist = torch.distributions.Categorical(logits=opponent_logits[oid][group_slice],
+                                                       validate_args=False)
+                acts[rows, slot.T:] = dist.sample().numpy().reshape(len(rows), slot.T)
+            rows = slot.scripted_rows
+            if len(rows):
+                acts[rows, slot.T:] = scripted_actions(
+                    slot.env, np.arange(slot.T, slot.P), slot.scripted_eps, self.rng,
+                    env_indices=rows, policy=slot.scripted_policy, style=slot.scripted_style)
+            out.append((acts, logp[offset:offset + count].reshape(slot.N, slot.P),
+                        value[offset:offset + count].reshape(slot.N, slot.P)))
+            offset += count
         return out
 
     @torch.no_grad()
@@ -650,14 +701,20 @@ class MultiTrainer:
 
     @torch.no_grad()
     def values(self, obs: np.ndarray) -> np.ndarray:
-        v = self.model(torch.from_numpy(obs.reshape(-1, self.obs_dim)).to(self.device))[1]
+        tensor = torch.from_numpy(obs.reshape(-1, self.obs_dim)).to(self.device)
+        if (self.device.type == "cpu" and getattr(self, "optimize_cpu", False)
+                and hasattr(self.model, "value_only")):
+            v = self.model.value_only(tensor)
+        else:
+            v = self.model(tensor)[1]
         return v.cpu().numpy().reshape(obs.shape[:2])
 
     def values_many(self, observations):
         """Un bootstrap para todas las tareas/timeouts, con una sola sincronización CUDA."""
         if not observations:
             return []
-        if not self.optimize_rollout or self.device.type != "cuda":
+        grouped_cpu = self.device.type == "cpu" and getattr(self, "optimize_cpu", False)
+        if not grouped_cpu and (not self.optimize_rollout or self.device.type != "cuda"):
             return [self.values(o) for o in observations]
         flat = np.concatenate([o.reshape(-1, self.obs_dim) for o in observations])
         values = self.values(flat[:, None, :]).reshape(-1)
@@ -679,6 +736,7 @@ class MultiTrainer:
         print(f"guardado en {self.run_dir / 'latest.pt'}")
 
     def iterate(self) -> None:
+        iteration_start = time.perf_counter()
         if getattr(self.model, "is_recurrent", False):
             raise ValueError("Usar RecurrentTrainer para entrenar con memoria")
         cfg, p = self.cfg, self.cfg["ppo"]
@@ -699,8 +757,6 @@ class MultiTrainer:
         )
 
         for s in self.slots:
-            s.env.rcfg.shaping_coef = self.shaping_for(s)
-        for s in self.slots:
             self.assign_modes(s)
             cache = getattr(s, "_buffer_cache", None)
             if not self.optimize_rollout or cache is None or cache["obs"].shape != (L, s.N, s.P, D):
@@ -717,7 +773,7 @@ class MultiTrainer:
         self._reset_decision_graph()
         if self.optimize_rollout:
             self._prepare_policy_groups()
-        t0 = time.time()
+        t0 = time.perf_counter()
         obs = self._obs
         for t in range(L):
             decisions = self.act(obs)
@@ -753,9 +809,9 @@ class MultiTrainer:
         replays = graph.replays if graph is not None else 0
         # No permitir replay de buffers de RunningNorm anteriores después del update.
         self._reset_decision_graph()
-        t_roll = time.time() - t0  # incluye preparar, capturar y liberar el graph de esta iteración
+        t_roll = time.perf_counter() - t0
 
-        t_prepare = time.time()
+        t_prepare = time.perf_counter()
         # GAE por tarea y muestras de los agentes que aprenden
         parts = {k: [] for k in ("obs", "act", "logp", "adv", "ret")}
         for s, last_v in zip(self.slots, self.values_many(obs)):
@@ -784,12 +840,14 @@ class MultiTrainer:
         n = len(batch["act"])
         self.steps += n
         self.stage_steps += n
-        t1 = time.time()
+        t1 = time.perf_counter()
         self.bc_coef = lerp(p.get("bc_kl_coef", 0.0), p.get("bc_kl_final", 0.0), frac) if self.bc_model is not None else 0.0
         stats = self.update(batch, ent_coef)
         if self._batch_transfer is not None:
             self._batch_transfer.mark_consumed()  # proteger también cualquier lector PPO pendiente
-        t_upd = time.time() - t1
+        update_end = time.perf_counter()
+        t_upd = update_end - t1
+        stats["timing/setup_seconds"] = t0 - iteration_start
         stats["timing/prepare_seconds"] = t1 - t_prepare
         stats["timing/rollout_seconds"] = t_roll
         stats["timing/update_seconds"] = t_upd
@@ -811,8 +869,15 @@ class MultiTrainer:
             self.save(self.run_dir / f"ckpt_{self.iteration:06d}.pt")
             if cfg["log"].get("replay_every") and self.iteration % cfg["log"]["replay_every"] == 0:
                 self.spawn_replay(self.run_dir / f"ckpt_{self.iteration:06d}.pt")
+        log_start = time.perf_counter()
+        stats["timing/maintenance_seconds"] = log_start - update_end
         self.log(stats, lr, n, t_roll, t_upd)
+        log_end = time.perf_counter()
         self.maybe_rebalance_or_advance()
+        end = time.perf_counter()
+        self._last_iteration_timings = dict(
+            setup=t0 - iteration_start, maintenance=log_start - update_end,
+            logging=log_end - log_start, schedule=end - log_end, total=end - iteration_start)
 
     def spawn_replay(self, ckpt: Path) -> None:
         """Graba un partido del checkpoint en un proceso aparte (no frena el entrenamiento):
@@ -972,6 +1037,11 @@ class MultiTrainer:
         agg = torch.zeros(len(keys), device=b["obs"].device)
         cnt = 0
         bc_coef = getattr(self, "bc_coef", 0.0)
+        cpu_fast = b["obs"].device.type == "cpu" and getattr(self, "optimize_cpu", False)
+        obs_buffer = b["obs"].new_empty((mb, b["obs"].shape[1])) if cpu_fast else None
+        profile = self.cfg.get("runtime", {}).get("profile_update", False)
+        timings = dict(bc_cache=0.0, gather=0.0, forward_loss=0.0, backward=0.0, optimizer=0.0)
+        started = time.perf_counter() if profile else 0.0
         # La referencia BC está en eval y congelada: obs y normalizadores de
         # ese modelo no cambian durante PPO. Cache local, nunca en checkpoint.
         bc_logp = None
@@ -983,11 +1053,19 @@ class MultiTrainer:
                     if bc_logp is None:
                         bc_logp = chunk.new_empty((n, chunk.shape[-1]))
                     bc_logp[start:start + len(chunk)].copy_(chunk)
+        if profile:
+            timings["bc_cache"] = time.perf_counter() - started
         for _ in range(p["epochs"]):
             perm = torch.randperm(n, device=b["obs"].device)
             for s in range(0, n - mb + 1, mb):
                 i = perm[s:s + mb]
-                logits, v = self.model(b["obs"][i])
+                started = time.perf_counter() if profile else 0.0
+                obs = (torch.index_select(b["obs"], 0, i, out=obs_buffer) if cpu_fast else b["obs"][i])
+                if profile:
+                    now = time.perf_counter()
+                    timings["gather"] += now - started
+                    started = now
+                logits, v = self.model(obs)
                 dist = torch.distributions.Categorical(logits=logits, validate_args=False)
                 ratio = torch.exp(dist.log_prob(b["act"][i]) - b["logp"][i])
                 a = adv[i]
@@ -999,19 +1077,32 @@ class MultiTrainer:
                 if bc_coef > 0:
                     with torch.no_grad():
                         lb = (bc_logp[i] if bc_logp is not None else
-                              torch.log_softmax(self.bc_model.logits(b["obs"][i]), -1))
+                              torch.log_softmax(self.bc_model.logits(obs), -1))
                     bc_kl = (lb.exp() * (lb - torch.log_softmax(logits, -1))).sum(-1).mean()
                     loss = loss + bc_coef * bc_kl
                 self.opt.zero_grad(set_to_none=True)
+                if profile:
+                    now = time.perf_counter()
+                    timings["forward_loss"] += now - started
+                    started = now
                 loss.backward()
+                if profile:
+                    now = time.perf_counter()
+                    timings["backward"] += now - started
+                    started = now
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), p["max_grad_norm"])
                 self.opt.step()
+                if profile:
+                    timings["optimizer"] += time.perf_counter() - started
                 with torch.no_grad():
                     agg += torch.stack((pg, vl, ent, ((ratio - 1) - torch.log(ratio)).mean(),
                                         ((ratio - 1).abs() > p["clip"]).float().mean(), bc_kl))
                 cnt += 1
         # Una sola sincronización para estadísticas al terminar todos los minibatches.
-        return dict(zip(keys, (agg / max(cnt, 1)).cpu().tolist()))
+        result = dict(zip(keys, (agg / max(cnt, 1)).cpu().tolist()))
+        if profile:
+            result.update({f"timing/update_{key}_seconds": value for key, value in timings.items()})
+        return result
 
 
 def main():

@@ -3,19 +3,23 @@ import copy
 import pytest
 import torch
 
-from train.model import ActorCritic
+from train.model import ActorCritic, SetActorCritic
 from train.multitask import MultiTrainer
 
 
 @pytest.mark.parametrize("n,epochs,coef", [(24, 3, 0.03), (27, 3, 0.03),
                                          (24, 1, 0.03), (24, 3, 0.0)])
-def test_bc_cache_preserves_update_and_refreshes(n, epochs, coef):
+@pytest.mark.parametrize("kind", ["mlp", "set"])
+def test_bc_cache_preserves_update_and_refreshes(n, epochs, coef, kind):
     previous_threads = torch.get_num_threads()
     torch.set_num_threads(2)
     try:
         torch.manual_seed(23)
-        model = ActorCritic(5, hidden=16, layers=1)
-        teacher = ActorCritic(5, hidden=16, layers=1).eval()
+        factory = (lambda: ActorCritic(5, hidden=16, layers=1)) if kind == "mlp" else (
+            lambda: SetActorCritic(5, hidden=16, layers=1, ent_hidden=8, ent_layers=1))
+        width = 5 if kind == "mlp" else 5 + 3 * 8
+        model = factory()
+        teacher = factory().eval()
         for parameter in teacher.parameters():
             parameter.requires_grad_(False)
         teacher_before = copy.deepcopy(teacher.state_dict())
@@ -36,10 +40,11 @@ def test_bc_cache_preserves_update_and_refreshes(n, epochs, coef):
             trainer.model = copy.deepcopy(model)
             trainer.bc_model = teacher
             trainer.bc_coef = coef
+            trainer.optimize_cpu = cache
             trainer.opt = torch.optim.Adam(trainer.model.parameters(), lr=5e-4, eps=1e-5)
             trainers.append(trainer)
         for iteration in range(2):
-            obs = torch.randn(n, 5) + iteration
+            obs = torch.randn(n, width) + iteration
             with torch.no_grad():
                 dist = torch.distributions.Categorical(logits=model.logits(obs))
                 act = dist.sample()
