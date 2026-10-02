@@ -233,7 +233,16 @@ def _evaluate(directory, branch, *, full, games, full_games, minutes, seeds, lab
     suite_tag = hashlib.sha256(json.dumps({k:v for k,v in identity.items() if k != "checkpoint_sha256"},
                                          sort_keys=True).encode()).hexdigest()[:12]
     source_tag = identity["evaluation_sources"]["sha256"][:12] + "_" + suite_tag
-    reference_cache = reports / f"reference_{'full' if full else 'control'}_{source_tag}.json"
+    # The effective suite already includes games, duration and functional
+    # counts. A full-sized incumbent evaluation must reuse the same baseline
+    # even when invoked through the control branch of this function.
+    reference_cache = reports / f"reference_{source_tag}.json"
+    if not reference_cache.exists():
+        for legacy_kind in ("full", "control"):
+            legacy = reports / f"reference_{legacy_kind}_{source_tag}.json"
+            if legacy.exists():
+                reference_cache = legacy
+                break
     cache = output.with_suffix(".identity.json")
     if not output.exists() or not cache.exists() or json.loads(cache.read_text(encoding="utf-8")) != identity:
         command = [sys.executable, "-m", "tools.evaluate_rs4_v3", "--checkpoint", str(candidate),

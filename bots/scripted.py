@@ -73,7 +73,7 @@ def scripted_actions(env, players=None, eps=0.0, rng=None, env_indices=None, pol
                                    float(sim.st.player["radius"] + sim.st.ball["radius"]), env.T)
 
     # Los saques siguen usando el árbitro/baseline ya probado.
-    actions = _restart_actions(env, rows, players, actions)
+    actions = _restart_actions(env, rows, players, actions, policy)
     if eps > 0:
         rng = rng or np.random.default_rng()
         # Antes se sorteaban N x jugadores y después se seleccionaban las filas.
@@ -85,7 +85,7 @@ def scripted_actions(env, players=None, eps=0.0, rng=None, env_indices=None, pol
     return actions
 
 
-def _restart_actions(env, rows, players, actions):
+def _restart_actions(env, rows, players, actions, policy="r2"):
     """Árbitro disponible sólo para el baseline: no añade entradas a la política RL.
 
     Un único ejecutor por equipo; en lateral patea hacia adentro, no hacia el arco.
@@ -110,11 +110,11 @@ def _restart_actions(env, rows, players, actions):
         return actions
     return _restart_kernel(rows, players, actions, sim.ball_pos, sim.player_pos,
                            sim.player_team, env.sign, owner, kind, excluded, forced,
-                           env.goal_x, float(sim.st.player["radius"] + sim.st.ball["radius"]))
+                           env.goal_x, float(sim.st.player["radius"] + sim.st.ball["radius"]), policy == "r3")
 
 
 @njit(cache=True, nogil=True)
-def _restart_kernel(rows, players, actions, bp, pp, team, sign, owner, kind, excluded, forced, gx, radii):
+def _restart_kernel(rows, players, actions, bp, pp, team, sign, owner, kind, excluded, forced, gx, radii, pass_kickoff=False):
     for i in range(len(rows)):
         n = rows[i]
         if owner[n] < 0:
@@ -128,6 +128,28 @@ def _restart_kernel(rows, players, actions, bp, pp, team, sign, owner, kind, exc
                 taker, best = q, d
         if forced[n] >= 0 and not excluded[n, forced[n]]:
             taker = forced[n]
+        receiver = -1
+        if pass_kickoff and kind[n] == 6:
+            best_lane = 0.0
+            for q in range(pp.shape[1]):
+                if team[q] != owner[n] or q == taker or excluded[n, q]:
+                    continue
+                dx, dy = pp[n, q, 0] - bp[n, 0], pp[n, q, 1] - bp[n, 1]
+                length = math.hypot(dx, dy)
+                if length < 4 * radii or length > .65 * gx:
+                    continue
+                clearance = 1.0
+                for rival in range(pp.shape[1]):
+                    if team[rival] == owner[n] or excluded[n, rival]:
+                        continue
+                    t = ((pp[n, rival, 0] - bp[n, 0]) * dx + (pp[n, rival, 1] - bp[n, 1]) * dy) / (length * length)
+                    if .05 < t <= 1.1:
+                        gap = math.hypot(pp[n, rival, 0] - bp[n, 0] - min(t, 1.) * dx,
+                                         pp[n, rival, 1] - bp[n, 1] - min(t, 1.) * dy)
+                        clearance = min(clearance, max(0., min(1., (gap - radii) / (3 * radii))))
+                score = clearance * math.exp(-length / gx)
+                if score > best_lane:
+                    receiver, best_lane = q, score
         for j in range(len(players)):
             p = players[j]
             if excluded[n, p]:
@@ -137,11 +159,15 @@ def _restart_kernel(rows, players, actions, bp, pp, team, sign, owner, kind, exc
                 actions[i, j] = 0 if kind[n] == 6 else actions[i, j] % 9
                 continue
             if p != taker:
-                actions[i, j] %= 9
+                # Hold the receiving lane until the kick; open-play policy
+                # resumes immediately afterwards. Other teammates still move.
+                actions[i, j] = 0 if p == receiver else actions[i, j] % 9
                 continue
             bx, by = bp[n, 0] * sign[p], bp[n, 1]
             px, py = pp[n, p, 0] * sign[p], pp[n, p, 1]
             tx, ty = gx - bx, -by
+            if receiver >= 0:
+                tx, ty = pp[n, receiver, 0] * sign[p] - bx, pp[n, receiver, 1] - by
             if kind[n] == 1:  # lateral: tiro perpendicular a la banda hacia adentro
                 tx, ty = 0.0, -1.0 if by > 0 else 1.0
             elif kind[n] == 2:  # córner: hacia la cancha, no hacia afuera del fondo
@@ -152,7 +178,18 @@ def _restart_kernel(rows, players, actions, bp, pp, team, sign, owner, kind, exc
             distance = math.hypot(dx, dy)
             alignment = (dx * tx + dy * ty) / max(distance, 1e-9)
             target_x, target_y = bx - tx * (radii + 2), by - ty * (radii + 2)
-            if alignment > 0.8:
+            if receiver >= 0 and alignment <= .95:
+                # A backward kickoff pass needs a wide orbit. Touching the
+                # ball while crossing to the other side releases kickoff and
+                # would discard the pass plan before the actual kick.
+                angle = math.atan2(py - by, px - bx)
+                wanted = math.atan2(-ty, -tx)
+                delta = (wanted - angle + math.pi) % (2 * math.pi) - math.pi
+                if distance >= radii + 10:
+                    angle += max(-math.pi / 4, min(math.pi / 4, delta))
+                target_x = bx + (radii + 16) * math.cos(angle)
+                target_y = by + (radii + 16) * math.sin(angle)
+            elif alignment > (.95 if receiver >= 0 else .8):
                 target_x, target_y = bx, by
             elif alignment < 0 and distance < radii * 2.5:
                 # Rodear, sin atravesar/push-ear la pelota desde el lado incorrecto.
@@ -169,7 +206,7 @@ def _restart_kernel(rows, players, actions, bp, pp, team, sign, owner, kind, exc
                         move, score = m, candidate
             # Mantener X antes del contacto: frame_skip puede cruzar el alcance de
             # patada entre decisiones; el motor decide cuándo el tiro es posible.
-            kick = alignment > 0.65 and distance < radii + 8.0
+            kick = alignment > (.95 if receiver >= 0 else .65) and distance < radii + 8.0
             actions[i, j] = move + 9 * kick
     return actions
 
@@ -1167,6 +1204,7 @@ def _scripted_reference(
         rows,
         players,
         actions,
+        policy,
     )
 
     if eps > 0:

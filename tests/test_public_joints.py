@@ -122,3 +122,21 @@ def test_evaluation_baseline_cache_changes_with_source(source,monkeypatch):
     runner._evaluate(directory,'control',**kwargs)
     second=commands[1][commands[1].index('--reference-report')+1]
     assert first!=second and 'aaaaaaaaaaaa' in first and 'bbbbbbbbbbbb' in second
+
+
+def test_full_and_incumbent_share_only_identical_effective_suites(source, monkeypatch):
+    from tools import run_rs4_v3 as runner
+    path, _, _ = source
+    directory = preparer.prepare(path)
+    commands = []
+    def invoke(command):
+        commands.append(command)
+        Path(command[command.index('--out') + 1]).write_text('{}')
+    monkeypatch.setattr(runner, '_invoke', invoke)
+    kwargs = dict(games=128, full_games=128, functional_games=64,
+                  full_functional_games=64, minutes=2, seeds=(51, 73, 91))
+    runner._evaluate(directory, 'control', full=True, label='candidate', **kwargs)
+    runner._evaluate(directory, 'control', full=False, label='incumbent', **kwargs)
+    runner._evaluate(directory, 'control', full=False, label='small', **{**kwargs, 'games': 16})
+    caches = [cmd[cmd.index('--reference-report') + 1] for cmd in commands]
+    assert caches[0] == caches[1] and caches[2] != caches[0]

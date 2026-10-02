@@ -12,6 +12,31 @@ ASSIGNMENTS = np.array(list(permutations(range(4))), dtype=np.int64)
 
 
 @njit(cache=True)
+def passing_outlets(ball, own, opp, gx):
+    """Two distinct, reachable passing lanes; separation alone is not support."""
+    scores = np.zeros(4)
+    for p in range(4):
+        dx, dy = own[p, 0] - ball[0], own[p, 1] - ball[1]
+        length = math.hypot(dx, dy)
+        if length < .08 * gx:
+            continue  # carrier/crowd cannot also count as a receiver
+        lane = 1.0
+        for q in range(4):
+            t = ((opp[q, 0] - ball[0]) * dx + (opp[q, 1] - ball[1]) * dy) / (length * length)
+            if .05 < t <= 1.1:
+                distance = math.hypot(opp[q, 0] - ball[0] - min(t, 1.) * dx,
+                                      opp[q, 1] - ball[1] - min(t, 1.) * dy)
+                lane = min(lane, 1. - math.exp(-distance / (.045 * gx)))
+        scores[p] = lane * math.exp(-length / (.8 * gx))
+    best = 0.0
+    for p in range(4):
+        for q in range(p + 1, 4):
+            separation = min(1., math.hypot(own[p, 0] - own[q, 0], own[p, 1] - own[q, 1]) / (.22 * gx))
+            best = max(best, math.sqrt(scores[p] * scores[q]) * separation)
+    return best
+
+
+@njit(cache=True)
 def _threat(ball, attackers, defenders, gx, gh):
     bx, by = ball[0], ball[1]
     dx = max(gx - bx, 1e-6)
@@ -135,13 +160,11 @@ def components(player_pos, player_team, ball_pos, gx, fh, gh, version=1):
                     # recomputed from positions every decision.
                     pressure = 1.0 - math.exp(-near_a / (.14 * gx))
                     depth = 0.0
-                    spread = 0.0
                     for p in range(4):
                         if own[p, 0] < ball[0] - .14 * gx:
                             depth = max(depth, math.exp(-abs(own[p, 1] - .35 * ball[1]) / (.45 * fh)))
-                        for q in range(p + 1, 4):
-                            spread = max(spread, min(1.0, abs(own[p, 1] - own[q, 1]) / (.6 * fh)))
-                    coverage = (1 - control) * depth + control * (.5 * depth + .5 * spread)
+                    outlets = passing_outlets(ball, own, opp, gx)
+                    coverage = (1 - control) * depth + control * (.5 * depth + .5 * outlets)
                     result[row, team, 0] = (.55 * result[row, team, 0]
                                             + .25 * coverage + .20 * (1 - pressure))
             else:

@@ -39,13 +39,48 @@ def _restart_geometry(positions, teams, owner, ball, gx, fh, coefficient):
         for role in range(3):
             targets[role, 0] = min(.85 * gx, max(-.88 * gx, bx + gx * x_offsets[role]))
             targets[role, 1] = min(.8 * fh, max(-.8 * fh, by + inward * fh * y_offsets[role]))
+        executors = np.empty(4)
+        for taker in range(4):
+            distance = np.hypot(own[taker, 0] - bx, own[taker, 1] - by)
+            executor = np.exp(-distance / (.18 * gx))
+            # Public geometry identifies an inward outlet, without exposing
+            # referee state. Near the ball, standing on the wrong side must not
+            # be as valuable as being ready to kick into the field.
+            tx, ty = gx - bx, -by
+            if abs(by) > .65 * fh:
+                tx, ty = (0.0, inward)
+                if abs(bx) > .8 * gx:
+                    tx, ty = -bx, -by
+            direction = max(np.hypot(tx, ty), 1e-9)
+            alignment = ((bx - own[taker, 0]) * tx + (by - own[taker, 1]) * ty) / (max(distance, 1e-9) * direction)
+            if abs(bx) < .05 * gx and abs(by) < .05 * fh:
+                # A central restart may go to an open teammate, including
+                # sideways/backwards. Do not teach forward-only kickoffs.
+                for receiver in range(4):
+                    if receiver == taker:
+                        continue
+                    dx, dy = own[receiver, 0] - bx, own[receiver, 1] - by
+                    length = np.hypot(dx, dy)
+                    if length < .1 * gx or length > .65 * gx:
+                        continue
+                    clear = True
+                    for rival in range(len(teams)):
+                        if teams[rival] == team:
+                            continue
+                        rx, ry = sign * positions[row, rival, 0] - bx, positions[row, rival, 1] - by
+                        t = (rx * dx + ry * dy) / (length * length)
+                        if .05 < t <= 1.1 and np.hypot(rx - min(t, 1.) * dx, ry - min(t, 1.) * dy) < .06 * gx:
+                            clear = False
+                    if clear:
+                        alignment = max(alignment, ((bx - own[taker, 0]) * dx + (by - own[taker, 1]) * dy) / (max(distance, 1e-9) * length))
+            proximity = np.exp(-distance / (.08 * gx))
+            executor *= 1. - .4 * proximity * (1. - max(0., alignment))
+            executors[taker] = executor
         best = 0.0
         # Joint maximum over four viable executors and 3! unique supports. A
         # tied distance can never select an identity-dependent argmin player.
         for assignment in ASSIGNMENTS:
-            taker = assignment[0]
-            distance = np.hypot(own[taker, 0] - bx, own[taker, 1] - by)
-            executor = np.exp(-distance / (.18 * gx))
+            executor = executors[assignment[0]]
             cost = 0.0
             for role in range(3):
                 player = assignment[role + 1]
@@ -360,6 +395,11 @@ class RS4ScenarioEnv:
                 own[1] = ball + np.array([-.28 * W, -.35 * wing * H])
                 own[2] = ball + np.array([-.05 * W, -.60 * wing * H])
                 own[3] = ball + np.array([-.48 * W, -.85 * wing * H])
+                if self.difficulty > 0 and self.rng.random() < .5 * self.difficulty:
+                    # Match restarts also begin with the entire team far away.
+                    # Keep the travel-based deadline below; do not manufacture
+                    # failures by requiring an impossible sprint to the corner.
+                    own = self.rng.uniform([-.8 * W, -.75 * H], [.65 * W, .75 * H], (4, 2))
                 velocity[:] = 0
             elif kind == "exit":
                 ball[0] = -.65 * W
@@ -370,6 +410,10 @@ class RS4ScenarioEnv:
                 ball[0] = .20 * W
                 own[1] = ball + [-25, 0]
                 own[2, 0], own[3, 0] = .40 * W, .65 * W
+                if self.difficulty > 0 and self.rng.random() < .5 * self.difficulty:
+                    # The carrier must wait/find support and the other players
+                    # must actually join; not every drill gives ready outlets.
+                    own[2:, 0] = ball[0] - self.rng.uniform(.15, .45, 2) * W
                 opp[0] = ball + [90 - 55 * self.difficulty, 0]
                 opp[1] = ball + [140 - 50 * self.difficulty, .2 * wing * H]
             else:  # defensive access and loss with teammates initially advanced

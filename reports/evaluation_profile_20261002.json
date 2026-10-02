@@ -1,0 +1,758 @@
+{
+  "note": "Short CPU sample concurrent with active evaluator; no PPO. Approximate timings, not full-suite ETA.",
+  "results": [
+    {
+      "case": "all_vs_script",
+      "elapsed_seconds": 0.5125059330021031,
+      "decision_steps": 120,
+      "seconds_per_decision": 0.004270882775017526,
+      "batch_minutes_estimate": 0.17083531100070104,
+      "top_self": [
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method torch._C._nn.linear>",
+          "calls": 600,
+          "self_seconds": 0.093008215,
+          "cumulative_seconds": 0.093008215
+        },
+        {
+          "file": "/workspace/HaxballRL/bots/scripted.py",
+          "line": 760,
+          "function": "_scripted_r3_kernel",
+          "calls": 120,
+          "self_seconds": 0.040874357,
+          "cumulative_seconds": 0.041075187
+        },
+        {
+          "file": "/workspace/HaxballRL/sim/physics.py",
+          "line": 178,
+          "function": "step_batch",
+          "calls": 120,
+          "self_seconds": 0.038755798,
+          "cumulative_seconds": 0.038755798
+        },
+        {
+          "file": "/workspace/HaxballRL/env/haxball_env.py",
+          "line": 1216,
+          "function": "step",
+          "calls": 120,
+          "self_seconds": 0.03527641,
+          "cumulative_seconds": 0.164546792
+        },
+        {
+          "file": "/workspace/HaxballRL/env/observation.py",
+          "line": 32,
+          "function": "_observe",
+          "calls": 123,
+          "self_seconds": 0.022115728,
+          "cumulative_seconds": 0.022115728
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<method 'masked_fill' of 'torch._C.TensorBase' objects>",
+          "calls": 240,
+          "self_seconds": 0.018231936,
+          "cumulative_seconds": 0.018231936
+        },
+        {
+          "file": "/workspace/HaxballRL/train/model.py",
+          "line": 278,
+          "function": "_features",
+          "calls": 120,
+          "self_seconds": 0.017499586,
+          "cumulative_seconds": 0.130809444
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method torch.cat>",
+          "calls": 600,
+          "self_seconds": 0.016168351,
+          "cumulative_seconds": 0.016168351
+        },
+        {
+          "file": "/workspace/HaxballRL/train/model.py",
+          "line": 28,
+          "function": "forward",
+          "calls": 240,
+          "self_seconds": 0.012147089000000002,
+          "cumulative_seconds": 0.015589536000000001
+        },
+        {
+          "file": "/workspace/HaxballRL/env/rs4_v3.py",
+          "line": 137,
+          "function": "update",
+          "calls": 120,
+          "self_seconds": 0.011469535000000001,
+          "cumulative_seconds": 0.019455158
+        },
+        {
+          "file": "/workspace/HaxballRL/train/model.py",
+          "line": 268,
+          "function": "_pool",
+          "calls": 240,
+          "self_seconds": 0.011443849,
+          "cumulative_seconds": 0.054063449000000006
+        },
+        {
+          "file": "/workspace/HaxballRL/eval/rs4_v3.py",
+          "line": 80,
+          "function": "full_game",
+          "calls": 1,
+          "self_seconds": 0.010026485,
+          "cumulative_seconds": 0.512464594
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<method 'reduce' of 'numpy.ufunc' objects>",
+          "calls": 3545,
+          "self_seconds": 0.008955028,
+          "cumulative_seconds": 0.008955028
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method torch.relu>",
+          "calls": 360,
+          "self_seconds": 0.008582774000000001,
+          "cumulative_seconds": 0.008582774000000001
+        },
+        {
+          "file": "/workspace/HaxballRL/env/haxball_env.py",
+          "line": 630,
+          "function": "public_colors",
+          "calls": 362,
+          "self_seconds": 0.007266913000000001,
+          "cumulative_seconds": 0.009775654
+        }
+      ],
+      "top_cumulative": [
+        {
+          "file": "/workspace/HaxballRL/eval/rs4_v3.py",
+          "line": 80,
+          "function": "full_game",
+          "calls": 1,
+          "self_seconds": 0.010026485,
+          "cumulative_seconds": 0.512464594
+        },
+        {
+          "file": "/workspace/HaxballRL/.venv/lib/python3.10/site-packages/torch/utils/_contextlib.py",
+          "line": 117,
+          "function": "decorate_context",
+          "calls": 120,
+          "self_seconds": 0.000832874,
+          "cumulative_seconds": 0.24384159200000002
+        },
+        {
+          "file": "/workspace/HaxballRL/eval/agents.py",
+          "line": 34,
+          "function": "__call__",
+          "calls": 120,
+          "self_seconds": 0.005566518,
+          "cumulative_seconds": 0.24055347100000002
+        },
+        {
+          "file": "/workspace/HaxballRL/train/model.py",
+          "line": 329,
+          "function": "logits",
+          "calls": 120,
+          "self_seconds": 0.0010998140000000002,
+          "cumulative_seconds": 0.219906757
+        },
+        {
+          "file": "/workspace/HaxballRL/env/haxball_env.py",
+          "line": 1216,
+          "function": "step",
+          "calls": 120,
+          "self_seconds": 0.03527641,
+          "cumulative_seconds": 0.164546792
+        },
+        {
+          "file": "/workspace/HaxballRL/train/model.py",
+          "line": 278,
+          "function": "_features",
+          "calls": 120,
+          "self_seconds": 0.017499586,
+          "cumulative_seconds": 0.130809444
+        },
+        {
+          "file": "/workspace/HaxballRL/.venv/lib/python3.10/site-packages/torch/nn/modules/module.py",
+          "line": 1771,
+          "function": "_wrapped_call_impl",
+          "calls": 1440,
+          "self_seconds": 0.001655563,
+          "cumulative_seconds": 0.12736340100000001
+        },
+        {
+          "file": "/workspace/HaxballRL/.venv/lib/python3.10/site-packages/torch/nn/modules/module.py",
+          "line": 1779,
+          "function": "_call_impl",
+          "calls": 1440,
+          "self_seconds": 0.00276229,
+          "cumulative_seconds": 0.126471768
+        },
+        {
+          "file": "/workspace/HaxballRL/.venv/lib/python3.10/site-packages/torch/nn/modules/container.py",
+          "line": 245,
+          "function": "forward",
+          "calls": 240,
+          "self_seconds": 0.001264039,
+          "cumulative_seconds": 0.095979242
+        },
+        {
+          "file": "/workspace/HaxballRL/.venv/lib/python3.10/site-packages/torch/nn/modules/linear.py",
+          "line": 130,
+          "function": "forward",
+          "calls": 600,
+          "self_seconds": 0.001364449,
+          "cumulative_seconds": 0.09484748300000001
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method torch._C._nn.linear>",
+          "calls": 600,
+          "self_seconds": 0.093008215,
+          "cumulative_seconds": 0.093008215
+        },
+        {
+          "file": "/workspace/HaxballRL/eval/agents.py",
+          "line": 72,
+          "function": "__call__",
+          "calls": 120,
+          "self_seconds": 0.00035719800000000003,
+          "cumulative_seconds": 0.057723826000000006
+        },
+        {
+          "file": "/workspace/HaxballRL/bots/scripted.py",
+          "line": 30,
+          "function": "scripted_actions",
+          "calls": 120,
+          "self_seconds": 0.004519885,
+          "cumulative_seconds": 0.057366628
+        },
+        {
+          "file": "/workspace/HaxballRL/train/model.py",
+          "line": 268,
+          "function": "_pool",
+          "calls": 240,
+          "self_seconds": 0.011443849,
+          "cumulative_seconds": 0.054063449000000006
+        },
+        {
+          "file": "/workspace/HaxballRL/sim/physics.py",
+          "line": 522,
+          "function": "step_frames_with_touches",
+          "calls": 120,
+          "self_seconds": 0.0018741530000000001,
+          "cumulative_seconds": 0.041776959
+        }
+      ]
+    },
+    {
+      "case": "all_vs_parent",
+      "elapsed_seconds": 0.6625603410066105,
+      "decision_steps": 120,
+      "seconds_per_decision": 0.0055213361750550876,
+      "batch_minutes_estimate": 0.22085344700220352,
+      "top_self": [
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method torch._C._nn.linear>",
+          "calls": 1080,
+          "self_seconds": 0.171729545,
+          "cumulative_seconds": 0.171729545
+        },
+        {
+          "file": "/workspace/HaxballRL/sim/physics.py",
+          "line": 178,
+          "function": "step_batch",
+          "calls": 120,
+          "self_seconds": 0.041630232,
+          "cumulative_seconds": 0.041630232
+        },
+        {
+          "file": "/workspace/HaxballRL/env/haxball_env.py",
+          "line": 1216,
+          "function": "step",
+          "calls": 120,
+          "self_seconds": 0.039771241000000006,
+          "cumulative_seconds": 0.175792478
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<method 'masked_fill' of 'torch._C.TensorBase' objects>",
+          "calls": 480,
+          "self_seconds": 0.034231014000000004,
+          "cumulative_seconds": 0.034231014000000004
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method torch.cat>",
+          "calls": 1200,
+          "self_seconds": 0.030597656,
+          "cumulative_seconds": 0.030597656
+        },
+        {
+          "file": "/workspace/HaxballRL/train/model.py",
+          "line": 278,
+          "function": "_features",
+          "calls": 240,
+          "self_seconds": 0.028545192,
+          "cumulative_seconds": 0.22629078500000002
+        },
+        {
+          "file": "/workspace/HaxballRL/env/observation.py",
+          "line": 32,
+          "function": "_observe",
+          "calls": 123,
+          "self_seconds": 0.02739501,
+          "cumulative_seconds": 0.02739501
+        },
+        {
+          "file": "/workspace/HaxballRL/train/model.py",
+          "line": 28,
+          "function": "forward",
+          "calls": 480,
+          "self_seconds": 0.022671871,
+          "cumulative_seconds": 0.029135768000000003
+        },
+        {
+          "file": "/workspace/HaxballRL/train/model.py",
+          "line": 268,
+          "function": "_pool",
+          "calls": 480,
+          "self_seconds": 0.020035668,
+          "cumulative_seconds": 0.099753301
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method torch.relu>",
+          "calls": 720,
+          "self_seconds": 0.014874936,
+          "cumulative_seconds": 0.014874936
+        },
+        {
+          "file": "/workspace/HaxballRL/env/rs4_v3.py",
+          "line": 137,
+          "function": "update",
+          "calls": 120,
+          "self_seconds": 0.012297395000000001,
+          "cumulative_seconds": 0.020687868
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<method 'sum' of 'torch._C.TensorBase' objects>",
+          "calls": 960,
+          "self_seconds": 0.012183562,
+          "cumulative_seconds": 0.012183562
+        },
+        {
+          "file": "/workspace/HaxballRL/eval/rs4_v3.py",
+          "line": 80,
+          "function": "full_game",
+          "calls": 1,
+          "self_seconds": 0.010949835000000002,
+          "cumulative_seconds": 0.662511253
+        },
+        {
+          "file": "/workspace/HaxballRL/eval/agents.py",
+          "line": 34,
+          "function": "__call__",
+          "calls": 240,
+          "self_seconds": 0.010184828,
+          "cumulative_seconds": 0.43220283800000003
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<method 'reduce' of 'numpy.ufunc' objects>",
+          "calls": 3425,
+          "self_seconds": 0.009365632,
+          "cumulative_seconds": 0.009365632
+        }
+      ],
+      "top_cumulative": [
+        {
+          "file": "/workspace/HaxballRL/eval/rs4_v3.py",
+          "line": 80,
+          "function": "full_game",
+          "calls": 1,
+          "self_seconds": 0.010949835000000002,
+          "cumulative_seconds": 0.662511253
+        },
+        {
+          "file": "/workspace/HaxballRL/.venv/lib/python3.10/site-packages/torch/utils/_contextlib.py",
+          "line": 117,
+          "function": "decorate_context",
+          "calls": 240,
+          "self_seconds": 0.001414599,
+          "cumulative_seconds": 0.437635918
+        },
+        {
+          "file": "/workspace/HaxballRL/eval/agents.py",
+          "line": 34,
+          "function": "__call__",
+          "calls": 240,
+          "self_seconds": 0.010184828,
+          "cumulative_seconds": 0.43220283800000003
+        },
+        {
+          "file": "/workspace/HaxballRL/train/model.py",
+          "line": 329,
+          "function": "logits",
+          "calls": 240,
+          "self_seconds": 0.002084981,
+          "cumulative_seconds": 0.400180843
+        },
+        {
+          "file": "/workspace/HaxballRL/.venv/lib/python3.10/site-packages/torch/nn/modules/module.py",
+          "line": 1771,
+          "function": "_wrapped_call_impl",
+          "calls": 2760,
+          "self_seconds": 0.002953415,
+          "cumulative_seconds": 0.233416799
+        },
+        {
+          "file": "/workspace/HaxballRL/.venv/lib/python3.10/site-packages/torch/nn/modules/module.py",
+          "line": 1779,
+          "function": "_call_impl",
+          "calls": 2760,
+          "self_seconds": 0.00472795,
+          "cumulative_seconds": 0.23188786200000003
+        },
+        {
+          "file": "/workspace/HaxballRL/train/model.py",
+          "line": 278,
+          "function": "_features",
+          "calls": 240,
+          "self_seconds": 0.028545192,
+          "cumulative_seconds": 0.22629078500000002
+        },
+        {
+          "file": "/workspace/HaxballRL/.venv/lib/python3.10/site-packages/torch/nn/modules/container.py",
+          "line": 245,
+          "function": "forward",
+          "calls": 480,
+          "self_seconds": 0.00229223,
+          "cumulative_seconds": 0.180720592
+        },
+        {
+          "file": "/workspace/HaxballRL/env/haxball_env.py",
+          "line": 1216,
+          "function": "step",
+          "calls": 120,
+          "self_seconds": 0.039771241000000006,
+          "cumulative_seconds": 0.175792478
+        },
+        {
+          "file": "/workspace/HaxballRL/.venv/lib/python3.10/site-packages/torch/nn/modules/linear.py",
+          "line": 130,
+          "function": "forward",
+          "calls": 1080,
+          "self_seconds": 0.0023758900000000003,
+          "cumulative_seconds": 0.174965997
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method torch._C._nn.linear>",
+          "calls": 1080,
+          "self_seconds": 0.171729545,
+          "cumulative_seconds": 0.171729545
+        },
+        {
+          "file": "/workspace/HaxballRL/train/model.py",
+          "line": 268,
+          "function": "_pool",
+          "calls": 480,
+          "self_seconds": 0.020035668,
+          "cumulative_seconds": 0.099753301
+        },
+        {
+          "file": "/workspace/HaxballRL/sim/physics.py",
+          "line": 522,
+          "function": "step_frames_with_touches",
+          "calls": 120,
+          "self_seconds": 0.002158862,
+          "cumulative_seconds": 0.045079292
+        },
+        {
+          "file": "/workspace/HaxballRL/sim/physics.py",
+          "line": 178,
+          "function": "step_batch",
+          "calls": 120,
+          "self_seconds": 0.041630232,
+          "cumulative_seconds": 0.041630232
+        },
+        {
+          "file": "/workspace/HaxballRL/env/haxball_env.py",
+          "line": 777,
+          "function": "observe",
+          "calls": 123,
+          "self_seconds": 0.00019947200000000002,
+          "cumulative_seconds": 0.04037731
+        }
+      ]
+    },
+    {
+      "case": "single_with_BC",
+      "elapsed_seconds": 0.5357680719462223,
+      "decision_steps": 120,
+      "seconds_per_decision": 0.004464733932885186,
+      "batch_minutes_estimate": 0.17858935731540745,
+      "top_self": [
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method torch._C._nn.linear>",
+          "calls": 1080,
+          "self_seconds": 0.093585524,
+          "cumulative_seconds": 0.093585524
+        },
+        {
+          "file": "/workspace/HaxballRL/bots/scripted.py",
+          "line": 760,
+          "function": "_scripted_r3_kernel",
+          "calls": 120,
+          "self_seconds": 0.039156441,
+          "cumulative_seconds": 0.039318451000000004
+        },
+        {
+          "file": "/workspace/HaxballRL/sim/physics.py",
+          "line": 178,
+          "function": "step_batch",
+          "calls": 120,
+          "self_seconds": 0.035382024000000005,
+          "cumulative_seconds": 0.035382024000000005
+        },
+        {
+          "file": "/workspace/HaxballRL/env/haxball_env.py",
+          "line": 1216,
+          "function": "step",
+          "calls": 120,
+          "self_seconds": 0.034880992,
+          "cumulative_seconds": 0.151686238
+        },
+        {
+          "file": "/workspace/HaxballRL/env/observation.py",
+          "line": 32,
+          "function": "_observe",
+          "calls": 123,
+          "self_seconds": 0.023983097000000002,
+          "cumulative_seconds": 0.023983097000000002
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<method 'masked_fill' of 'torch._C.TensorBase' objects>",
+          "calls": 480,
+          "self_seconds": 0.022004086000000003,
+          "cumulative_seconds": 0.022004086000000003
+        },
+        {
+          "file": "/workspace/HaxballRL/train/model.py",
+          "line": 278,
+          "function": "_features",
+          "calls": 240,
+          "self_seconds": 0.021117481,
+          "cumulative_seconds": 0.156123388
+        },
+        {
+          "file": "/workspace/HaxballRL/train/model.py",
+          "line": 28,
+          "function": "forward",
+          "calls": 480,
+          "self_seconds": 0.016428966,
+          "cumulative_seconds": 0.021538542
+        },
+        {
+          "file": "/workspace/HaxballRL/train/model.py",
+          "line": 268,
+          "function": "_pool",
+          "calls": 480,
+          "self_seconds": 0.016270334,
+          "cumulative_seconds": 0.06925125900000001
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method torch.cat>",
+          "calls": 1080,
+          "self_seconds": 0.015743297,
+          "cumulative_seconds": 0.015743297
+        },
+        {
+          "file": "/workspace/HaxballRL/env/rs4_v3.py",
+          "line": 137,
+          "function": "update",
+          "calls": 120,
+          "self_seconds": 0.011567931,
+          "cumulative_seconds": 0.019544837000000002
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method torch.relu>",
+          "calls": 720,
+          "self_seconds": 0.01013166,
+          "cumulative_seconds": 0.01013166
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<method 'reduce' of 'numpy.ufunc' objects>",
+          "calls": 3785,
+          "self_seconds": 0.009285169000000001,
+          "cumulative_seconds": 0.009285169000000001
+        },
+        {
+          "file": "/workspace/HaxballRL/eval/rs4_v3.py",
+          "line": 80,
+          "function": "full_game",
+          "calls": 1,
+          "self_seconds": 0.009098485,
+          "cumulative_seconds": 0.535726267
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<method 'sum' of 'torch._C.TensorBase' objects>",
+          "calls": 960,
+          "self_seconds": 0.008432934000000001,
+          "cumulative_seconds": 0.008432934000000001
+        }
+      ],
+      "top_cumulative": [
+        {
+          "file": "/workspace/HaxballRL/eval/rs4_v3.py",
+          "line": 80,
+          "function": "full_game",
+          "calls": 1,
+          "self_seconds": 0.009098485,
+          "cumulative_seconds": 0.535726267
+        },
+        {
+          "file": "/workspace/HaxballRL/eval/rs4_v3.py",
+          "line": 65,
+          "function": "__call__",
+          "calls": 120,
+          "self_seconds": 0.003066767,
+          "cumulative_seconds": 0.285890661
+        },
+        {
+          "file": "/workspace/HaxballRL/.venv/lib/python3.10/site-packages/torch/utils/_contextlib.py",
+          "line": 117,
+          "function": "decorate_context",
+          "calls": 240,
+          "self_seconds": 0.001169174,
+          "cumulative_seconds": 0.281525055
+        },
+        {
+          "file": "/workspace/HaxballRL/eval/agents.py",
+          "line": 34,
+          "function": "__call__",
+          "calls": 240,
+          "self_seconds": 0.006199943,
+          "cumulative_seconds": 0.27707480300000004
+        },
+        {
+          "file": "/workspace/HaxballRL/train/model.py",
+          "line": 329,
+          "function": "logits",
+          "calls": 240,
+          "self_seconds": 0.001872282,
+          "cumulative_seconds": 0.255014958
+        },
+        {
+          "file": "/workspace/HaxballRL/train/model.py",
+          "line": 278,
+          "function": "_features",
+          "calls": 240,
+          "self_seconds": 0.021117481,
+          "cumulative_seconds": 0.156123388
+        },
+        {
+          "file": "/workspace/HaxballRL/env/haxball_env.py",
+          "line": 1216,
+          "function": "step",
+          "calls": 120,
+          "self_seconds": 0.034880992,
+          "cumulative_seconds": 0.151686238
+        },
+        {
+          "file": "/workspace/HaxballRL/.venv/lib/python3.10/site-packages/torch/nn/modules/module.py",
+          "line": 1771,
+          "function": "_wrapped_call_impl",
+          "calls": 2760,
+          "self_seconds": 0.002652303,
+          "cumulative_seconds": 0.14147785000000002
+        },
+        {
+          "file": "/workspace/HaxballRL/.venv/lib/python3.10/site-packages/torch/nn/modules/module.py",
+          "line": 1779,
+          "function": "_call_impl",
+          "calls": 2760,
+          "self_seconds": 0.004433363,
+          "cumulative_seconds": 0.140101052
+        },
+        {
+          "file": "/workspace/HaxballRL/.venv/lib/python3.10/site-packages/torch/nn/modules/container.py",
+          "line": 245,
+          "function": "forward",
+          "calls": 480,
+          "self_seconds": 0.002108688,
+          "cumulative_seconds": 0.103200682
+        },
+        {
+          "file": "/workspace/HaxballRL/.venv/lib/python3.10/site-packages/torch/nn/modules/linear.py",
+          "line": 130,
+          "function": "forward",
+          "calls": 1080,
+          "self_seconds": 0.0022229240000000003,
+          "cumulative_seconds": 0.09664877100000001
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method torch._C._nn.linear>",
+          "calls": 1080,
+          "self_seconds": 0.093585524,
+          "cumulative_seconds": 0.093585524
+        },
+        {
+          "file": "/workspace/HaxballRL/train/model.py",
+          "line": 268,
+          "function": "_pool",
+          "calls": 480,
+          "self_seconds": 0.016270334,
+          "cumulative_seconds": 0.06925125900000001
+        },
+        {
+          "file": "/workspace/HaxballRL/eval/agents.py",
+          "line": 72,
+          "function": "__call__",
+          "calls": 120,
+          "self_seconds": 0.00032533000000000003,
+          "cumulative_seconds": 0.054354429
+        },
+        {
+          "file": "/workspace/HaxballRL/bots/scripted.py",
+          "line": 30,
+          "function": "scripted_actions",
+          "calls": 120,
+          "self_seconds": 0.004124128,
+          "cumulative_seconds": 0.054029099000000004
+        }
+      ]
+    }
+  ]
+}
