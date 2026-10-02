@@ -106,6 +106,8 @@ class MultiTrainer:
                 cfg = copy.deepcopy(cfg)
                 cfg["bc_reference"] = saved.get("bc_reference")
         self.cfg = cfg
+        if cfg.get("model", {}).get("public_signals_version") and not cfg.get("rs4_program"):
+            raise ValueError("Public-v1 training requires the RS4 v3 program and its public observation adapter")
         validate_rs4_tactics(cfg)
         self._validate_scripted_readiness()
         self.optimize_rollout = cfg.get("runtime", {}).get("optimize_rollout", True)
@@ -170,6 +172,8 @@ class MultiTrainer:
                          hidden=mc["hidden"], layers=mc["layers"], ent_hidden=mc.get("ent_hidden", 64),
                          pooling=mc.get("pooling", "meanmax"), ent_layers=mc.get("ent_layers", 2),
                          rule_observation=mc.get("rule_observation", "masked"))
+        if mc.get("public_signals_version"):
+            model_cfg["public_signals_version"] = mc["public_signals_version"]
         if model_cfg["type"] == "recurrent_set":
             model_cfg["memory_size"] = mc.get("memory_size", 64)
         self.model = build_model(model_cfg)
@@ -424,6 +428,8 @@ class MultiTrainer:
 
     def load(self, path: Path) -> None:
         ck = torch.load(path, map_location="cpu", weights_only=False)
+        if ck["model_config"].get("public_signals_version", 0) != getattr(self.model, "public_signals_version", 0):
+            raise ValueError("Public signal contract differs from checkpoint; use its migrated config")
         saved_mode = ck["model_config"].get("rule_observation", "full")
         if saved_mode != self.model.rule_observation:
             raise ValueError("El checkpoint usa rule_observation=" + saved_mode +

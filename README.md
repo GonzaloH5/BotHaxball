@@ -11,6 +11,11 @@ La ruta recurrente sólo se selecciona si supera las pruebas de calidad y conser
 al menos70% del throughput medido en el Pod.
 Ver [infraestructura, límites y comandos](reports/rs4_v3_implementation.md).
 
+La adaptación opt-in a señales públicas de RS4 incorpora color de pelota, barrera
+configurada e historial geométrico de contacto, sin estados privados del árbitro.
+Conserva checkpoint, Adam, fase y presupuesto; no empieza otra especialización.
+Ver [migración y comandos](reports/rs4_public_signals.md).
+
 ### Guía defensiva de JJRS 6v6
 
 `config_multi.yaml` (heredado por RunPod) habilita **sólo en `jjrs_6v6`**

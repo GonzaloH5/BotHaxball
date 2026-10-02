@@ -89,6 +89,7 @@ class HaxballEnv:
         self.rcfg = reward or RewardConfig()
         self.rng = np.random.default_rng(seed)
         self.obs_layout = obs_layout
+        self._public_signals = None
         self.max_entities = max(max_entities, 2 * n_per_team - 1)
         self.obs_dim = obs_dim(n_per_team, self.sim.ps_on, obs_layout, self.max_entities)
         self.self_dim = U_SELF_DIM if obs_layout == "universal" else self_dim(self.sim.ps_on)
@@ -209,6 +210,8 @@ class HaxballEnv:
             return
 
         idx = np.asarray(idx, dtype=np.int64)
+        if self._public_signals is not None:
+            self._public_signals.reset(idx)
         self.episode_id[idx] += 1
         # Mezcla uniforme y determinista por episodio, sin consumir el RNG del
         # entorno ni cambiar la reproducibilidad de R2.
@@ -612,6 +615,65 @@ class HaxballEnv:
         return self.observe()
 
     # ----------------------------------------------------------------- obs
+    def enable_public_signals(self):
+        """Opt-in observation contract; legacy environments remain unchanged."""
+        if self.goal_kick_speed != 10.5 or self.T != 4 or self.rules is not None or self.obs_layout != "universal":
+            raise ValueError("Public-v1 observations support simplified RS4 4v4 only")
+        if self._public_signals is None:
+            from .public_signals import PublicSignalTracker
+            self._public_signals = PublicSignalTracker(self.N)
+            self._public_elapsed = 0
+            self.sample_public_signals(0)
+            return True
+        return False
+
+    def public_colors(self):
+        """Renderer approximation: expose colored ball/barrier, not referee IDs.
+
+        These visible outputs must match the target room. Unknown/missing room
+        colors are never repaired using the referee by the feature decoder.
+        """
+        palette = np.array([0xFF0000, 0x0000FF], dtype=np.int64)
+        visible = self.setpiece_team >= 0
+        colors = np.where(visible, palette[np.maximum(self.setpiece_team, 0)], 0xFFFFFF)
+        return (colors if getattr(self, "public_ball_visible", True) else np.full(self.N, 0xFFFFFF),
+                colors if getattr(self, "public_barrier_visible", False) else np.full(self.N, 0xFFFFFF))
+
+    def sample_public_signals(self, dt):
+        if self._public_signals is not None:
+            self._public_elapsed += dt
+            if dt and self._public_elapsed < getattr(self, "public_sample_period", self.frame_skip):
+                return
+            dt, self._public_elapsed = self._public_elapsed, 0
+            ball, barrier = self.public_colors()
+            self._public_signals.sample(self.sim.ball_pos, self.sim.ball_vel, self.sim.player_pos,
+                self.sim.player_team, self.sim.st.player["radius"], self.sim.st.ball["radius"], ball, barrier, dt)
+
+    def public_features(self):
+        ball, barrier = self.public_colors()
+        return self._public_signals.features(self.sim.ball_pos, self.sim.ball_vel, self.sim.player_team,
+                                             ball, barrier, self.goal_x, self.field_h)
+
+    def public_state(self, row=0):
+        ball, barrier = self.public_colors()
+        m = self._public_signals.memory[row]
+        return dict(ballColor=int(ball[row]), barrierColor=int(barrier[row]),
+                    contactTeam=int(m[0]), contactAge=float(m[1]), contactConfidence=float(m[2]),
+                    restartAge=float(m[4]))
+
+    def _observe_with_public(self, indices=None):
+        # Cache legacy observation computation once; no additional GPU transfers.
+        if self.optimize_rollout:
+            from .observation import observe_universal
+            obs = observe_universal(self, indices)
+        else:
+            obs = self._observe_universal()
+            if indices is not None:
+                obs = obs[indices]
+        features = self.public_features()
+        obs[..., 56:71] = features if indices is None else features[indices]
+        return obs
+
     def _own(self, xy):
         """(N, P, 2) coordenadas mundo -> marco propio de cada agente (espejo x para azul)."""
         out = xy.copy()
@@ -700,6 +762,8 @@ class HaxballEnv:
         return np.concatenate([own, ent.reshape(N, P, -1)], axis=-1).astype(np.float32)
 
     def observe(self, indices=None) -> np.ndarray:
+        if self._public_signals is not None:
+            return self._observe_with_public(indices)
         if self.obs_layout == "universal":
             if self.optimize_rollout:
                 from .observation import observe_universal
@@ -1503,6 +1567,7 @@ class HaxballEnv:
         self.score[goal == 1, 0] += 1
         self.score[goal == -1, 1] += 1
 
+        self.sample_public_signals(self.frame_skip)
         final_obs = self.observe()
         idx = np.where(done)[0]
         if len(idx):

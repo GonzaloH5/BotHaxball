@@ -29,6 +29,7 @@ const { buildObs, decodeAction } = require("./obs");
 const { buildObsUniversal } = require("./obs_universal");
 const { assertObservationContract } = require("./observation_contract");
 const { PolicyMemory } = require("./policy_memory");
+const { PublicSignalTracker } = require("./public_signals");
 const os = require("os");
 const { spawnSync } = require("child_process");
 
@@ -42,6 +43,16 @@ const joinId = arg("--join", null);
 // ms de extrapolación como cliente; por defecto se mide en vivo (ver inputDelayTicks)
 const extrapMs = arg("--extrap", null) != null ? parseFloat(arg("--extrap")) : null;
 const STADIUM_ARG = arg("--stadium", null);
+const PUBLIC_CUES = {...(META.public_signals || {})};
+PUBLIC_CUES.debug = args.includes("--debug-public-signals");
+for (const [flag, key] of [["--rs4-barrier-discs", "barrier_discs"], ["--rs4-barrier-segments", "barrier_segments"]]) {
+  const supplied = arg(flag, null);
+  if (supplied !== null) PUBLIC_CUES[key] = supplied === "" ? [] : supplied.split(",").map(Number);
+}
+for (const [flag, key] of [["--rs4-red-colors", "red_colors"], ["--rs4-blue-colors", "blue_colors"]]) {
+  const supplied = arg(flag, null);
+  if (supplied !== null) PUBLIC_CUES[key] = supplied.split(",");
+}
 
 // Modelo multi-tarea (obs "universal", train/multitask.py): juega cualquier mapa y formato.
 // La geometría del mapa de la sala se calcula con el mismo código Python del entrenamiento
@@ -86,6 +97,9 @@ function BotPlugin(session) {
   });
   const that = this;
   let tick = 0;
+  const publicTracker = META.public_signals ? new PublicSignalTracker(PUBLIC_CUES) : null;
+  let publicPacket = null, publicFrame = null;
+  let lastPublicColors = null;
   let ticksSinceKickoff = 0;
   let kickCancel = false;
   let lastKey = { dirX: 0, dirY: 0, kick: false };
@@ -100,6 +114,7 @@ function BotPlugin(session) {
   const resetPolicy = () => {
     policyMemory.reset();
     policyActive = false;
+    if (publicTracker) { publicTracker.reset(); publicPacket = null; publicFrame = null; lastPublicColors = null; }
   };
 
   const teamIdx = (t) => (t === 1 ? 0 : t === 2 ? 1 : -1);
@@ -167,6 +182,14 @@ function BotPlugin(session) {
       rules = rulesFor(st.name);
       assertObservationContract(META, rules);
       geom = stadiumGeometry(st);
+      if (publicTracker && PUBLIC_CUES.debug) {
+        console.log("RS4 public barrier candidates (diagnostic only):", JSON.stringify({
+          discs: that.room.gameState.physicsState.discs.map((d, id) => ({id, color:d.color}))
+            .filter(d => d.id > 0 && [0xFF0000,0x0000FF,0xE56E56,0x5689E5].includes(d.color)),
+          segments: (that.room.gameState.physicsState.segments || st.segments || []).map((s, id) => ({id,color:s.color,vis:s.vis}))
+            .filter(s => [0xFF0000,0x0000FF,0xE56E56,0x5689E5].includes(s.color))
+        }));
+      }
       console.log(`mapa "${st.name}": cancha ${geom.field_half_w}x${geom.field_half_h}, reglas ` +
         `${rules.psOn ? "real (powershot + pelotas paradas)" : "sin script"}`);
       return true;
@@ -231,8 +254,31 @@ function BotPlugin(session) {
         ? forcedKickoffTeam
         : teamIdx(gs.goalConcedingTeam ? gs.goalConcedingTeam.id : 1);
 
+    if (publicTracker) {
+      const real = room.gameState.physicsState.discs[0];
+      const frame = room.currentFrameNo;
+      if (publicFrame === null || frame < publicFrame || frame - publicFrame >= META.frame_skip) {
+        if (publicFrame !== null && frame < publicFrame) publicTracker.reset();
+        publicPacket = publicTracker.sample({pos:[real.pos.x, real.pos.y], vel:[real.speed.x, real.speed.y], color:real.color},
+          room.state.players.filter(p => p.disc && teamIdx(p.team.id) >= 0).map(p =>
+            ({team:teamIdx(p.team.id),pos:[p.disc.pos.x,p.disc.pos.y]})),
+          publicFrame === null || frame < publicFrame ? 0 : frame - publicFrame,
+          geom.player_radius, geom.ball_radius,
+          publicTracker.barrierColor(room.gameState.physicsState.discs,
+            room.gameState.physicsState.segments || room.stadium.segments || []));
+        publicFrame = frame;
+        if (PUBLIC_CUES.debug) {
+          const colors = JSON.stringify([publicPacket.ballColor, publicPacket.barrierColor]);
+          if (colors !== lastPublicColors) {
+            console.log("RS4 public cues:", colors, "contact estimate:", publicPacket.contactTeam);
+            lastPublicColors = colors;
+          }
+        }
+      }
+    }
     return {
       ball: { pos: bpos, vel: [bd.speed.x, bd.speed.y] },
+      ...(publicTracker ? {publicSignals: publicPacket} : {}),
       players, myTeam: teamIdx(me.team.id), ps,
       kickoff: isKickoff,
       kickoffTeam: detectedKickoffTeam,
@@ -335,7 +381,8 @@ function BotPlugin(session) {
     if (tick % META.frame_skip !== 0 || busy) return;
     busy = true;
     const obs = UNIVERSAL
-      ? buildObsUniversal(s, 0, geom, { maxEntities: s.players.length - 1, ...rules })
+      ? buildObsUniversal(s, 0, geom, { maxEntities: s.players.length - 1, ...rules,
+          publicSignalsVersion: META.public_signals?.version || 0, publicSignalConfig: PUBLIC_CUES })
       : buildObs(s, 0, META);
     const generation = policyMemory.generation;
     session.run({

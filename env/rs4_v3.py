@@ -319,6 +319,8 @@ class RS4ScenarioEnv:
         self._place(rows)
 
     def _place(self, rows):
+        if self.base._public_signals is not None:
+            self.base._public_signals.reset(rows)
         env, sim = self.base, self.sim
         env._reset_envs(rows)
         W, H = self.field_w, self.field_h

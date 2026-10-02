@@ -104,7 +104,7 @@ class RS4V3Trainer(MultiTrainer):
             raise ValueError("Checkpoint sin programa v3; usar tools.prepare_rs4_v3")
         self.program = ProgramState.from_config(self.cfg, ck["rs4_program_state"])
         self._saved_extra = {key: copy.deepcopy(ck[key]) for key in
-                             ("migration", "rs4_migration", "source_reference", "program_manifest", "evaluation_version") if key in ck}
+                             ("migration", "rs4_migration", "public_signal_migration", "source_reference", "program_manifest", "evaluation_version") if key in ck}
         super().load(path)
         by_name = {saved["name"]: saved for saved in ck.get("league", []) if isinstance(saved, dict)}
         for member in self.league.members:
@@ -128,6 +128,10 @@ class RS4V3Trainer(MultiTrainer):
         for s in self.slots:
             if s.P != 8 or s.T != 4 or s.task.name != "rs4_4v4":
                 raise ValueError("RS4 v3 conserva exclusivamente RS4 4v4")
+            if self.cfg.get("model", {}).get("public_signals_version"):
+                s.env.enable_public_signals()
+                cues = self.cfg.get("public_signals", {})
+                s.env.public_barrier_visible = bool(cues.get("barrier_discs") or cues.get("barrier_segments"))
             s.env = RS4ScenarioEnv(s.env)
             s.env.configure(self.program.settings())
             s.controller = np.full((s.N, s.P), "learner", dtype=object)
@@ -223,7 +227,12 @@ class RS4V3Trainer(MultiTrainer):
         logp = torch.zeros(self.total_rows, device=self.device)
         values = torch.zeros(self.total_rows, device=self.device)
         for key, indices in self._route_device.items():
-            logits, value, _ = self.inference.infer(key, obs[indices], indices)
+            selected_obs = obs[indices]
+            model = self._controller_models[key]
+            if (self.model.public_signals_version and not getattr(model, "public_signals_version", 0)
+                    and getattr(model, "rule_observation", "masked") == "full"):
+                selected_obs[:, 56:71] = 0  # frozen legacy full references expect no RS4 private rule fields
+            logits, value, _ = self.inference.infer(key, selected_obs, indices)
             dist = torch.distributions.Categorical(logits=logits, validate_args=False)
             sampled = dist.sample()  # RNG intentionally outside graph.
             actions[indices], logp[indices], values[indices] = sampled, dist.log_prob(sampled), value
@@ -602,7 +611,8 @@ class RS4V3Trainer(MultiTrainer):
                                     wins=m.wins, games=m.games, match_points=m.match_points, matches=m.matches,
                                     protected=m.protected, snapshot_steps=m.snapshot_steps) for m in self.league.members],
                        env=dict(obs_layout="universal", tasks=[s.task.name for s in self.slots],
-                                max_entities=self.max_entities, frame_skip=self.cfg["env"]["frame_skip"]),
+                                max_entities=self.max_entities, frame_skip=self.cfg["env"]["frame_skip"],
+                                public_signal_config=self.cfg.get("public_signals", {})),
                        rng_state=dict(numpy=self.rng.bit_generator.state, torch=torch.get_rng_state(),
                                       cuda=torch.cuda.get_rng_state_all() if self.device.type == "cuda" else None),
                        **self._saved_extra)

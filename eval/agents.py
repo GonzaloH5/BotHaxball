@@ -12,11 +12,16 @@ from train.model import load_model
 class ModelAgent:
     def __init__(self, path: str, greedy: bool = False):
         self.model = load_model(path)
+        self.public_config = (torch.load(path, map_location="cpu", weights_only=False).get("env", {}).get("public_signal_config", {})
+                              if getattr(self.model, "public_signals_version", 0) else {})
         self.greedy = greedy
         self.name = path
         self._states = weakref.WeakKeyDictionary()
 
     def reset(self, env, done=None):
+        if getattr(self.model, "public_signals_version", 0):
+            env.enable_public_signals()
+            env.public_barrier_visible = bool(self.public_config.get("barrier_discs") or self.public_config.get("barrier_segments"))
         if not getattr(self.model, "is_recurrent", False):
             return
         if done is None or env not in self._states:
@@ -29,7 +34,14 @@ class ModelAgent:
 
     @torch.no_grad()
     def __call__(self, env, obs: np.ndarray, players: np.ndarray) -> np.ndarray:
-        o = torch.from_numpy(obs[:, players].reshape(-1, obs.shape[-1]))
+        selected = obs[:, players].copy()
+        if getattr(self.model, "public_signals_version", 0):
+            if env.enable_public_signals():
+                env.public_barrier_visible = bool(self.public_config.get("barrier_discs") or self.public_config.get("barrier_segments"))
+            selected[..., 56:71] = env.public_features()[:, players]
+        elif getattr(env, "_public_signals", None) is not None:
+            selected[..., 56:71] = 0  # old full/masked references keep their input contract
+        o = torch.from_numpy(selected.reshape(-1, obs.shape[-1]))
         if getattr(self.model, "is_recurrent", False):
             if env not in self._states:
                 self.reset(env)

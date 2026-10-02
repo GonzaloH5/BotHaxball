@@ -187,7 +187,8 @@ def _render_phase(directory, phase, ledger):
 def _evaluate(directory, branch, *, full, games, full_games, minutes, seeds, label):
     from eval.rs4_v3 import evaluation_source_fingerprint
     candidate, _, _, _ = _checkpoint(directory, branch)
-    reports = directory / "evaluations"
+    manifest = json.loads((directory / "specialization.json").read_text(encoding="utf-8"))
+    reports = directory / manifest.get("evaluation_directory", "evaluations")
     reports.mkdir(exist_ok=True)
     output = reports / f"{branch}_{label}.json"
     identity = dict(checkpoint_sha256=file_hash(candidate), reference_sha256=file_hash(directory / "parent.pt"),

@@ -64,7 +64,17 @@ def make_fixture_universal(model, tasks=FIXTURE_TASKS, per_task: int = 6):
         t = catalog[name]
         geoms.setdefault(t.stadium, geometry(t.stadium))
         env = make_env(t, 1, t.n_entities, seed=7, random_reset_prob=0.5, corner_curriculum=False)
+        public_version = getattr(model, "public_signals_version", 0)
+        if public_version:
+            env.enable_public_signals()
+            env.public_barrier_visible = True  # fixtures exercise both public inputs
         obs = env.reset()
+        if public_version:
+            # Export-only examples include a real protected restart, not just
+            # open-play zeros that could hide a missing public input branch.
+            env._reset_corner_curriculum(np.array([0]))
+            env.sample_public_signals(0)
+            obs = env.observe()
         memory = model.initial_state(env.P) if recurrent else None
         stride = 1 if recurrent else 9
         for i in range(per_task * stride):
@@ -98,7 +108,9 @@ def make_fixture_universal(model, tasks=FIXTURE_TASKS, per_task: int = 6):
                 **extra,
                 "task": name, "stadium": t.stadium,
                 "opts": {"maxEntities": t.n_entities, "psOn": t.powershot,
-                         "outOfBounds": t.out_of_bounds or t.rules is not None},
+                         "outOfBounds": t.out_of_bounds or t.rules is not None,
+                         "publicSignalsVersion": public_version},
+                **({"publicSignals": env.public_state()} if public_version else {}),
                 "ball": {"pos": s.pos[0, 0].tolist(), "vel": s.vel[0, 0].tolist()},
                 "players": [{"team": int(s.player_team[p]), "pos": s.pos[0, fp + p].tolist(),
                              "vel": s.vel[0, fp + p].tolist(), "canKick": bool(not s.kick_cancel[0, p]),
@@ -140,6 +152,13 @@ def export_universal(args, ck, model, out: Path):
             # powershot del script (sim/physics.py): para estimar sus features en salas reales
             "ps_cfg": {"charge": 96, "power_inv": 2.3, "grav": 0.1},
             "checkpoint": str(args.ckpt), "steps": ck.get("steps")}
+    if getattr(model, "public_signals_version", 0):
+        from env.public_signals import FEATURES, RED_COLORS, BLUE_COLORS
+        meta["public_signals"] = dict(version=1, offset=56, features=list(FEATURES),
+                                      red_colors=list(RED_COLORS), blue_colors=list(BLUE_COLORS),
+                                      barrier_discs=[], barrier_segments=[], contact_source="sampled_geometry",
+                                      unknown_owner=-1)
+        meta["public_signals"].update(envcfg.get("public_signal_config", {}))
     if ck.get("rs4_migration") or ck.get("rs4_program_state") or ck.get("program_state"):
         meta["training_program"] = "rs4_v3"
         meta["frozen_normalizers"] = bool(ck.get("frozen_normalizers", True))
@@ -150,7 +169,7 @@ def export_universal(args, ck, model, out: Path):
             "scope": "one_state_per_player_and_policy",
         }
     out.with_suffix(".json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
-    fixture_tasks = ["rs4_4v4"] if meta.get("training_program") == "rs4_v3" else FIXTURE_TASKS
+    fixture_tasks = ["rs4_4v4"] if meta.get("training_program") == "rs4_v3" or getattr(model, "public_signals_version", 0) else FIXTURE_TASKS
     fx = make_fixture_universal(model, tasks=fixture_tasks)
     (out.parent / "fixture.json").write_text(json.dumps(fx), encoding="utf-8")
     import onnxruntime as ort

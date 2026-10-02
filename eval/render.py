@@ -54,12 +54,14 @@ def record(agent_red, agent_blue, minutes=2.0, n_per_team=1, stadium="classic", 
     env = HaxballEnv(1, n_per_team, stadium, 1, max_ticks=7200, random_reset_prob=0.0,
                      reward=RewardConfig(shaping_coef=0.0), seed=seed, **kwargs)
     env.reset()
+    env.public_sample_period = frame_skip
     env._reset_envs(np.array([0]), kickoff_team=np.array([0]))
     env._phi = env._potentials()
     obs = env.observe()
     reset_agents((agent_red, agent_blue), env)
     red, blue = np.arange(env.T), np.arange(env.T, env.P)
     frames = []
+    public_cues = []
     a = np.zeros((1, env.P), dtype=np.int64)
     s = env.sim
     stalls = 0
@@ -85,6 +87,7 @@ def record(agent_red, agent_blue, minutes=2.0, n_per_team=1, stadium="classic", 
             # treating intervening neutral rendering ticks as policy actions.
             decision_active = False
         comba = int(s.ps_comba[0]) if s.ps_on else 0
+        public_cues.append([int(colors[0]) for colors in env.public_colors()] if hasattr(env, "public_colors") else [0xFFFFFF, 0xFFFFFF])
         frames.append([round(float(v), 1) for v in s.pos[0, [0, *range(s.first_player, s.K)]].ravel()]
                       + [int(k) for k in (a[0] >= 9)] + [comba, int(env.score[0, 0]), int(env.score[0, 1])])
     st = s.st
@@ -94,7 +97,7 @@ def record(agent_red, agent_blue, minutes=2.0, n_per_team=1, stadium="classic", 
             "W": W, "H": st.height, "fw": st.field_half_w, "fh": st.field_half_h,
             "ko": st.kickoff_radius, "S": min(1.6, 1100 / (2 * W + 20)),
             "red": getattr(agent_red, "name", "rojo"), "blue": getattr(agent_blue, "name", "azul"),
-            "kickoff_stalls": stalls}
+            "kickoff_stalls": stalls, "public_cues": public_cues}
     return meta, frames
 
 
@@ -131,7 +134,9 @@ function draw(){const f=F[i];x.fillStyle='#718c5a';x.fillRect(0,0,c.width,c.heig
  x.strokeStyle='#000';x.lineWidth=2*S;for(const l of M.lines){x.beginPath();x.moveTo(tx(l[0][0]),ty(l[0][1]));for(const p of l.slice(1))x.lineTo(tx(p[0]),ty(p[1]));x.stroke();}
  M.posts.forEach((p,k)=>disc(p[0],p[1],M.post_r[k],p[0]<0?'#ffcccc':'#ccccff','#000',2));
  for(let p=0;p<M.P;p++){const k=f[2*M.P+2+p];disc(f[2+2*p],f[3+2*p],M.r_player,p<M.T?'#e56e56':'#5689e5',k?'#fff':'#000',2);}
- disc(f[0],f[1],M.r_ball,f[3*M.P+2]?'#ff3030':'#fff','#000',2);
+ const bc=M.public_cues?.[i]?.[0];
+ const ballColor=bc!=null&&bc!==0xFFFFFF?'#'+bc.toString(16).padStart(6,'0'):(f[3*M.P+2]?'#ff3030':'#fff');
+ disc(f[0],f[1],M.r_ball,ballColor,'#000',2);
  document.getElementById('rs').textContent=f[f.length-2];document.getElementById('bs').textContent=f[f.length-1];
  const s=Math.floor(i/60);document.getElementById('time').textContent=Math.floor(s/60)+':'+String(s%60).padStart(2,'0');seek.value=i;}
 function loop(t){const dt=t-last;last=t;if(playing){acc+=dt*60/1000*+document.getElementById('spd').value;while(acc>=1&&i<F.length-1){i++;acc--;}}draw();requestAnimationFrame(loop);}

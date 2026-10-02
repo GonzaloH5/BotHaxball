@@ -191,7 +191,7 @@ class SetActorCritic(nn.Module):
 
     def __init__(self, self_dim: int, ent_dim: int = 8, n_actions: int = 18, hidden: int = 256,
                  layers: int = 2, ent_hidden: int = 64, pooling: str = "meanmax", ent_layers: int = 2,
-                 rule_observation: str = "full"):
+                 rule_observation: str = "full", public_signals_version: int = 0):
         super().__init__()
         self.self_dim, self.ent_dim, self.n_actions = self_dim, ent_dim, n_actions
         if pooling not in ("meanmax", "attention", "attentive_meanmax"):
@@ -203,6 +203,9 @@ class SetActorCritic(nn.Module):
         # full preserva checkpoints y callers antiguos (incluido BC). Los nuevos runs
         # de RL usan masked: el cliente no puede observar el estado privado del script.
         self.rule_observation = rule_observation
+        if public_signals_version not in (0, 1) or (public_signals_version and rule_observation != "masked"):
+            raise ValueError("Public RS4 signals require version 1 and masked private rules")
+        self.public_signals_version = public_signals_version
         if rule_observation == "masked":
             from env.haxball_env import U_SELF_DIM
             if self_dim != U_SELF_DIM:
@@ -227,6 +230,11 @@ class SetActorCritic(nn.Module):
             self.attn_gate = nn.Parameter(torch.zeros(()))
         self.pi_body = _mlp(joint, hidden, layers)
         self.v_body = _mlp(joint, hidden, layers)
+        if public_signals_version:
+            # Raw bounded public channels bypass the frozen legacy normalizer.
+            # Zero residual preserves the entire policy/value at migration time.
+            self.public_proj = nn.Linear(15, joint, bias=False)
+            nn.init.zeros_(self.public_proj.weight)
         self.pi = nn.Linear(hidden, n_actions)
         self.v = nn.Linear(hidden, 1)
         nn.init.orthogonal_(self.pi.weight, 0.01)
@@ -236,7 +244,8 @@ class SetActorCritic(nn.Module):
     def config(self) -> dict:
         return dict(type="set", self_dim=self.self_dim, ent_dim=self.ent_dim, n_actions=self.n_actions,
                     hidden=self.hidden, layers=self.layers, ent_hidden=self.ent_hidden, pooling=self.pooling,
-                    ent_layers=self.ent_layers, rule_observation=self.rule_observation)
+                    ent_layers=self.ent_layers, rule_observation=self.rule_observation,
+                    **({"public_signals_version": self.public_signals_version} if self.public_signals_version else {}))
 
     def _split(self, obs):
         s = obs[:, : self.self_dim]
@@ -294,7 +303,12 @@ class SetActorCritic(nn.Module):
             key_pad[:, 0] = key_pad[:, 0] & present.any(1)
             a, _ = self.attn(q, h, h, key_padding_mask=key_pad)
             feats.append(a.squeeze(1) * present.any(1, keepdim=True))
-        return torch.cat(feats, dim=-1)
+        result = torch.cat(feats, dim=-1)
+        if self.public_signals_version:
+            # Only callers adhering to the public-v1 contract may populate this
+            # block. The private-rule branch remains masked for every model.
+            result = result + self.public_proj(obs[:, 56:71])
+        return result
 
     def initialize_from(self, checkpoint):
         """Migra un SetActorCritic preservando exactamente su política inicial."""

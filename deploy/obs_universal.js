@@ -13,6 +13,7 @@
 // opts = {maxEntities, psOn, outOfBounds}
 
 const POS_SCALE = 400, VEL_SCALE = 5;
+const { publicFeatures } = require("./public_signals");
 const N_RAYS = 8, RAY_MAX = 400;
 const RAY_DIRS = Array.from({ length: N_RAYS }, (_, k) => [Math.cos(2 * Math.PI * k / N_RAYS), Math.sin(2 * Math.PI * k / N_RAYS)]);
 const RAY_MIRROR = Array.from({ length: N_RAYS }, (_, k) => (((N_RAYS / 2 - k) % N_RAYS) + N_RAYS) % N_RAYS);
@@ -96,7 +97,8 @@ function buildObsUniversal(state, p, geom, opts) {
   push((T - 1) / 10, T / 10);
   // estado del script Pegeche: pelota parada (tipo, de quién, bloqueo, tiempo), slide propio (fase,
   // cooldown), X mantenida, falta para pedir, amarilla. TODO bot.js: estimarlo en la sala real.
-  if (state.rules) push(...state.rules[p]); else for (let j = 0; j < N_RULE_FEATS; j++) o.push(0);
+  if (opts.publicSignalsVersion === 1) push(...publicFeatures(state, p, geom, opts.publicSignalConfig || {}));
+  else if (state.rules) push(...state.rules[p]); else for (let j = 0; j < N_RULE_FEATS; j++) o.push(0);
 
   // entidades: compañeros primero, luego rivales, rellenadas hasta maxEntities
   const others = state.players.map((q, i) => i).filter((i) => i !== p && !state.players[i].expelled);
