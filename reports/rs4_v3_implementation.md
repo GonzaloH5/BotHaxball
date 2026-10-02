@@ -54,8 +54,8 @@ python -m tools.prepare_rs4_v3 --source runs/rs4_adapt/latest.pt --run rs4_v3 --
 python -m tools.prepare_rs4_v3 --source runs/rs4_adapt/latest.pt --run rs4_v3
 python -m tools.run_rs4_v3 --run rs4_v3 --dry-run
 
-nohup python -u -m tools.run_rs4_v3 --run rs4_v3 --resume \
-  > runs/rs4_v3/overnight.log 2>&1 &
+nohup .venv/bin/python -u -m tools.run_rs4_v3 --run rs4_v3 --resume \
+  >> runs/rs4_v3/overnight.log 2>&1 &
 echo $! > runs/rs4_v3/runner.pid
 tail -n 80 -f runs/rs4_v3/overnight.log
 ```
@@ -155,7 +155,7 @@ deportiva. Si falla, el ledger conserva campeón, evidencia y habilidades pendie
 
 ## Verificación local
 
-Suite completa: **679 aprobadas, 43 omitidas**, sin errores. También aprobaron
+Suite completa (revisión 2026-10-02): **682 aprobadas, 43 omitidas**, sin errores. También aprobaron
 las pruebas JavaScript de memoria por sesión y de reinicio del cliente.
 Tras el último ajuste de replays: 31 pruebas del programa y la nueva regresión
 de acciones ejecutadas aprobaron por separado.
@@ -164,3 +164,38 @@ Los checkpoints anteriores y los modelos desplegados permanecen intactos.
 Las pruebas CUDA se omiten en equipos sin CUDA. La aceptación técnica de
 throughput y la deportiva quedan pendientes de ejecutar el programa en el Pod.
 No se inició entrenamiento remoto, no se publicó ni se hizo commit/push.
+
+## Revisión del log del Pod — 2026-10-02
+
+La ejecución aportada confirma reanudación de `control` (feedforward), fase B,
+guía 0.06, tres épocas y conservación de los pasos tras SIGTERM. No faltaba una
+implementación principal por completar cuando se interrumpió la respuesta.
+
+En 11 iteraciones distintas del extracto: media 43,135 pasos útiles/s, rollout
+1.40s, preparación 0.04s y update 0.55s. La mayor diferencia frente al perfil
+anterior está en rollout, no en update. La mezcla de controladores, escenarios,
+shaping y proporción de filas que aprenden impide atribuir toda la diferencia a
+un único componente sin perfil. El gate de 70% compara GRU con feedforward bajo
+el mismo perfil v3; no certifica conservar 70% del antiguo entrenamiento RS4.
+
+El último `324-65-11` equivale a 81% de victorias y 89.1% de puntos sobre 400
+partidos de la ventana, no 89% de victorias. El extracto baja de ~93% a ~89% de
+puntos; no demuestra por sí solo una mejora ni una regresión contra rivales y
+compañeros constantes. La deuda `defense` sigue pendiente. Las tasas de córners
+deben salir de cohortes resueltas, no dividir los contadores de ventanas.
+
+Correcciones de diagnóstico, sin cambiar entrenamiento:
+
+- Separar en log/TensorBoard pasos hasta la pausa de presupuesto propio restante.
+- Mostrar filas útiles/simuladas y cantidad de políticas neuronales.
+- Perfilar también las funciones efectivamente usadas por v3: bots, transferencia,
+  inferencia agrupada host y seguimiento de saques. Los tiempos son inclusivos,
+  con solapamiento CPU/GPU; no se suman ni equivalen a duración GPU sincronizada.
+- Reanudar con el intérprete explícito de la venv y añadir al log (`>>`), evitando
+  `python: No such file` y perder los logs de los pilotos/evaluaciones.
+
+Para revisar la selección y calidad sin nuevos pasos de entrenamiento, consultar
+`runs/rs4_v3/ledger.json`, `benchmarks/control_summary.json`,
+`benchmarks/memory_summary.json` y los informes en `evaluations/`.
+Los cambios de esta revisión no requieren repetir el preparador ni reiniciar
+pesos, fases, anclas o el programa. No se modificaron los checkpoints del usuario.

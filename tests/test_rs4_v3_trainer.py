@@ -83,10 +83,21 @@ def test_mixed_training_and_resume_keep_program_norms_and_budget(prepared, memor
     (destination / "config.yaml").write_text(yaml.safe_dump(cfg), encoding="utf-8")
     trainer = RS4V3Trainer(cfg, "v3", True)
     before = {key: value.clone() for key, value in trainer.model.state_dict().items() if "norm" in key}
+    recorded = {}
+    original_log = trainer.log
+    def capture(stats, *args):
+        recorded.update(stats)
+        original_log(stats, *args)
+    trainer.log = capture
     trainer.iterate()
     assert trainer.program.relative_steps == 13
     assert trainer.steps == ck["steps"] + 13
     assert trainer.remaining_steps == 0
+    assert recorded["program/segment_remaining"] == 0
+    assert recorded["program/budget_remaining"] == trainer.program.remaining_steps > 0
+    assert recorded["rollout/learner_samples"] == 13
+    assert recorded["rollout/simulated_samples"] == cfg["ppo"]["rollout_len"] * trainer.total_rows
+    assert recorded["rollout/learner_fraction"] == 13 / recorded["rollout/simulated_samples"]
     for key, value in before.items():
         torch.testing.assert_close(trainer.model.state_dict()[key], value, atol=0, rtol=0)
     assert len(trainer.inference.controllers) <= 4

@@ -64,6 +64,16 @@ class RolloutProfile:
         self.wrap(multitask, "scripted_actions", "bots CPU (dentro de decisiones)")
         self.wrap(trainer, "values_many", "bootstrap de valores")
         self.wrap(multitask, "batch_to_device", "lote PPO: empaquetado/transferencia (dentro de preparación)")
+        if hasattr(trainer, "program"):
+            # The v3 trainer imports these helpers into its own module; wrapping
+            # multitask alone misses the actual calls made by this path.
+            from train import rs4_trainer
+            self.wrap(rs4_trainer, "scripted_actions", "bots CPU (dentro de decisiones)")
+            self.wrap(rs4_trainer, "batch_to_device", "lote PPO: empaquetado/transferencia (dentro de preparación)")
+            self.wrap(trainer.inference, "infer", "inferencia agrupada host (dentro de decisiones/bootstrap)")
+            for slot in trainer.slots:
+                self.wrap(slot.env.cohorts, "begin", "cohortes: apertura (dentro de entorno)")
+                self.wrap(slot.env.cohorts, "update", "cohortes: resolución (dentro de entorno)")
         self.wrap(trainer.model, "update_norm", "normalización (dentro de preparación)")
         for method, label in (("assign_modes", "reparto de rivales (setup)"),
                               ("_prepare_policy_groups", "índices de rivales (setup)"),
@@ -267,6 +277,9 @@ def main():
                   f"({100 * cpu_cores / budget:.1f}% del cupo; no el porcentaje del panel del host)")
             print(f"muestras útiles: {samples:,} total | {samples / args.iters:,.1f}/iter "
                   f"| mínimo {min(row[0] for row in measured):,} | máximo {max(row[0] for row in measured):,}")
+            if hasattr(trainer, "program"):
+                simulated = args.iters * cfg["ppo"]["rollout_len"] * trainer.total_rows
+                print(f"filas simuladas: {simulated:,} | fracción aprendiz {samples / simulated:.1%}")
             for index, name in ((1, "rollout"), (2, "preparación/GAE"), (3, "update")):
                 print(f"{name}: {sum(row[index] for row in measured) / args.iters:.3f} s/iter")
             extras = {key: sum(row[key] for row in iteration_timings[args.warmup:]) / args.iters
@@ -306,6 +319,8 @@ def main():
             summary["cuda_peak_reserved_gib"] = (torch.cuda.max_memory_reserved(trainer.device) / 2**30
                                                  if trainer.device.type == "cuda" else 0.0)
             if hasattr(trainer, "program"):
+                summary["simulated_samples"] = simulated
+                summary["learner_fraction"] = samples / simulated
                 settings = trainer.program.settings()
                 summary["rs4_profile"] = {key: settings[key] for key in
                     ("phase_id", "exercise_fraction", "frozen_teammates_fraction", "opponent_mix")}

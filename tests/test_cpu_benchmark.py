@@ -62,3 +62,33 @@ def test_summary_excludes_warmup_and_preserves_source(tmp_path, monkeypatch):
     assert not list((tmp_path / "runs").iterdir())
     assert cfg["runtime"]["optimize_cpu"] is True  # CLI no muta el objeto original
     assert cfg["runtime"]["optimize_rs4"] is True
+
+
+def test_v3_profile_measures_own_helpers_and_restores_them(monkeypatch):
+    from train import rs4_trainer
+
+    scripted = lambda *a, **kw: "actions"
+    transfer = lambda *a, **kw: "batch"
+    monkeypatch.setattr(rs4_trainer, "scripted_actions", scripted)
+    monkeypatch.setattr(rs4_trainer, "batch_to_device", transfer)
+    cohorts = SimpleNamespace(begin=lambda: None, update=lambda *a: None)
+    inference = SimpleNamespace(infer=lambda *a: "prediction")
+    env = SimpleNamespace(cohorts=cohorts, sim=SimpleNamespace())
+    trainer = SimpleNamespace(program=object(), device=torch.device("cpu"), model=SimpleNamespace(),
+                              inference=inference, slots=[SimpleNamespace(env=env, task=SimpleNamespace(name="rs4_4v4"))])
+    profile = benchmark.RolloutProfile(trainer)
+    try:
+        assert rs4_trainer.scripted_actions() == "actions"
+        assert rs4_trainer.batch_to_device() == "batch"
+        assert inference.infer() == "prediction"
+        cohorts.begin()
+        cohorts.update()
+        for label in ("bots CPU (dentro de decisiones)",
+                      "lote PPO: empaquetado/transferencia (dentro de preparación)",
+                      "inferencia agrupada host (dentro de decisiones/bootstrap)",
+                      "cohortes: apertura (dentro de entorno)", "cohortes: resolución (dentro de entorno)"):
+            assert profile.calls[label] == 1
+    finally:
+        profile.close()
+    assert rs4_trainer.scripted_actions is scripted
+    assert rs4_trainer.batch_to_device is transfer

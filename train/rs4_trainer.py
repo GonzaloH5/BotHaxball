@@ -479,7 +479,11 @@ class RS4V3Trainer(MultiTrainer):
                       "cuda_graph/captures": graph_metrics["captures"], "cuda_graph/replays": graph_metrics["replays"],
                       "cuda_graph/input_rows": graph_metrics["input_rows"], "cuda_graph/padding_rows": graph_metrics["padding_rows"],
                       "program/relative_steps": self.program.relative_steps, "program/phase": self.program.phase_index,
-                      "program/budget_remaining": self.remaining_steps, "program/next_lr": self.program.lr,
+                      "program/budget_remaining": self.program.remaining_steps,
+                      "program/segment_remaining": self.remaining_steps, "program/next_lr": self.program.lr,
+                      "rollout/simulated_samples": length * self.total_rows,
+                      "rollout/learner_samples": samples,
+                      "rollout/learner_fraction": samples / (length * self.total_rows),
                       "rs4/formation_version": 3, "rs4/restart_potential_bound": settings["restart_potential_coef"],
                       "rs4/tactical_potential_bound": settings["guide_coef"],
                       "rs4/pass_possession_cap": self.slots[0].env.rcfg.team_pass_possession_cap,
@@ -493,13 +497,18 @@ class RS4V3Trainer(MultiTrainer):
         self.log(stats, settings["lr"], samples, rollout_seconds, update_seconds)
         if self.iteration % self.cfg["log"]["every"] == 0:
             print(f"      RS4 v3 fase {settings['phase_id']} | útiles {self.program.relative_steps / 1e6:.1f}M "
-                  f"| pendientes {self.remaining_steps / 1e6:.1f}M | KL final {stats['endpoint_kl']:.5f} "
+                  f"| hasta pausa {self.remaining_steps / 1e6:.1f}M "
+                  f"| presupuesto propio restante {self.program.remaining_steps / 1e6:.1f}M "
+                  f"| KL final {stats['endpoint_kl']:.5f} "
                   f"| épocas {stats['epochs_completed']} | repaso {settings['skill_debts']} "
                   f"| bonus saque {settings['restart_execute_bonus']:.4f}", flush=True)
             print("      potenciales estructura/amenaza/peligro "
                   + "/".join(f"{component_stats['rs4/component_' + name]:.3f}" for name in ("structure", "threat", "danger"))
                   + f" | límites guía {settings['guide_coef']:.3f}, saque {settings['restart_potential_coef']:.3f}, "
                     f"pase/posesión {self.slots[0].env.rcfg.team_pass_possession_cap:.4f}", flush=True)
+            print(f"      carga rollout | filas aprendices {samples:,}/{length * self.total_rows:,} "
+                  f"({100 * stats['rollout/learner_fraction']:.1f}%) | políticas neuronales {len(self._routes)} "
+                  f"| setup {setup_seconds:.3f}s mantenimiento {maintenance_seconds:.3f}s", flush=True)
         self._last_iteration_timings = dict(setup=setup_seconds, maintenance=maintenance_seconds,
                                             logging=time.perf_counter() - logging_started, schedule=0.)
 
