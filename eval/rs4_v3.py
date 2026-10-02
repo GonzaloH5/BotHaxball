@@ -32,7 +32,7 @@ def evaluation_source_fingerprint():
     root = Path(__file__).resolve().parents[1]
     files = ("env/haxball_env.py", "env/rs4_v3.py", "env/rs4_tactics.py", "env/rewards.py",
              "bots/scripted.py", "eval/rs4_v3.py", "eval/agents.py", "sim/physics.py",
-             "sim/stadium.py", "stadiums/rs_one.hbs", "env/public_signals.py", "train/model.py")
+             "sim/stadium.py", "stadiums/rs_one.hbs", "env/public_signals.py", "env/public_joints.py", "train/model.py")
     hashes = {path: _file_fingerprint(root / path) for path in files}
     combined = hashlib.sha256("\n".join(f"{path}:{hashes[path]}" for path in files).encode()).hexdigest()
     return {"sha256": combined, "files": hashes}

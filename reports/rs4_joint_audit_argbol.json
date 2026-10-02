@@ -1,0 +1,170 @@
+{
+  "source": "replays_real/stadiums/rsx4/argbol1t__70f72c3802b7.hbr2",
+  "sha256": "5a2a593403ae60488800c7d79a907b0e60f6cd83fefdeffcd720499c2f547969",
+  "private_state_used": false,
+  "ticks": 44761,
+  "maps": [
+    {
+      "name": "Real Soccer ONE",
+      "candidates": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "field_half_w": 1150,
+      "field_half_h": 600
+    }
+  ],
+  "stationary_colored_ticks": 7083,
+  "barrier_ticks": 2879,
+  "agreeing_ticks": 2879,
+  "conflicting_ticks": 0,
+  "missing_barrier_ticks": 4204,
+  "examples": [
+    {
+      "frame": 3859,
+      "ball_color": 1031417,
+      "ball_position": [
+        -1063.199951171875,
+        -688
+      ],
+      "barrier_color": -1
+    },
+    {
+      "frame": 3861,
+      "ball_color": 1031417,
+      "ball_position": [
+        -1063.199951171875,
+        -688
+      ],
+      "barrier_color": 255
+    },
+    {
+      "frame": 4809,
+      "ball_color": 16727860,
+      "ball_position": [
+        -909.9000244140625,
+        688
+      ],
+      "barrier_color": -1
+    },
+    {
+      "frame": 4810,
+      "ball_color": 16727860,
+      "ball_position": [
+        -909.9000244140625,
+        688
+      ],
+      "barrier_color": 16711680
+    },
+    {
+      "frame": 6938,
+      "ball_color": 1031417,
+      "ball_position": [
+        -706.2000122070312,
+        -688
+      ],
+      "barrier_color": -1
+    },
+    {
+      "frame": 6941,
+      "ball_color": 1031417,
+      "ball_position": [
+        -706.2000122070312,
+        -688
+      ],
+      "barrier_color": 255
+    },
+    {
+      "frame": 11944,
+      "ball_color": 16727860,
+      "ball_position": [
+        459,
+        -688
+      ],
+      "barrier_color": -1
+    },
+    {
+      "frame": 11945,
+      "ball_color": 16727860,
+      "ball_position": [
+        459,
+        -688
+      ],
+      "barrier_color": 16711680
+    },
+    {
+      "frame": 12249,
+      "ball_color": 1031417,
+      "ball_position": [
+        882.2999877929688,
+        -688
+      ],
+      "barrier_color": -1
+    },
+    {
+      "frame": 12251,
+      "ball_color": 1031417,
+      "ball_position": [
+        882.2999877929688,
+        -688
+      ],
+      "barrier_color": 255
+    },
+    {
+      "frame": 13242,
+      "ball_color": 16727860,
+      "ball_position": [
+        -738,
+        -688
+      ],
+      "barrier_color": -1
+    },
+    {
+      "frame": 13243,
+      "ball_color": 16727860,
+      "ball_position": [
+        -738,
+        -688
+      ],
+      "barrier_color": 16711680
+    },
+    {
+      "frame": 14862,
+      "ball_color": 16727860,
+      "ball_position": [
+        470.20001220703125,
+        -688
+      ],
+      "barrier_color": -1
+    },
+    {
+      "frame": 14863,
+      "ball_color": 16727860,
+      "ball_position": [
+        470.20001220703125,
+        -688
+      ],
+      "barrier_color": 16711680
+    },
+    {
+      "frame": 15129,
+      "ball_color": 1031417,
+      "ball_position": [
+        1030,
+        -180
+      ],
+      "barrier_color": -1
+    },
+    {
+      "frame": 15443,
+      "ball_color": 1031417,
+      "ball_position": [
+        267.8999938964844,
+        -688
+      ],
+      "barrier_color": -1
+    }
+  ]
+}

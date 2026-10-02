@@ -20,8 +20,7 @@ class ModelAgent:
 
     def reset(self, env, done=None):
         if getattr(self.model, "public_signals_version", 0):
-            env.enable_public_signals()
-            env.public_barrier_visible = bool(self.public_config.get("barrier_discs") or self.public_config.get("barrier_segments"))
+            env.configure_public_signals(self.public_config)
         if not getattr(self.model, "is_recurrent", False):
             return
         if done is None or env not in self._states:
@@ -37,7 +36,7 @@ class ModelAgent:
         selected = obs[:, players].copy()
         if getattr(self.model, "public_signals_version", 0):
             if env.enable_public_signals():
-                env.public_barrier_visible = bool(self.public_config.get("barrier_discs") or self.public_config.get("barrier_segments"))
+                env.configure_public_signals(self.public_config)
             selected[..., 56:71] = env.public_features()[:, players]
         elif getattr(env, "_public_signals", None) is not None:
             selected[..., 56:71] = 0  # old full/masked references keep their input contract

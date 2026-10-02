@@ -97,6 +97,8 @@ class RS4V3Trainer(MultiTrainer):
         for slot in self.slots:
             self.assign_modes(slot)
         self._refresh_routes()
+        if cfg.get("public_signals", {}).get("auto_joints"):
+            print("RS4 señales públicas v1 | pelota RS ONE | barreras laterales por joints (sin estados privados)")
 
     def load(self, path):
         ck = torch.load(path, map_location="cpu", weights_only=False)
@@ -129,9 +131,8 @@ class RS4V3Trainer(MultiTrainer):
             if s.P != 8 or s.T != 4 or s.task.name != "rs4_4v4":
                 raise ValueError("RS4 v3 conserva exclusivamente RS4 4v4")
             if self.cfg.get("model", {}).get("public_signals_version"):
-                s.env.enable_public_signals()
                 cues = self.cfg.get("public_signals", {})
-                s.env.public_barrier_visible = bool(cues.get("barrier_discs") or cues.get("barrier_segments"))
+                s.env.configure_public_signals(cues)
             s.env = RS4ScenarioEnv(s.env)
             s.env.configure(self.program.settings())
             s.controller = np.full((s.N, s.P), "learner", dtype=object)

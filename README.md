@@ -11,8 +11,10 @@ La ruta recurrente sólo se selecciona si supera las pruebas de calidad y conser
 al menos70% del throughput medido en el Pod.
 Ver [infraestructura, límites y comandos](reports/rs4_v3_implementation.md).
 
-La adaptación opt-in a señales públicas de RS4 incorpora color de pelota, barrera
-configurada e historial geométrico de contacto, sin estados privados del árbitro.
+La adaptación opt-in a señales públicas de RS4 incorpora color de pelota, barreras
+laterales descubiertas en los joints del mapa e historial geométrico de contacto,
+sin estados privados del árbitro. La activación de una línea depende de sus
+extremos visibles; tener joints rojos/azules en el mapa no basta.
 Conserva checkpoint, Adam, fase y presupuesto; no empieza otra especialización.
 Ver [migración y comandos](reports/rs4_public_signals.md).
 

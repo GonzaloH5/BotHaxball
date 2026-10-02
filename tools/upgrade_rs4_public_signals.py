@@ -102,6 +102,7 @@ def prepare(source_run="rs4_v3", run="rs4_v3_public", *, dry_run=False, barrier_
             raise ValueError("Source checkpoint changed during copying; copied run must not be used")
         for name in ("control", "memory"):
             config = load_config(destination / name / "config.yaml")
+            config["run_name"] = f"{run}/{name}"
             reference = config.get("bc_reference")
             if reference:
                 old = str(source).replace("\\", "/")

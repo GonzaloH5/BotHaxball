@@ -9,8 +9,8 @@ from numba import njit
 
 VERSION = 1
 START, WIDTH = 56, 15
-RED_COLORS = (0xFF0000, 0xE56E56)
-BLUE_COLORS = (0x0000FF, 0x5689E5)
+RED_COLORS = (0xFF0000, 0xE56E56, 0xEC7458, 0xFF3F34)
+BLUE_COLORS = (0x0000FF, 0x5689E5, 0x48BEF9, 0x0FBCF9)
 FEATURES = ("restart_visible", "restart_own", "restart_rival", "cue_conflict",
             "ball_cue", "barrier_cue", "lateral_geometry", "corner_geometry",
             "goal_kick_geometry", "contact_own", "contact_rival", "contact_confidence",
@@ -27,9 +27,9 @@ def color_team(colors):
 def _color(color):
     if color == -2:
         return -2
-    if color == 0xFF0000 or color == 0xE56E56:
+    if color == 0xFF0000 or color == 0xE56E56 or color == 0xEC7458 or color == 0xFF3F34:
         return 0
-    if color == 0x0000FF or color == 0x5689E5:
+    if color == 0x0000FF or color == 0x5689E5 or color == 0x48BEF9 or color == 0x0FBCF9:
         return 1
     return -1
 

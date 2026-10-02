@@ -208,7 +208,10 @@ def _evaluate(directory, branch, *, full, games, full_games, minutes, seeds, lab
         if file_hash(teacher_path) != teacher["sha256"]:
             raise ValueError("La referencia BC congelada cambió; no continuar con otros compañeros")
         identity["teacher_sha256"] = teacher["sha256"]
-    reference_cache = reports / ("reference_full.json" if full else "reference_control.json")
+    # Source upgrades must not reuse a baseline measured with another scorer.
+    # Retain the old file; create a namespaced baseline rather than aborting.
+    source_tag = identity["evaluation_sources"]["sha256"][:12]
+    reference_cache = reports / f"reference_{'full' if full else 'control'}_{source_tag}.json"
     cache = output.with_suffix(".identity.json")
     if not output.exists() or not cache.exists() or json.loads(cache.read_text(encoding="utf-8")) != identity:
         command = [sys.executable, "-m", "tools.evaluate_rs4_v3", "--checkpoint", str(candidate),
@@ -337,8 +340,11 @@ def _train_chunk(directory, branch, target_relative_steps):
     if target_relative_steps > state.effective_branch_limit or target_relative_steps <= state.relative_steps:
         raise ValueError("El chunk debe avanzar sin ampliar el presupuesto de la rama")
     end = cfg["rs4_program"]["start_steps"] + target_relative_steps
+    # A copied program may still contain the source run_name. The directory
+    # chosen by this runner is authoritative, never an inherited YAML alias.
+    target_run = f"{directory.name}/{branch}"
     _invoke([sys.executable, "-u", "-m", "train.multitask", "--config", str(directory / branch / "config.yaml"),
-             "--run", cfg["run_name"], "--resume", "--override", f"ppo.total_steps={end}"])
+             "--run", target_run, "--resume", "--override", f"ppo.total_steps={end}"])
     _, _, _, after = _checkpoint(directory, branch)
     if after.relative_steps < target_relative_steps:
         print("El entrenador guardó antes de completar el segmento; se detiene el runner, no inicia otro chunk.", flush=True)

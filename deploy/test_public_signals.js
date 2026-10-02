@@ -60,5 +60,20 @@ assert.doesNotThrow(()=>assertObservationContract({layout:'universal',rule_obser
   assert.equal(samples[2].s.publicSignals.contactTeam,-1);
   assert.equal(publicFeatures(samples[2].s,0,geometry)[1],0,'unknown never infers ownership from kickoff/private state');
   pending.shift()({logits:{data:[1]}});await flush();
+  // The actual BotPlugin must pass raw runtime joints and configure topology on map change.
+  const map=JSON.parse(fs.readFileSync(path.join(__dirname,'../stadiums/rs_one.hbs'),'utf8'));
+  Object.assign(geometry,map.haxballrl,{goal_x:1150});
+  context.PUBLIC_CUES.auto_joints=true;
+  room.stadium=map;
+  room.gameState.physicsState.joints=map.joints;
+  room.gameState.physicsState.discs=map.discs.map(d=>({...d,pos:{x:d.pos?.[0]||0,y:d.pos?.[1]||0},speed:{x:0,y:0}}));
+  room.gameState.physicsState.discs[0]=ball;
+  for(const j of map.joints.slice(0,4))room.gameState.physicsState.discs[j.d1].pos={...room.gameState.physicsState.discs[j.d0].pos};
+  room.gameState.physicsState.discs[map.joints[1].d1].pos.x=1149;
+  Object.assign(ball,{color:0x0FBCF9,pos:{x:200,y:-688}});
+  for(let i=12;i<15;i++){room.currentFrameNo=i;bot.onGameTick();}
+  assert.equal(samples[3].s.publicSignals.barrierColor,0x0000FF);
+  assert.equal(publicFeatures(samples[3].s,0,geometry)[2],1);
+  pending.shift()({logits:{data:[1]}});await flush();
   console.log('OK: public RS4 cues, configured barriers, busy inference cadence and resets');
 })().catch(e=>{console.error(e);process.exitCode=1;});

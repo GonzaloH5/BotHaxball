@@ -1,6 +1,7 @@
 // Public RS4 signals. No private host/script state and no oracle last toucher.
-// Barrier IDs are explicit: scanning all red/blue stadium decoration is unsafe.
-const RED = [0xFF0000, 0xE56E56], BLUE = [0x0000FF, 0x5689E5];
+// Joint discovery only accepts the paired RS4 auxiliary-line topology.
+const {discoverJointBarriers,visibleJointColors}=require('./joint_barriers');
+const RED = [0xFF0000, 0xE56E56, 0xEC7458, 0xFF3F34], BLUE = [0x0000FF, 0x5689E5, 0x48BEF9, 0x0FBCF9];
 function rgb(value) {
   if (Array.isArray(value) && value.length === 3) return (value[0] << 16) | (value[1] << 8) | value[2];
   if (typeof value === "string") {
@@ -38,10 +39,16 @@ function publicFeatures(state, player, geom, config = {}) {
     Math.min(1, age / 600), Math.min(1, (packet.restartAge || 0) / 600), 1];
 }
 class PublicSignalTracker {
-  constructor(config = {}) { this.config = config; this.reset(); }
+  constructor(config = {}) { this.config = config; this.jointIds=[]; this.jointGeom=null; this.reset(); }
+  configureStadium(stadium, geom) {
+    this.jointGeom=geom;
+    this.jointIds=[...new Set([...(this.config.barrier_joints || []),
+      ...(this.config.auto_joints?discoverJointBarriers(stadium,geom):[])])];
+    return this.jointIds;
+  }
   reset() { this.contactTeam = -1; this.contactAge = 600; this.contactConfidence = 0;
     this.restartOwner = -1; this.restartAge = 0; this.previousBall = null; }
-  barrierColor(discs, segments = []) {
+  barrierColor(discs, segments = [], joints = [], ball = null) {
     const colors = [];
     for (const id of this.config.barrier_discs || []) {
       if (!Number.isInteger(id) || id <= 0) throw new Error("Barrier disc IDs must exclude the ball (0)");
@@ -52,6 +59,7 @@ class PublicSignalTracker {
       const line = segments[id];
       if (line && line.vis !== false && line.vis !== 0) colors.push(line.color);
     }
+    colors.push(...visibleJointColors(discs,joints,this.jointIds,ball,this.jointGeom));
     const teams = new Set(colors.map(c => colorTeam(c, this.config)).filter(t => t >= 0));
     return teams.size > 1 ? -2 : teams.size === 1 ? [...teams][0] === 0
       ? (this.config.red_colors || RED)[0] : (this.config.blue_colors || BLUE)[0] : -1;

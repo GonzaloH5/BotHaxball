@@ -284,6 +284,43 @@ def test_prepare_protects_source_and_ledger_and_never_overwrites(source):
         preparer.prepare(path)
 
 
+@pytest.mark.parametrize("branch", ["control", "memory"])
+def test_runner_uses_selected_directory_not_inherited_run_name(source, monkeypatch, branch):
+    from tools import run_rs4_v3 as runner
+    path, _, _ = source
+    source_bytes = path.read_bytes()
+    directory = preparer.prepare(path, run="rs4_v3_public")
+    config_path = directory / branch / "config.yaml"
+    config = load_config(config_path)
+    config["run_name"] = f"rs4_v3/{branch}"  # reproduce the already-migrated Pod YAML
+    config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
+    checkpoint_path = directory / branch / "latest.pt"
+    initial = torch.load(checkpoint_path, weights_only=False)
+    frozen_parent = (directory / "parent.pt").read_bytes()
+    other_path = directory / ("memory" if branch == "control" else "control") / "latest.pt"
+    other_bytes = other_path.read_bytes()
+    commands = []
+
+    def simulated_child(command):
+        commands.append(command)
+        assert command[command.index("--run") + 1] == f"rs4_v3_public/{branch}"
+        assert command[command.index("--config") + 1] == str(config_path)
+        assert command[-1] == f"ppo.total_steps={initial['steps'] + 13}"
+        checkpoint = torch.load(checkpoint_path, weights_only=False)
+        program = ProgramState.from_config(config, checkpoint["rs4_program_state"])
+        program.advance_steps(13)
+        checkpoint["rs4_program_state"] = program.state_dict()
+        checkpoint["steps"] += 13
+        torch.save(checkpoint, checkpoint_path)
+
+    monkeypatch.setattr(runner, "_invoke", simulated_child)
+    runner._train_chunk(directory, branch, 13)
+    assert len(commands) == 1
+    assert path.read_bytes() == source_bytes
+    assert (directory / "parent.pt").read_bytes() == frozen_parent
+    assert other_path.read_bytes() == other_bytes
+
+
 def test_preparer_refuses_missing_teacher_before_creating_destination(source):
     path, ck, cfg = source
     cfg["bc_reference"] = "runs/missing/bc.pt"

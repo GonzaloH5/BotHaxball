@@ -158,7 +158,8 @@ def test_python_js_sampled_history_and_features_parity():
             pp[0, 1] = bp[0]
         if i in (7, 8):
             pp[:] = 300
-        ball, barrier = (0xFF0000 if i % 2 else 0x0000FF), (-2 if i == 5 else -1)
+        palette = (0xFF0000, 0x0000FF) if i < 6 else (0xFF3F34, 0x0FBCF9)
+        ball, barrier = palette[0 if i % 2 else 1], (-2 if i == 5 else -1)
         tracker.sample(bp, bv, pp, teams, 15, 10, np.array([ball]), np.array([barrier]), 3)
         expected.append(tracker.features(bp, bv, teams, np.array([ball]), np.array([barrier]), 1000, 450)[0].tolist())
         frames.append(dict(ball=dict(pos=bp[0].tolist(), vel=bv[0].tolist(), color=ball),
@@ -220,6 +221,8 @@ def test_preparer_preserves_phase_lr_debts_ledger_and_originals(source, monkeypa
     assert new["steps"] == old["steps"]
     assert (destination / "public_source.pt").read_bytes() == before[Path("control/latest.pt")]
     cfg = load_config(destination / "control/config.yaml")
+    assert cfg["run_name"] == "rs4_v3_public/control"
+    assert load_config(destination / "memory/config.yaml")["run_name"] == "rs4_v3_public/memory"
     assert cfg["rs4_program"] == load_config(original / "control/config.yaml")["rs4_program"]
     assert cfg["model"]["public_signals_version"] == 1
     assert not load_config(destination / "memory/config.yaml")["model"].get("public_signals_version")
@@ -227,6 +230,13 @@ def test_preparer_preserves_phase_lr_debts_ledger_and_originals(source, monkeypa
     assert ledger["consumed_steps"] == 757014531
     assert ledger["total_budget_steps"] == 6000000000
     assert json.loads((destination / "specialization.json").read_text())["evaluation_directory"] == "evaluations_public_v1"
+    # Enable only sensor appearance on the same already-migrated checkpoint.
+    from tools import configure_rs4_public_joints as joints
+    monkeypatch.setattr(joints, "ROOT", path.parents[2])
+    migrated_bytes = (destination / "control/latest.pt").read_bytes()
+    joints.configure()
+    cfg = load_config(destination / "control/config.yaml")
+    assert (destination / "control/latest.pt").read_bytes() == migrated_bytes
     with pytest.raises(ValueError, match="destination exists"):
         upgrade.prepare()
     with pytest.raises(ValueError, match="exclude ball"):
@@ -246,6 +256,7 @@ def test_preparer_preserves_phase_lr_debts_ledger_and_originals(source, monkeypa
     try:
         assert trainer.program.state_dict() == new["rs4_program_state"]
         assert trainer.slots[0].env._public_signals is not None
+        assert trainer.slots[0].env.public_joint_barriers
         trainer.iterate()
         assert trainer.steps == new["steps"] + 13
         assert trainer.program.relative_steps == new["rs4_program_state"]["relative_steps"] + 13
@@ -253,6 +264,7 @@ def test_preparer_preserves_phase_lr_debts_ledger_and_originals(source, monkeypa
         saved = torch.load(destination / "control/latest.pt", weights_only=False)
         assert saved["model_config"]["public_signals_version"] == 1
         assert saved["public_signal_migration"] == new["public_signal_migration"]
+        assert saved["env"]["public_signal_config"]["auto_joints"]
     finally:
         trainer.writer.close()
     for rel, contents in before.items():

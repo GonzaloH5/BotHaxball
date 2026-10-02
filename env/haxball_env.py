@@ -636,8 +636,21 @@ class HaxballEnv:
         palette = np.array([0xFF0000, 0x0000FF], dtype=np.int64)
         visible = self.setpiece_team >= 0
         colors = np.where(visible, palette[np.maximum(self.setpiece_team, 0)], 0xFFFFFF)
-        return (colors if getattr(self, "public_ball_visible", True) else np.full(self.N, 0xFFFFFF),
-                colors if getattr(self, "public_barrier_visible", False) else np.full(self.N, 0xFFFFFF))
+        barrier = colors if getattr(self, "public_barrier_visible", False) else np.full(self.N, 0xFFFFFF)
+        if getattr(self, "public_joint_barriers", False):
+            # Cosmetic RS ONE joint renderer: lateral lines unfold, corners and
+            # goal kicks do not. Dynamics and referee logic are unchanged.
+            ball_palette = np.array([0xFF3F34, 0x0FBCF9], dtype=np.int64)
+            colors = np.where(visible, ball_palette[np.maximum(self.setpiece_team, 0)], 0xFFFFFF)
+            joint_palette = np.array([0xEC7458, 0x48BEF9], dtype=np.int64)
+            joint = np.where(visible & (self.setpiece_kind == 1), joint_palette[np.maximum(self.setpiece_team, 0)], 0xFFFFFF)
+            barrier = np.where(joint != 0xFFFFFF, joint, barrier)
+        return (colors if getattr(self, "public_ball_visible", True) else np.full(self.N, 0xFFFFFF), barrier)
+
+    def configure_public_signals(self, config):
+        self.enable_public_signals()
+        self.public_barrier_visible = bool(config.get("barrier_discs") or config.get("barrier_segments"))
+        self.public_joint_barriers = bool(config.get("auto_joints") or config.get("barrier_joints"))
 
     def sample_public_signals(self, dt):
         if self._public_signals is not None:

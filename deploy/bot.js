@@ -45,10 +45,11 @@ const extrapMs = arg("--extrap", null) != null ? parseFloat(arg("--extrap")) : n
 const STADIUM_ARG = arg("--stadium", null);
 const PUBLIC_CUES = {...(META.public_signals || {})};
 PUBLIC_CUES.debug = args.includes("--debug-public-signals");
-for (const [flag, key] of [["--rs4-barrier-discs", "barrier_discs"], ["--rs4-barrier-segments", "barrier_segments"]]) {
+for (const [flag, key] of [["--rs4-barrier-discs", "barrier_discs"], ["--rs4-barrier-segments", "barrier_segments"], ["--rs4-barrier-joints", "barrier_joints"]]) {
   const supplied = arg(flag, null);
   if (supplied !== null) PUBLIC_CUES[key] = supplied === "" ? [] : supplied.split(",").map(Number);
 }
+if (args.includes("--rs4-auto-joints")) PUBLIC_CUES.auto_joints=true;
 for (const [flag, key] of [["--rs4-red-colors", "red_colors"], ["--rs4-blue-colors", "blue_colors"]]) {
   const supplied = arg(flag, null);
   if (supplied !== null) PUBLIC_CUES[key] = supplied.split(",");
@@ -182,12 +183,14 @@ function BotPlugin(session) {
       rules = rulesFor(st.name);
       assertObservationContract(META, rules);
       geom = stadiumGeometry(st);
+      if (publicTracker) publicTracker.configureStadium(st,geom);
       if (publicTracker && PUBLIC_CUES.debug) {
         console.log("RS4 public barrier candidates (diagnostic only):", JSON.stringify({
           discs: that.room.gameState.physicsState.discs.map((d, id) => ({id, color:d.color}))
             .filter(d => d.id > 0 && [0xFF0000,0x0000FF,0xE56E56,0x5689E5].includes(d.color)),
           segments: (that.room.gameState.physicsState.segments || st.segments || []).map((s, id) => ({id,color:s.color,vis:s.vis}))
-            .filter(s => [0xFF0000,0x0000FF,0xE56E56,0x5689E5].includes(s.color))
+            .filter(s => [0xFF0000,0x0000FF,0xE56E56,0x5689E5].includes(s.color)),
+          auto_joints: publicTracker.jointIds
         }));
       }
       console.log(`mapa "${st.name}": cancha ${geom.field_half_w}x${geom.field_half_h}, reglas ` +
@@ -265,7 +268,9 @@ function BotPlugin(session) {
           publicFrame === null || frame < publicFrame ? 0 : frame - publicFrame,
           geom.player_radius, geom.ball_radius,
           publicTracker.barrierColor(room.gameState.physicsState.discs,
-            room.gameState.physicsState.segments || room.stadium.segments || []));
+            room.gameState.physicsState.segments || room.stadium.segments || [],
+            room.gameState.physicsState.joints || room.stadium.joints || [],
+            {pos:[real.pos.x,real.pos.y],vel:[real.speed.x,real.speed.y]}));
         publicFrame = frame;
         if (PUBLIC_CUES.debug) {
           const colors = JSON.stringify([publicPacket.ballColor, publicPacket.barrierColor]);
