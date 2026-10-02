@@ -92,7 +92,8 @@ def test_settings_are_bounded_and_use_canonical_scenarios():
         settings = program.settings()
         assert settings["exercise_fraction"] <= .4
         assert sum(settings["exercise_weights"].values()) == pytest.approx(1.)
-        assert set(settings["exercise_weights"]) <= {"corner", "lateral", "goal_kick", "exit", "attack", "defense", "transition"}
+        assert set(settings["exercise_weights"]) <= {"corner", "lateral", "goal_kick", "exit", "attack", "defense", "transition",
+                                                    "defensive_transition", "offensive_transition"}
         assert sum(settings["opponent_mix"].values()) == pytest.approx(1.)
         assert settings["freeze_normalizers"]
         program.advance_steps(phase["steps"])

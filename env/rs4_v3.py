@@ -10,7 +10,9 @@ import numpy as np
 from numba import njit
 from .rs4_tactics import ASSIGNMENTS
 
-SCENARIOS = ("corner", "lateral", "goal_kick", "exit", "attack", "defense", "transition")
+# Keep the original indices stable for saved configurations and legacy callers.
+SCENARIOS = ("corner", "lateral", "goal_kick", "exit", "attack", "defense", "transition",
+             "defensive_transition", "offensive_transition")
 RESTART_NAMES = {1: "lateral", 2: "corner", 3: "goal_kick", 4: "kickoff"}
 
 
@@ -220,6 +222,9 @@ class RS4ScenarioEnv:
         self.continuation = np.full(base.N, -1, dtype=np.int64)
         self.scenario_success = np.zeros(base.N, dtype=bool)
         self.transition_attacking = np.zeros(base.N, dtype=bool)
+        self.metrics = {name: np.zeros(base.N, dtype=np.int64) for name in
+                        ("passes", "progressive_passes", "shots", "goals", "danger_ticks", "safe_ticks",
+                         "control_ticks", "exit_ticks", "creation_ticks", "created", "created_shots")}
         self.learner_team = None  # optional trainer setup; never an actor feature
         self.cohorts = RestartCohorts(base)
         self.settings = {}
@@ -242,14 +247,16 @@ class RS4ScenarioEnv:
         if not 0 <= fraction <= .4:
             raise ValueError("Full matches must retain at least 60% of rows")
         self.drill_fraction = fraction
+        self.difficulty = float(self.settings.get("scenario_difficulty", 0.))
+        if not 0 <= self.difficulty <= 1:
+            raise ValueError("scenario_difficulty must be in [0,1]")
         self.restart_bonus = float(self.settings.get("restart_bonus", self.settings.get("restart_execute_bonus", .02)))
         if not 0 <= self.restart_bonus <= .02:
             raise ValueError("Restart bonus must be in [0,.02]")
         weights = dict(self.settings.get("scenario_weights", self.settings.get("exercise_weights", {name: 1 for name in SCENARIOS})))
-        for alias, canonical in (("throw_in", "lateral"), ("build_up", "exit"),
-                                 ("defensive_transition", "transition"), ("offensive_transition", "transition")):
+        for alias, canonical in (("throw_in", "lateral"), ("build_up", "exit")):
             if alias in weights:
-                weights[canonical] = weights.get(canonical, 0) + weights[alias]
+                weights[canonical] = weights.get(canonical, 0) + weights.pop(alias)
         self.weights = np.asarray([weights.get(name, 0) for name in SCENARIOS], dtype=float)
         if (self.weights < 0).any() or not np.isfinite(self.weights).all() or self.weights.sum() <= 0:
             raise ValueError("Invalid scenario weights")
@@ -319,6 +326,8 @@ class RS4ScenarioEnv:
         self._place(rows)
 
     def _place(self, rows):
+        for value in self.metrics.values():
+            value[rows] = 0
         if self.base._public_signals is not None:
             self.base._public_signals.reset(rows)
         env, sim = self.base, self.sim
@@ -361,12 +370,15 @@ class RS4ScenarioEnv:
                 ball[0] = .20 * W
                 own[1] = ball + [-25, 0]
                 own[2, 0], own[3, 0] = .40 * W, .65 * W
+                opp[0] = ball + [90 - 55 * self.difficulty, 0]
+                opp[1] = ball + [140 - 50 * self.difficulty, .2 * wing * H]
             else:  # defensive access and loss with teammates initially advanced
-                ball[0] = -.40 * W
-                velocity[0] = -self.rng.uniform(1, 4)
+                ball[0] = (-.40 - .20 * self.difficulty) * W
+                velocity[0] = -self.rng.uniform(1 + self.difficulty, 4 + self.difficulty)
                 opp[0] = ball + [25, 0]
-                if kind == "transition":
-                    self.transition_attacking[row] = bool(self.rng.integers(0, 2))
+                if kind in ("transition", "defensive_transition", "offensive_transition"):
+                    self.transition_attacking[row] = (kind == "offensive_transition" or
+                        (kind == "transition" and bool(self.rng.integers(0, 2))))
                     if self.transition_attacking[row]:
                         ball = np.array([-.15 * W, .15 * wing * H])
                         velocity[0] = self.rng.uniform(1, 3)
@@ -427,27 +439,63 @@ class RS4ScenarioEnv:
         else:
             ball_own_x = self.sim.ball_pos[:, 0] / self.field_w * np.where(focus == 0, 1, -1)
             ball_y = self.sim.ball_pos[:, 1] / self.field_h
-        attacking = drill & ((scenario == 3) | (scenario == 4) | ((scenario == 6) & self.transition_attacking))
-        # Attack success requires an actual central danger zone and an outlet,
-        # not a lonely ball drifting into the far corner. Exit is a different
-        # skill: escape the pressured defensive third while retaining access.
-        ball_world = self.sim.ball_pos
-        dist = np.linalg.norm(self.sim.player_pos - ball_world[:, None], axis=-1)
+        transition = np.isin(scenario, (6, 7, 8))
+        attacking = drill & ((scenario == 3) | (scenario == 4) | (transition & self.transition_attacking))
+        # Positions/velocity from final_obs precede terminal resets. Otherwise a
+        # goal can be scored against the geometry of the newly spawned players.
+        ball_world = info["final_obs"][:, 0, 4:6] * [self.field_w, self.field_h]
+        positions = info["final_obs"][:, :, :2] * [self.field_w, self.field_h]
+        positions[..., 0] *= self.sign[None]
+        velocity = info["final_obs"][:, 0, 6:8] * 5
+        dist = np.linalg.norm(positions - ball_world[:, None], axis=-1)
         own = self.sim.player_team[None] == focus[:, None]
         near = own & (dist < .4 * self.field_w)
         support = near.sum(axis=1) >= 2
-        danger = (ball_own_x > .6) & (np.abs(ball_y) < .55) & support
-        escape = (ball_own_x > -.15) & (np.abs(ball_y) < .9)
-        reached = attacking & np.where(scenario == 3, escape, danger) & (self.last_touch == focus)
-        self.scenario_success[attacking] |= reached[attacking] | scored_for[attacking]
-        defensive = drill & ((scenario == 5) | ((scenario == 6) & ~self.transition_attacking))
-        self.scenario_success[defensive] |= (ball_own_x[defensive] > -.15) & (self.last_touch[defensive] == focus[defensive])
+        own_distance = np.where(own, dist, np.inf).min(axis=1)
+        opp_distance = np.where(~own, dist, np.inf).min(axis=1)
+        # Last touch alone does not mean present control of a long drifting ball.
+        control = (own_distance <= 60) & (own_distance <= opp_distance + 10)
+        open_play = ~done & ~self.sim.kickoff & (self.setpiece_team < 0)
+        control &= open_play
+        danger = (ball_own_x > .6) & (np.abs(ball_y) < .55) & support & control
+        escape = (ball_own_x > -.15) & (np.abs(ball_y) < .9) & support & control
+        defensive = drill & ((scenario == 5) | (transition & ~self.transition_attacking))
+        events = info["events"]
+        rows_all = np.arange(self.N)
+        self.metrics["passes"] += events["passes"][rows_all, focus] * drill
+        self.metrics["progressive_passes"] += events["progressive_passes"][rows_all, focus] * drill
+        self.metrics["goals"] += scored_for & drill
+        own_vx = velocity[:, 0] * np.where(focus == 0, 1, -1)
+        remaining = self.goal_x - ball_own_x * self.field_w
+        projected_y = ball_world[:, 1] + velocity[:, 1] * remaining / np.maximum(own_vx, 1e-6)
+        shot = ((info["kicked"] & own).any(axis=1) & (own_vx > 1)
+                & (ball_own_x > .45) & (remaining > 0)
+                & (np.abs(projected_y) <= self.sim.st.goal_half_height) & ~done)
+        self.metrics["shots"] += shot & drill
+        threatened = (ball_own_x < -.6) & (np.abs(ball_y) < .55) & (opp_distance < own_distance)
+        self.metrics["danger_ticks"] += threatened * drill * self.frame_skip
+        self.metrics["safe_ticks"] = np.where(escape & defensive,
+                                              self.metrics["safe_ticks"] + self.frame_skip, 0)
+        self.metrics["control_ticks"] += control * drill * self.frame_skip
+        self.metrics["exit_ticks"] = np.where(escape & attacking,
+                                              self.metrics["exit_ticks"] + self.frame_skip, 0)
+        self.metrics["creation_ticks"] = np.where(danger & attacking,
+                                                  self.metrics["creation_ticks"] + self.frame_skip, 0)
+        exit_success = (self.metrics["exit_ticks"] >= 60) & (self.metrics["passes"] >= 1)
+        creation = (self.metrics["creation_ticks"] >= 30) & (self.metrics["progressive_passes"] >= 1)
+        self.metrics["created"] |= creation.astype(np.int64)
+        self.metrics["created_shots"] += shot & drill & self.metrics["created"].astype(bool)
+        finish_attack = self.metrics["created_shots"] >= 1
+        self.scenario_success[attacking] |= (np.where(scenario == 3, exit_success, finish_attack)
+                                               | scored_for)[attacking]
+        self.scenario_success[defensive] |= (self.metrics["safe_ticks"] >= 60)[defensive]
         cut = drill & ((self.drill_ticks >= self.drill_limit) | (ongoing & (self.continuation <= 0)))
         finish = drill & (done | cut)
         results = [{"row": int(row), "scenario": SCENARIOS[scenario[row]], "team": int(focus[row]),
                     "success": bool(self.scenario_success[row] and not scored_against[row]),
                     "conceded": int(scored_against[row]), "ticks": int(self.drill_ticks[row]),
                     "transition_attacking": bool(self.transition_attacking[row]),
+                    "metrics": {name: int(value[row]) for name, value in self.metrics.items()},
                     "truncated": bool(cut[row] and not done[row])} for row in np.flatnonzero(finish)]
         practice_cut = cut & ~done
         if practice_cut.any():

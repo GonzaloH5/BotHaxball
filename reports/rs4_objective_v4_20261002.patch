@@ -1,0 +1,1354 @@
+diff --git a/env/rs4_v3.py b/env/rs4_v3.py
+index efd5ccb..50a74b5 100644
+--- a/env/rs4_v3.py
++++ b/env/rs4_v3.py
+@@ -10,7 +10,9 @@ import numpy as np
+ from numba import njit
+ from .rs4_tactics import ASSIGNMENTS
+ 
+-SCENARIOS = ("corner", "lateral", "goal_kick", "exit", "attack", "defense", "transition")
++# Keep the original indices stable for saved configurations and legacy callers.
++SCENARIOS = ("corner", "lateral", "goal_kick", "exit", "attack", "defense", "transition",
++             "defensive_transition", "offensive_transition")
+ RESTART_NAMES = {1: "lateral", 2: "corner", 3: "goal_kick", 4: "kickoff"}
+ 
+ 
+@@ -220,6 +222,9 @@ class RS4ScenarioEnv:
+         self.continuation = np.full(base.N, -1, dtype=np.int64)
+         self.scenario_success = np.zeros(base.N, dtype=bool)
+         self.transition_attacking = np.zeros(base.N, dtype=bool)
++        self.metrics = {name: np.zeros(base.N, dtype=np.int64) for name in
++                        ("passes", "progressive_passes", "shots", "goals", "danger_ticks", "safe_ticks",
++                         "control_ticks", "exit_ticks", "creation_ticks", "created", "created_shots")}
+         self.learner_team = None  # optional trainer setup; never an actor feature
+         self.cohorts = RestartCohorts(base)
+         self.settings = {}
+@@ -242,14 +247,16 @@ class RS4ScenarioEnv:
+         if not 0 <= fraction <= .4:
+             raise ValueError("Full matches must retain at least 60% of rows")
+         self.drill_fraction = fraction
++        self.difficulty = float(self.settings.get("scenario_difficulty", 0.))
++        if not 0 <= self.difficulty <= 1:
++            raise ValueError("scenario_difficulty must be in [0,1]")
+         self.restart_bonus = float(self.settings.get("restart_bonus", self.settings.get("restart_execute_bonus", .02)))
+         if not 0 <= self.restart_bonus <= .02:
+             raise ValueError("Restart bonus must be in [0,.02]")
+         weights = dict(self.settings.get("scenario_weights", self.settings.get("exercise_weights", {name: 1 for name in SCENARIOS})))
+-        for alias, canonical in (("throw_in", "lateral"), ("build_up", "exit"),
+-                                 ("defensive_transition", "transition"), ("offensive_transition", "transition")):
++        for alias, canonical in (("throw_in", "lateral"), ("build_up", "exit")):
+             if alias in weights:
+-                weights[canonical] = weights.get(canonical, 0) + weights[alias]
++                weights[canonical] = weights.get(canonical, 0) + weights.pop(alias)
+         self.weights = np.asarray([weights.get(name, 0) for name in SCENARIOS], dtype=float)
+         if (self.weights < 0).any() or not np.isfinite(self.weights).all() or self.weights.sum() <= 0:
+             raise ValueError("Invalid scenario weights")
+@@ -319,6 +326,8 @@ class RS4ScenarioEnv:
+         self._place(rows)
+ 
+     def _place(self, rows):
++        for value in self.metrics.values():
++            value[rows] = 0
+         if self.base._public_signals is not None:
+             self.base._public_signals.reset(rows)
+         env, sim = self.base, self.sim
+@@ -361,12 +370,15 @@ class RS4ScenarioEnv:
+                 ball[0] = .20 * W
+                 own[1] = ball + [-25, 0]
+                 own[2, 0], own[3, 0] = .40 * W, .65 * W
++                opp[0] = ball + [90 - 55 * self.difficulty, 0]
++                opp[1] = ball + [140 - 50 * self.difficulty, .2 * wing * H]
+             else:  # defensive access and loss with teammates initially advanced
+-                ball[0] = -.40 * W
+-                velocity[0] = -self.rng.uniform(1, 4)
++                ball[0] = (-.40 - .20 * self.difficulty) * W
++                velocity[0] = -self.rng.uniform(1 + self.difficulty, 4 + self.difficulty)
+                 opp[0] = ball + [25, 0]
+-                if kind == "transition":
+-                    self.transition_attacking[row] = bool(self.rng.integers(0, 2))
++                if kind in ("transition", "defensive_transition", "offensive_transition"):
++                    self.transition_attacking[row] = (kind == "offensive_transition" or
++                        (kind == "transition" and bool(self.rng.integers(0, 2))))
+                     if self.transition_attacking[row]:
+                         ball = np.array([-.15 * W, .15 * wing * H])
+                         velocity[0] = self.rng.uniform(1, 3)
+@@ -427,27 +439,63 @@ class RS4ScenarioEnv:
+         else:
+             ball_own_x = self.sim.ball_pos[:, 0] / self.field_w * np.where(focus == 0, 1, -1)
+             ball_y = self.sim.ball_pos[:, 1] / self.field_h
+-        attacking = drill & ((scenario == 3) | (scenario == 4) | ((scenario == 6) & self.transition_attacking))
+-        # Attack success requires an actual central danger zone and an outlet,
+-        # not a lonely ball drifting into the far corner. Exit is a different
+-        # skill: escape the pressured defensive third while retaining access.
+-        ball_world = self.sim.ball_pos
+-        dist = np.linalg.norm(self.sim.player_pos - ball_world[:, None], axis=-1)
++        transition = np.isin(scenario, (6, 7, 8))
++        attacking = drill & ((scenario == 3) | (scenario == 4) | (transition & self.transition_attacking))
++        # Positions/velocity from final_obs precede terminal resets. Otherwise a
++        # goal can be scored against the geometry of the newly spawned players.
++        ball_world = info["final_obs"][:, 0, 4:6] * [self.field_w, self.field_h]
++        positions = info["final_obs"][:, :, :2] * [self.field_w, self.field_h]
++        positions[..., 0] *= self.sign[None]
++        velocity = info["final_obs"][:, 0, 6:8] * 5
++        dist = np.linalg.norm(positions - ball_world[:, None], axis=-1)
+         own = self.sim.player_team[None] == focus[:, None]
+         near = own & (dist < .4 * self.field_w)
+         support = near.sum(axis=1) >= 2
+-        danger = (ball_own_x > .6) & (np.abs(ball_y) < .55) & support
+-        escape = (ball_own_x > -.15) & (np.abs(ball_y) < .9)
+-        reached = attacking & np.where(scenario == 3, escape, danger) & (self.last_touch == focus)
+-        self.scenario_success[attacking] |= reached[attacking] | scored_for[attacking]
+-        defensive = drill & ((scenario == 5) | ((scenario == 6) & ~self.transition_attacking))
+-        self.scenario_success[defensive] |= (ball_own_x[defensive] > -.15) & (self.last_touch[defensive] == focus[defensive])
++        own_distance = np.where(own, dist, np.inf).min(axis=1)
++        opp_distance = np.where(~own, dist, np.inf).min(axis=1)
++        # Last touch alone does not mean present control of a long drifting ball.
++        control = (own_distance <= 60) & (own_distance <= opp_distance + 10)
++        open_play = ~done & ~self.sim.kickoff & (self.setpiece_team < 0)
++        control &= open_play
++        danger = (ball_own_x > .6) & (np.abs(ball_y) < .55) & support & control
++        escape = (ball_own_x > -.15) & (np.abs(ball_y) < .9) & support & control
++        defensive = drill & ((scenario == 5) | (transition & ~self.transition_attacking))
++        events = info["events"]
++        rows_all = np.arange(self.N)
++        self.metrics["passes"] += events["passes"][rows_all, focus] * drill
++        self.metrics["progressive_passes"] += events["progressive_passes"][rows_all, focus] * drill
++        self.metrics["goals"] += scored_for & drill
++        own_vx = velocity[:, 0] * np.where(focus == 0, 1, -1)
++        remaining = self.goal_x - ball_own_x * self.field_w
++        projected_y = ball_world[:, 1] + velocity[:, 1] * remaining / np.maximum(own_vx, 1e-6)
++        shot = ((info["kicked"] & own).any(axis=1) & (own_vx > 1)
++                & (ball_own_x > .45) & (remaining > 0)
++                & (np.abs(projected_y) <= self.sim.st.goal_half_height) & ~done)
++        self.metrics["shots"] += shot & drill
++        threatened = (ball_own_x < -.6) & (np.abs(ball_y) < .55) & (opp_distance < own_distance)
++        self.metrics["danger_ticks"] += threatened * drill * self.frame_skip
++        self.metrics["safe_ticks"] = np.where(escape & defensive,
++                                              self.metrics["safe_ticks"] + self.frame_skip, 0)
++        self.metrics["control_ticks"] += control * drill * self.frame_skip
++        self.metrics["exit_ticks"] = np.where(escape & attacking,
++                                              self.metrics["exit_ticks"] + self.frame_skip, 0)
++        self.metrics["creation_ticks"] = np.where(danger & attacking,
++                                                  self.metrics["creation_ticks"] + self.frame_skip, 0)
++        exit_success = (self.metrics["exit_ticks"] >= 60) & (self.metrics["passes"] >= 1)
++        creation = (self.metrics["creation_ticks"] >= 30) & (self.metrics["progressive_passes"] >= 1)
++        self.metrics["created"] |= creation.astype(np.int64)
++        self.metrics["created_shots"] += shot & drill & self.metrics["created"].astype(bool)
++        finish_attack = self.metrics["created_shots"] >= 1
++        self.scenario_success[attacking] |= (np.where(scenario == 3, exit_success, finish_attack)
++                                               | scored_for)[attacking]
++        self.scenario_success[defensive] |= (self.metrics["safe_ticks"] >= 60)[defensive]
+         cut = drill & ((self.drill_ticks >= self.drill_limit) | (ongoing & (self.continuation <= 0)))
+         finish = drill & (done | cut)
+         results = [{"row": int(row), "scenario": SCENARIOS[scenario[row]], "team": int(focus[row]),
+                     "success": bool(self.scenario_success[row] and not scored_against[row]),
+                     "conceded": int(scored_against[row]), "ticks": int(self.drill_ticks[row]),
+                     "transition_attacking": bool(self.transition_attacking[row]),
++                    "metrics": {name: int(value[row]) for name, value in self.metrics.items()},
+                     "truncated": bool(cut[row] and not done[row])} for row in np.flatnonzero(finish)]
+         practice_cut = cut & ~done
+         if practice_cut.any():
+diff --git a/eval/rs4_v3.py b/eval/rs4_v3.py
+index d10fd0f..508b49a 100644
+--- a/eval/rs4_v3.py
++++ b/eval/rs4_v3.py
+@@ -15,6 +15,7 @@ from env.haxball_env import HaxballEnv
+ from env.rewards import RewardConfig
+ from env.rs4_v3 import RS4ScenarioEnv, RestartCohorts, SCENARIOS
+ from .agents import ModelAgent, ScriptedAgent, make_agent, reset_agents
++from .rs4_objective import CONTRACT
+ 
+ 
+ def _file_fingerprint(path):
+@@ -32,7 +33,9 @@ def evaluation_source_fingerprint():
+     root = Path(__file__).resolve().parents[1]
+     files = ("env/haxball_env.py", "env/rs4_v3.py", "env/rs4_tactics.py", "env/rewards.py",
+              "bots/scripted.py", "eval/rs4_v3.py", "eval/agents.py", "sim/physics.py",
+-             "sim/stadium.py", "stadiums/rs_one.hbs", "env/public_signals.py", "env/public_joints.py", "train/model.py")
++             "sim/stadium.py", "stadiums/rs_one.hbs", "env/public_signals.py", "env/public_joints.py", "train/model.py",
++             "env/observation.py", "env/rollout_callbacks.py", "eval/rs4_objective.py",
++             "train/rs4_program.py", "tools/evaluate_rs4_v3.py")
+     hashes = {path: _file_fingerprint(root / path) for path in files}
+     combined = hashlib.sha256("\n".join(f"{path}:{hashes[path]}" for path in files).encode()).hexdigest()
+     return {"sha256": combined, "files": hashes}
+@@ -79,6 +82,8 @@ def full_game(agent, opponent, games=16, minutes=2, seed=51, color=0):
+     env = environment(games, seed, max_ticks=ticks)
+     obs = env.reset()
+     env._reset_envs(np.arange(games), kickoff_team=0)
++    # Distinct seeded initial states also for deterministic deployment policies.
++    env.sim.player_pos[:] += env.rng.uniform(-8, 8, env.sim.player_pos.shape)
+     env._phi = env._potentials()
+     obs = env.observe()
+     red, blue = np.arange(4), np.arange(4, 8)
+@@ -127,6 +132,7 @@ def functional_trial(agent, scenario, games=16, seed=51, color=0, teammate=None,
+     base = environment(games, seed)
+     env = RS4ScenarioEnv(base, {"drill_fraction": .4, "restart_bonus": 0, "guide_coef": 0,
+                              "restart_potential_coef": 0, "pass_participant_credit": 0,
++                             "scenario_difficulty": 1.,
+                              "scenario_weights": {scenario: 1}})
+     env.reset()
+     env.assign(np.arange(games), scenario=scenario, team=color)
+@@ -166,12 +172,66 @@ def functional_trial(agent, scenario, games=16, seed=51, color=0, teammate=None,
+             "success": sum(row["success"] for row in results) / games,
+             "conceded": sum(row["conceded"] for row in results) / games,
+             "mean_seconds": np.mean([row["ticks"] for row in results]) / 60,
+-            "restarts": dict(opportunities), "mixed_teammates": teammate is not None}
++            "restarts": dict(opportunities), "mixed_teammates": teammate is not None,
++            "outcomes": results,
++            "metrics": {key: sum(r["metrics"][key] for r in results) / games
++                        for key in env.metrics},
++            "danger_fraction": sum(r["metrics"]["danger_ticks"] for r in results) / max(1, sum(r["ticks"] for r in results)),
++            "goal_rate": sum(r["metrics"]["goals"] > 0 for r in results) / games}
++
++
++def _cell_key(row):
++    return "|".join(str(row[key]) for key in ("learner_count", "opponent", "teammate", "color"))
++
++
++def match_summary(rows):
++    cells = {}
++    for row in rows:
++        key = _cell_key(row)
++        cell = cells.setdefault(key, {k: row[k] for k in ("learner_count", "opponent", "teammate", "color")})
++        for k in ("games", "wins", "draws", "losses", "goals_for", "goals_against"):
++            cell[k] = cell.get(k, 0) + row[k]
++    for cell in cells.values():
++        n = cell["games"]
++        p = cell["points"] = (cell["wins"] + .5 * cell["draws"]) / n
++        # Descriptive standard error of a 0/.5/1 result, not binomial winrate.
++        se = np.sqrt(max(0., (cell["wins"] + .25 * cell["draws"]) / n - p*p) / n)
++        cell["points_interval_95"] = [max(0., p - 1.96 * se), min(1., p + 1.96 * se)]
++    means = {str(count): float(np.mean([r["points"] for r in cells.values() if r["learner_count"] == count]))
++             for count in (1, 2, 3, 4)}
++    return dict(cells=cells, by_learner_count=means,
++                balanced_points=float(np.mean(list(means.values()))),
++                single_instance_points=means["1"],
++                mean_points=float(np.mean([r["points"] for r in rows])),
++                all_learner_mean_points=means["4"],
++                mixed_mean_points=float(np.mean([means[str(i)] for i in (1, 2, 3)])), rows=rows)
++
++
++def functional_summary(rows):
++    cells = {}
++    for row in rows:
++        count = len(row.get("learner_slots", (0, 1, 2, 3)))
++        key = f"{row['scenario']}|{count}|{row['color']}"
++        cell = cells.setdefault(key, dict(scenario=row["scenario"], learner_count=count,
++                                         color=row["color"], games=0, successes=0))
++        cell["games"] += row["games"]
++        cell["successes"] += int(round(row["success"] * row["games"]))
++    for cell in cells.values():
++        n, k = cell["games"], cell["successes"]
++        p = cell["success"] = k / n
++        z = 1.96
++        center = (p + z*z/(2*n)) / (1+z*z/n)
++        width = z*np.sqrt(p*(1-p)/n+z*z/(4*n*n)) / (1+z*z/n)
++        cell["success_interval_95"] = [max(0., center-width), min(1., center+width)]
++    return cells
+ 
+ 
+ def evaluate(checkpoint, *, references=(), teammate_reference=None, seeds=(51, 73, 91),
+-             games=16, functional_games=16, minutes=2):
+-    agent = make_agent(str(checkpoint))
++             games=16, functional_games=16, minutes=2, action_mode="greedy", holdout=False):
++    if action_mode not in ("greedy", "sampled"):
++        raise ValueError("action_mode must be greedy or sampled")
++    greedy = action_mode == "greedy"
++    agent = make_agent(str(checkpoint), greedy=greedy)
+     opponents = [f"scripted:r3:{style}" for style in range(3)] + [str(p) for p in references]
+     full_rows, functional_rows = [], []
+     full_by_seed, functional_by_seed = {}, {}
+@@ -180,32 +240,41 @@ def evaluate(checkpoint, *, references=(), teammate_reference=None, seeds=(51, 7
+         for opponent in opponents:
+             for color in (0, 1):
+                 torch.manual_seed(seed * 100 + color)
+-                row = full_game(agent, make_agent(opponent), games, minutes, seed, color)
++                row = full_game(agent, make_agent(opponent, greedy=greedy), games, minutes, seed, color)
+                 row["opponent"] = opponent
+                 row["team_mode"] = "all_learner"
++                row.update(learner_count=4, teammate="none", learner_slots=list(range(4)))
+                 full_rows.append(row)
+                 seed_full.append(row)
+-        # Bounded full-match companion cells, not only convenient practice.
+-        # One/two/three learners rotate across seeds and player slots/colors.
+-        for color in (0, 1):
+-            count = 1 + seed_index % 3
+-            slots = tuple((seed_index + color + i) % 4 for i in range(count))
+-            proxy = make_agent(str(teammate_reference)) if teammate_reference else ScriptedAgent(policy="r3", seed=seed)
+-            team = MixedTeamAgent(agent, proxy, slots)
+-            opponent = f"scripted:r3:{seed_index % 3}"
+-            torch.manual_seed(seed * 100 + color)
+-            row = full_game(team, make_agent(opponent), games, minutes, seed, color)
+-            row.update(opponent=opponent, team_mode="mixed", learner_slots=list(slots))
+-            full_rows.append(row)
+-            seed_full.append(row)
++        # Factorial cells: every seed sees every composition, color, rival and
++        # proxy. A strong 3-bot cell can never substitute for the single bot.
++        proxies = ["scripted:r3:0", "scripted:r3:2"]
++        if teammate_reference:
++            proxies.append(str(teammate_reference))
++        for count in (1, 2, 3):
++            for style in range(3):
++                for proxy_spec in proxies:
++                    for color in (0, 1):
++                        slots = tuple((seed_index + color + i) % 4 for i in range(count))
++                        proxy = make_agent(proxy_spec, greedy=greedy)
++                        team = MixedTeamAgent(agent, proxy, slots)
++                        opponent = f"scripted:r3:{style}"
++                        torch.manual_seed(seed * 100 + color)
++                        row = full_game(team, make_agent(opponent), games, minutes, seed, color)
++                        row.update(opponent=opponent, team_mode="mixed", learner_slots=list(slots),
++                                   learner_count=count, teammate=proxy_spec)
++                        full_rows.append(row)
++                        seed_full.append(row)
+         for scenario in SCENARIOS:
++            if scenario == "transition":
++                continue  # explicit directions only in the sporting contract
+             for color in (0, 1):
+                 torch.manual_seed(seed * 100 + color)
+                 row = functional_trial(agent, scenario, functional_games, seed, color)
+                 functional_rows.append(row)
+                 seed_functional.append(row)
+         # Frozen imitator when provided; scripted approximation otherwise.
+-        proxy = make_agent(str(teammate_reference)) if teammate_reference else ScriptedAgent(policy="r3", seed=seed)
++        proxy = make_agent(str(teammate_reference), greedy=greedy) if teammate_reference else ScriptedAgent(policy="r3", seed=seed)
+         for count in (1, 2, 3):
+             for color in (0, 1):
+                 slots = tuple((seed_index + color + count + i) % 4 for i in range(count))
+@@ -214,7 +283,7 @@ def evaluate(checkpoint, *, references=(), teammate_reference=None, seeds=(51, 7
+                 row["scenario"], row["learner_slots"] = "teammate", list(slots)
+                 functional_rows.append(row)
+                 seed_functional.append(row)
+-        full_by_seed[str(seed)] = {"mean_points": float(np.mean([r["points"] for r in seed_full]))}
++        full_by_seed[str(seed)] = {"mean_points": match_summary(seed_full)["balanced_points"]}
+         functional_by_seed[str(seed)] = {"mean_success": float(np.mean([r["success"] for r in seed_functional]))}
+     mean = lambda key, selected: float(np.mean([r[key] for r in selected])) if selected else 0.0
+     scenario_rows = lambda *names: [row for row in functional_rows if row["scenario"] in names]
+@@ -223,9 +292,15 @@ def evaluate(checkpoint, *, references=(), teammate_reference=None, seeds=(51, 7
+     skills = {"restart_success": sum(r["restarts"].get("successes", 0) for r in restarts) / resolved if resolved else 0,
+               "corner_success_red": mean("success", [r for r in restarts if r["scenario"] == "corner" and r["color"] == 0]),
+               "corner_success_blue": mean("success", [r for r in restarts if r["scenario"] == "corner" and r["color"] == 1]),
+-              "defense_conceded": mean("conceded", scenario_rows("defense", "transition")),
+-              "attack_success": mean("success", scenario_rows("attack", "exit")),
+-              "integrated_success": mean("success", functional_rows),
++              "defense_conceded": mean("conceded", scenario_rows("defense", "defensive_transition")),
++              "defense_recovery": mean("success", scenario_rows("defense", "defensive_transition")),
++              "defense_danger_fraction": mean("danger_fraction", scenario_rows("defense", "defensive_transition")),
++              "exit_success": mean("success", scenario_rows("exit")),
++              "attack_success": mean("success", scenario_rows("attack", "offensive_transition")),
++              "attack_goal_rate": mean("goal_rate", scenario_rows("attack", "offensive_transition")),
++              "integrated_success": min(mean("success", scenario_rows("exit")),
++                                          mean("success", scenario_rows("attack", "offensive_transition")),
++                                          mean("success", scenario_rows("defense", "defensive_transition"))),
+               "teammate_success": mean("success", scenario_rows("teammate"))}
+     behavior = Counter()
+     for row in full_rows:
+@@ -234,17 +309,23 @@ def evaluate(checkpoint, *, references=(), teammate_reference=None, seeds=(51, 7
+             "source_fingerprint": evaluation_source_fingerprint(),
+             "suite": {"games": games, "functional_games": functional_games, "minutes": minutes,
+                       "opponents": opponents, "opponent_sha256": {p: _file_fingerprint(p) for p in opponents if Path(p).is_file()},
++                      "action_mode": action_mode, "holdout": holdout, "scenario_difficulty": 1.,
++                      "teammate_proxies": proxies,
+                       "teammate_reference": str(teammate_reference) if teammate_reference else None,
+                       "teammate_sha256": _file_fingerprint(teammate_reference)},
+-            "evaluation_contract": "RS4-v3-cohorts-3", "full_games": {"mean_points": mean("points", full_rows),
+-            "all_learner_mean_points": mean("points", [r for r in full_rows if r["team_mode"] == "all_learner"]),
+-            "mixed_mean_points": mean("points", [r for r in full_rows if r["team_mode"] == "mixed"]),
+-            "by_seed": full_by_seed, "rows": full_rows}, "functional": {"mean_success": mean("success", functional_rows),
++            "evaluation_contract": CONTRACT, "full_games": {**match_summary(full_rows),
++            "by_seed": full_by_seed}, "functional": {"mean_success": mean("success", functional_rows),
++            "cells": functional_summary(functional_rows),
+             "by_seed": functional_by_seed, "skills": skills, "rows": functional_rows},
+             "skills": skills, "behavior": dict(behavior),
+             "behavior_definitions": {"dangerous_losses": "confirmed opponent transfer with ball in own defensive 35% zone",
+               "coverage_recoveries": "after a transfer loss, at least two own players recover 10% field width behind the ball",
+               "coverage_recovery_ticks": "sum of elapsed 60-Hz ticks for resolved recoveries; censored cases separate",
+-              "restarts": "per opportunity, one resolved outcome; open/censored opportunities excluded from resolved success rate"},
++              "restarts": "per opportunity, one resolved outcome; open/censored opportunities excluded from resolved success rate",
++              "exit_success": "goal or confirmed pass followed by one second of controlled exit with support",
++              "attack_success": "goal or progressive pass, half-second of controlled central creation and subsequent goal-directed kick",
++              "defense_recovery": "one second of controlled clearance beyond own defensive third with support",
++              "integrated_success": "minimum of exit, creation/finishing and defensive recovery; match cells gated separately",
++              "shots": "observable goal-directed kick trajectory proxy, not an expected-goals model"},
+             "limitations": ["Frozen imitators and scripted teammates are proxies, not validation with real humans.",
+                              "Functional success is an engineering proxy; inspect selected full-match replays."]}
+diff --git a/tests/test_rs4_program.py b/tests/test_rs4_program.py
+index 8451436..44e92f7 100644
+--- a/tests/test_rs4_program.py
++++ b/tests/test_rs4_program.py
+@@ -92,7 +92,8 @@ def test_settings_are_bounded_and_use_canonical_scenarios():
+         settings = program.settings()
+         assert settings["exercise_fraction"] <= .4
+         assert sum(settings["exercise_weights"].values()) == pytest.approx(1.)
+-        assert set(settings["exercise_weights"]) <= {"corner", "lateral", "goal_kick", "exit", "attack", "defense", "transition"}
++        assert set(settings["exercise_weights"]) <= {"corner", "lateral", "goal_kick", "exit", "attack", "defense", "transition",
++                                                    "defensive_transition", "offensive_transition"}
+         assert sum(settings["opponent_mix"].values()) == pytest.approx(1.)
+         assert settings["freeze_normalizers"]
+         program.advance_steps(phase["steps"])
+diff --git a/tools/evaluate_rs4_v3.py b/tools/evaluate_rs4_v3.py
+index 9ab68b2..7b85eb4 100644
+--- a/tools/evaluate_rs4_v3.py
++++ b/tools/evaluate_rs4_v3.py
+@@ -4,6 +4,7 @@ import argparse
+ import json
+ from pathlib import Path
+ from eval.rs4_v3 import evaluate
++from eval.rs4_objective import HOLDOUT_SEEDS
+ from tools.audit_rs4_simulator import digest
+ import torch
+ 
+@@ -19,10 +20,14 @@ def main():
+     ap.add_argument("--games", type=int, default=16)
+     ap.add_argument("--functional-games", type=int, default=16)
+     ap.add_argument("--minutes", type=float, default=2)
++    ap.add_argument("--action-mode", choices=("greedy", "sampled"), default="greedy")
++    ap.add_argument("--holdout", action="store_true", help="Final reserved seeds; never used for selection")
+     ap.add_argument("--reference-report", help="Reuse an immutable evaluated baseline")
+     ap.add_argument("--torch-threads", type=int, default=2)
+     ap.add_argument("--physics-threads", type=int, default=4)
+     args = ap.parse_args()
++    if args.holdout:
++        args.seeds = list(HOLDOUT_SEEDS)
+     from train.runtime import cpu_budget
+     if args.torch_threads < 1 or args.physics_threads < 1:
+         ap.error("Thread counts must be positive")
+@@ -38,7 +43,8 @@ def main():
+     if args.games < 1 or args.functional_games < 1 or args.minutes <= 0:
+         ap.error("Games and minutes must be positive")
+     common = dict(seeds=args.seeds, games=args.games, functional_games=args.functional_games,
+-                  minutes=args.minutes, teammate_reference=args.teammate_reference)
++                  minutes=args.minutes, teammate_reference=args.teammate_reference,
++                  action_mode=args.action_mode, holdout=args.holdout)
+     refs = [args.reference] if args.reference else []
+     report = evaluate(args.checkpoint, references=[*refs, *args.opponents], **common)
+     cache_exists = args.reference_report and Path(args.reference_report).is_file()
+@@ -66,8 +72,8 @@ def main():
+     if reference:
+         report["reference"] = reference
+         report["baseline"] = reference["functional"]["skills"]
+-        report["matches"] = {"points": report["full_games"]["mean_points"],
+-                             "baseline_points": reference["full_games"]["mean_points"]}
++        report["matches"] = {"points": report["full_games"]["balanced_points"],
++                             "baseline_points": reference["full_games"]["balanced_points"]}
+     else:
+         report["matches"] = {"points": report["full_games"]["mean_points"]}
+     out = Path(args.out)
+diff --git a/tools/run_rs4_v3.py b/tools/run_rs4_v3.py
+index b9ca945..ec42898 100644
+--- a/tools/run_rs4_v3.py
++++ b/tools/run_rs4_v3.py
+@@ -22,6 +22,8 @@ import torch
+ from train.checkpoints import atomic_torch_save
+ from train.rs4_program import ProgramState, VERSION
+ from train.runtime import load_config
++from eval.rs4_objective import (CONTRACT, HOLDOUT_SEEDS, signature, curriculum_signature,
++                                eligibility, selection_score, gates as objective_gates)
+ from .prepare_rs4 import ROOT, file_hash
+ 
+ 
+@@ -46,8 +48,8 @@ def normalized_evaluation(report, reference=None):
+     result.setdefault("skills", copy.deepcopy(report.get("functional", {}).get("skills", {})))
+     result.setdefault("baseline", copy.deepcopy(reference.get("functional", {}).get("skills", {})))
+     if "matches" not in result:
+-        result["matches"] = dict(points=report.get("full_games", {}).get("mean_points"),
+-                                 baseline_points=reference.get("full_games", {}).get("mean_points"))
++        result["matches"] = dict(points=report.get("full_games", {}).get("balanced_points", report.get("full_games", {}).get("mean_points")),
++                                 baseline_points=reference.get("full_games", {}).get("balanced_points", reference.get("full_games", {}).get("mean_points")))
+     return result
+ 
+ 
+@@ -78,6 +80,8 @@ def select_candidate(control, memory, control_benchmark, memory_benchmark):
+     gates = dict(throughput=bool(valid_speed), functional=bool(functional), matches=bool(matches),
+                  seed_consistency=len(seeds) >= 2, same_device=devices_match,
+                  same_profile=mixing_match, same_contract=same_contract, memory=bool(safe_memory))
++    if control.get("evaluation_contract") == CONTRACT:
++        gates["critical_cells"] = eligibility(memory, control)["passed"]
+     return dict(selected="memory" if all(gates.values()) else "control", gates=gates,
+                 positive_seeds=seeds, throughput_ratio=m_speed / c_speed if numeric(c_speed) and numeric(m_speed) and c_speed > 0 else None)
+ 
+@@ -85,6 +89,17 @@ def select_candidate(control, memory, control_benchmark, memory_benchmark):
+ def sporting_acceptance(report):
+     """Éxito deportivo requiere evidencia repetida; no sólo consumir el presupuesto."""
+     reference = report.get("reference", {})
++    if report.get("evaluation_contract") == CONTRACT:
++        criteria = objective_gates(report)
++        criteria["critical_non_regression"] = eligibility(report)["passed"]
++        criteria["reserved_suite"] = (report.get("suite", {}).get("holdout") is True
++                                      and tuple(report.get("seeds", ())) == HOLDOUT_SEEDS)
++        candidates = report.get("full_games", {}).get("by_seed", {})
++        baselines = reference.get("full_games", {}).get("by_seed", {})
++        improved = [s for s in HOLDOUT_SEEDS if candidates.get(str(s), {}).get("mean_points", -1)
++                    > baselines.get(str(s), {}).get("mean_points", 1)]
++        criteria["match_seeds"] = len(improved) >= 2
++        return dict(passed=all(criteria.values()), gates=criteria, positive_match_seeds=improved)
+     candidate_f, baseline_f = report.get("functional", {}), reference.get("functional", {})
+     candidate_g, baseline_g = report.get("full_games", {}), reference.get("full_games", {})
+     def improved(candidate, baseline, field):
+@@ -184,16 +199,20 @@ def _render_phase(directory, phase, ledger):
+                                    seed=51, minutes=1)
+ 
+ 
+-def _evaluate(directory, branch, *, full, games, full_games, minutes, seeds, label):
++def _evaluate(directory, branch, *, full, games, full_games, minutes, seeds, label,
++              checkpoint=None, action_mode="greedy", functional_games=16, full_functional_games=64,
++              holdout=False):
+     from eval.rs4_v3 import evaluation_source_fingerprint
+-    candidate, _, _, _ = _checkpoint(directory, branch)
++    candidate = Path(checkpoint) if checkpoint is not None else _checkpoint(directory, branch)[0]
+     manifest = json.loads((directory / "specialization.json").read_text(encoding="utf-8"))
+     reports = directory / manifest.get("evaluation_directory", "evaluations")
+     reports.mkdir(exist_ok=True)
+     output = reports / f"{branch}_{label}.json"
+     identity = dict(checkpoint_sha256=file_hash(candidate), reference_sha256=file_hash(directory / "parent.pt"),
+-                    games=full_games if full else games, minutes=minutes if full else min(minutes, .5),
+-                    seeds=list(seeds), evaluation_sources=evaluation_source_fingerprint())
++                    games=full_games if full else games, minutes=minutes,
++                    functional_games=full_functional_games if full else functional_games,
++                    action_mode=action_mode, holdout=holdout,
++                    seeds=list(HOLDOUT_SEEDS if holdout else seeds), evaluation_sources=evaluation_source_fingerprint())
+     manifest = json.loads((directory / "specialization.json").read_text(encoding="utf-8"))
+     historical = []
+     for item in manifest.get("historical_opponents", []):
+@@ -210,14 +229,21 @@ def _evaluate(directory, branch, *, full, games, full_games, minutes, seeds, lab
+         identity["teacher_sha256"] = teacher["sha256"]
+     # Source upgrades must not reuse a baseline measured with another scorer.
+     # Retain the old file; create a namespaced baseline rather than aborting.
+-    source_tag = identity["evaluation_sources"]["sha256"][:12]
++    import hashlib
++    suite_tag = hashlib.sha256(json.dumps({k:v for k,v in identity.items() if k != "checkpoint_sha256"},
++                                         sort_keys=True).encode()).hexdigest()[:12]
++    source_tag = identity["evaluation_sources"]["sha256"][:12] + "_" + suite_tag
+     reference_cache = reports / f"reference_{'full' if full else 'control'}_{source_tag}.json"
+     cache = output.with_suffix(".identity.json")
+     if not output.exists() or not cache.exists() or json.loads(cache.read_text(encoding="utf-8")) != identity:
+         command = [sys.executable, "-m", "tools.evaluate_rs4_v3", "--checkpoint", str(candidate),
+                    "--reference", str(directory / "parent.pt"), "--out", str(output),
+                    "--games", str(identity["games"]), "--minutes", str(identity["minutes"]),
+-                   "--seeds", *map(str, seeds), "--reference-report", str(reference_cache)]
++                   "--functional-games", str(identity["functional_games"]),
++                   "--action-mode", action_mode,
++                   "--seeds", *map(str, identity["seeds"]), "--reference-report", str(reference_cache)]
++        if holdout:
++            command.append("--holdout")
+         if historical:
+             command.extend(["--opponents", *historical])
+         if teacher:
+@@ -228,13 +254,76 @@ def _evaluate(directory, branch, *, full, games, full_games, minutes, seeds, lab
+     return output, report
+ 
+ 
++def _consider_champion(directory, branch, checkpoint, output, report, ledger, closing_phase):
++    """Reevaluate incumbent under the candidate's exact suite before comparison."""
++    decision = eligibility(report)
++    ledger.setdefault("champion_decisions", []).append(dict(
++        steps=checkpoint["rs4_program_state"]["relative_steps"], report=str(output.relative_to(directory)),
++        eligibility=decision))
++    ledger["champion_decisions"] = ledger["champion_decisions"][-64:]
++    champion_path = directory / "champion.pt"
++    suite = report["suite"]
++    incumbent_report = report["reference"]
++    incumbent_output = None
++    if champion_path.is_file():
++        expected_hash = ledger.get("champion", {}).get("sha256")
++        if expected_hash and file_hash(champion_path) != expected_hash:
++            raise ValueError("El campeón cambió fuera del runner; no comparar otro modelo")
++        incumbent_output, incumbent_report = _evaluate(directory, branch, full=False, games=suite["games"],
++            full_games=suite["games"], functional_games=suite["functional_games"],
++            full_functional_games=suite["functional_games"], minutes=suite["minutes"],
++            seeds=report["seeds"], action_mode=suite["action_mode"],
++            checkpoint=champion_path, label=f"incumbent_{report['checkpoint_sha256'][:12]}")
++        if signature(incumbent_report) != signature(report):
++            raise ValueError("Campeón y candidato no comparten suite de evaluación")
++    score = selection_score(report)
++    # A candidate must also protect the incumbent's critical capabilities.
++    incumbent_safe = decision["passed"] and eligibility(report, incumbent_report)["passed"]
++    promotes = incumbent_safe and score > selection_score(incumbent_report)
++    if not champion_path.is_file():
++        parent = torch.load(directory / "parent.pt", map_location="cpu", weights_only=False)
++        atomic_torch_save(parent, champion_path)
++    if promotes:
++        atomic_torch_save(checkpoint, champion_path)
++        ledger["champion"] = dict(branch=branch, steps=checkpoint["rs4_program_state"]["relative_steps"],
++            score=list(score), report=str(output.relative_to(directory)), signature=signature(report),
++            sha256=file_hash(champion_path))
++    else:
++        previous = ledger.get("champion", {})
++        ledger["champion"] = {**previous, "branch": previous.get("branch", "reference"),
++                              "steps": previous.get("steps", 0), "score": list(selection_score(incumbent_report)),
++                              "signature": signature(incumbent_report), "sha256": file_hash(champion_path),
++                              "revalidated_report": str(incumbent_output.relative_to(directory)) if incumbent_output else str(output.relative_to(directory))}
++    if closing_phase is not None and incumbent_safe:
++        phase = "ABCDEF"[closing_phase]
++        # Phase replays use the same non-regression criterion; keep any previous
++        # file as evidence rather than silently replacing it with an unsafe one.
++        if promotes or not (directory / f"phase_{phase}_champion.pt").exists():
++            atomic_torch_save(checkpoint, directory / f"phase_{phase}_champion.pt")
++            ledger.setdefault("phase_champions", {})[phase] = dict(branch=branch,
++                steps=checkpoint["rs4_program_state"]["relative_steps"], score=list(score),
++                signature=signature(report), report=str(output.relative_to(directory)),
++                sha256=file_hash(directory / f"phase_{phase}_champion.pt"))
++
++
+ def _persist_evaluation(directory, branch, output, report, ledger, *, full=False, closing_phase=None):
+     candidate, ck, cfg, state = _checkpoint(directory, branch)
+     old_phase = state.phase_index
+-    if not state.evaluations or state.last_evaluation_steps != state.relative_steps:
++    corrected = report.get("evaluation_contract") == CONTRACT
++    if corrected and report.get("checkpoint_sha256") != file_hash(candidate):
++        raise ValueError("El informe no corresponde al checkpoint actual; reevaluar antes de modificar el programa")
++    reconcile = corrected and state.objective_signature != curriculum_signature(report)
++    if reconcile:
++        backup = directory / "objective_before_v4.pt"
++        if not backup.exists():
++            atomic_torch_save(ck, backup)
++        state.reconcile_objective(report)
++        ledger.setdefault("objective_reconciliations", []).append(dict(steps=state.relative_steps,
++            report=str(output.relative_to(directory)), signature=state.objective_signature,
++            debts=list(state.skill_debts)))
++    elif not state.evaluations or state.last_evaluation_steps != state.relative_steps:
+         state.record_evaluation(report)
+     ck["rs4_program_state"] = state.state_dict()
+-    atomic_torch_save(ck, candidate)
+     ledger["candidates"][branch]["evaluation"] = str(output.relative_to(directory))
+     ledger["assessments"].append(dict(branch=branch, steps=state.relative_steps,
+                                        phase=state.phase["id"], report=str(output.relative_to(directory))))
+@@ -243,7 +332,9 @@ def _persist_evaluation(directory, branch, output, report, ledger, *, full=False
+     # Selección de campeón independiente, no por training reward/último checkpoint.
+     skills = report.get("functional", {}).get("mean_success")
+     points = report.get("full_games", {}).get("mean_points")
+-    if full and all(isinstance(v, (int, float)) and math.isfinite(v) for v in (skills, points)):
++    if corrected and ledger.get("selected") == branch:
++        _consider_champion(directory, branch, ck, output, report, ledger, closing_phase)
++    elif full and all(isinstance(v, (int, float)) and math.isfinite(v) for v in (skills, points)):
+         score = (float(points), float(skills))
+         previous = ledger.get("champion", {})
+         old = tuple(previous.get("score", (-math.inf, -math.inf)))
+@@ -260,6 +351,7 @@ def _persist_evaluation(directory, branch, output, report, ledger, *, full=False
+                 atomic_torch_save(ck, path)
+                 ledger["phase_champions"][phase] = dict(branch=branch, steps=state.relative_steps,
+                     score=list(score), report=str(output.relative_to(directory)), sha256=file_hash(path))
++    atomic_torch_save(ck, candidate)
+     atomic_json(refresh_ledger(directory, ledger), directory / "ledger.json")
+     if full and closing_phase is not None and ledger.get("selected") == branch:
+         _render_phase(directory, "ABCDEF"[closing_phase], ledger)
+@@ -364,13 +456,18 @@ def execution_outline(directory):
+ 
+ 
+ def run(run_name="rs4_v3", *, resume=False, dry_run=False, games=16, full_games=128,
+-        minutes=2., seeds=(51, 73, 91), warmup=3, iters=8):
++        minutes=2., seeds=(51, 73, 91), warmup=3, iters=8, evaluate_only=False,
++        segment_steps=None, action_mode="greedy", functional_games=16, full_functional_games=64):
+     if not run_name or run_name in (".", "..") or any(c in run_name for c in '/\\:'):
+         raise ValueError("run debe ser un nombre simple")
+     if games < 2 or games % 2 or full_games < games or full_games % 2 or minutes <= 0:
+         raise ValueError("games/full-games pares >=2, full-games>=games, minutos positivos")
+     if tuple(seeds) != (51, 73, 91):
+         raise ValueError("La selección exige semillas 51,73,91")
++    if functional_games < 1 or full_functional_games < functional_games or action_mode not in ("greedy", "sampled"):
++        raise ValueError("Perfil de evaluación inválido")
++    if segment_steps is not None and (not isinstance(segment_steps, int) or segment_steps < 1):
++        raise ValueError("segment_steps debe ser un entero positivo")
+     directory = ROOT / "runs" / run_name
+     manifest = json.loads((directory / "specialization.json").read_text(encoding="utf-8"))
+     if manifest.get("kind") != "rs4_v3_program" or manifest.get("version") != VERSION:
+@@ -396,12 +493,14 @@ def run(run_name="rs4_v3", *, resume=False, dry_run=False, games=16, full_games=
+         else:
+             import fcntl
+             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+-        if ledger["complete"]:
++        if ledger["complete"] and not evaluate_only:
+             for phase in sorted(ledger.get("phase_champions", {})):
+                 _render_phase(directory, phase, ledger)
+             atomic_json(ledger, directory / "ledger.json")
+             return ledger
+         pilot = manifest["pilot_steps"]
++        if evaluate_only and ledger["selected"] is None:
++            raise ValueError("Primero debe existir una rama seleccionada; evaluate-only nunca ejecuta pilotos PPO")
+         if ledger["selected"] is None:
+             for branch in ("control", "memory"):
+                 _, _, cfg, state = _checkpoint(directory, branch)
+@@ -411,18 +510,24 @@ def run(run_name="rs4_v3", *, resume=False, dry_run=False, games=16, full_games=
+                         _train_chunk(directory, branch, target)
+                         atomic_json(refresh_ledger(directory, ledger), directory / "ledger.json")
+                     output, report = _evaluate(directory, branch, full=False, games=games, full_games=full_games,
+-                                               minutes=minutes, seeds=seeds, label=f"pilot_{target}")
++                                               minutes=minutes, seeds=seeds, label=f"pilot_{target}",
++                                               action_mode=action_mode, functional_games=functional_games,
++                                               full_functional_games=full_functional_games)
+                     _persist_evaluation(directory, branch, output, report, ledger)
+                     _, _, cfg, state = _checkpoint(directory, branch)
+                 if state.evaluation_due:
+                     output, report = _evaluate(directory, branch, full=False, games=games, full_games=full_games,
+-                                               minutes=minutes, seeds=seeds, label=f"pilot_{state.relative_steps}")
++                                               minutes=minutes, seeds=seeds, label=f"pilot_{state.relative_steps}",
++                                               action_mode=action_mode, functional_games=functional_games,
++                                               full_functional_games=full_functional_games)
+                     _persist_evaluation(directory, branch, output, report, ledger)
+                 ledger["candidates"][branch]["complete"] = True
+             reports = {}
+             for branch in ("control", "memory"):
+                 output, reports[branch] = _evaluate(directory, branch, full=True, games=games, full_games=full_games,
+-                                                   minutes=minutes, seeds=seeds, label="pilot_full")
++                                                   minutes=minutes, seeds=seeds, label="pilot_full",
++                                                   action_mode=action_mode, functional_games=functional_games,
++                                                   full_functional_games=full_functional_games)
+                 ledger["candidates"][branch]["evaluation"] = str(output.relative_to(directory))
+             benchmarks = _benchmarks(directory, warmup, iters)
+             ledger["diagnostic_ppo_steps"] = benchmarks["control"].get("diagnostic_work_total", sum(
+@@ -451,24 +556,41 @@ def run(run_name="rs4_v3", *, resume=False, dry_run=False, games=16, full_games=
+         state.charge_diagnostics(ledger.get("diagnostic_ppo_steps", 0))
+         checkpoint["rs4_program_state"] = state.state_dict()
+         atomic_torch_save(checkpoint, candidate)
++        from eval.rs4_v3 import evaluation_source_fingerprint
++        prior = state.evaluations[-1]["report"] if state.evaluations else {}
++        refresh = (state.objective_contract != CONTRACT or
++                   prior.get("source_fingerprint") != evaluation_source_fingerprint() or
++                   prior.get("suite", {}).get("action_mode") != action_mode or
++                   prior.get("suite", {}).get("minutes") != minutes)
++        if refresh or evaluate_only:
++            output, report = _evaluate(directory, winner, full=True, games=games, full_games=full_games,
++                minutes=minutes, seeds=seeds, label=f"objective_v4_{state.relative_steps}",
++                action_mode=action_mode, functional_games=functional_games, full_functional_games=full_functional_games)
++            _persist_evaluation(directory, winner, output, report, ledger, full=True)
++            _, _, cfg, state = _checkpoint(directory, winner)
++        if evaluate_only:
++            return ledger
++        segment_end = min(state.effective_branch_limit, state.relative_steps + segment_steps) if segment_steps else state.effective_branch_limit
+         for phase in sorted(ledger.get("phase_champions", {})):
+             _render_phase(directory, phase, ledger)
+         atomic_json(refresh_ledger(directory, ledger), directory / "ledger.json")
+-        while not state.complete:
++        while not state.complete and state.relative_steps < segment_end:
+             if state.transitions:
+                 transition = state.transitions[-1]
+                 phase = transition["from_phase"]
+                 if (transition["steps"] == state.relative_steps
+                         and phase not in ledger.get("phase_champions", {})):
+                     output, report = _evaluate(directory, winner, full=True, games=games, full_games=full_games,
+-                                               minutes=minutes, seeds=seeds, label=f"phase_{phase}_recovered_{state.relative_steps}")
++                                               minutes=minutes, seeds=seeds, label=f"phase_{phase}_recovered_{state.relative_steps}",
++                                               action_mode=action_mode, functional_games=functional_games,
++                                               full_functional_games=full_functional_games)
+                     _persist_evaluation(directory, winner, output, report, ledger, full=True,
+                                           closing_phase="ABCDEF".index(phase))
+                     _, _, cfg, state = _checkpoint(directory, winner)
+             old_phase = state.phase_index
+             interval = cfg["rs4_program"]["evaluation_every_steps"]
+             nominal_end = state.phase_start_steps + state.phase["steps"]
+-            target = min(state.effective_branch_limit, state.last_evaluation_steps + interval)
++            target = min(state.effective_branch_limit, state.last_evaluation_steps + interval, segment_end)
+             if old_phase < 5:
+                 target = min(target, nominal_end)
+             if target > state.relative_steps:
+@@ -480,21 +602,36 @@ def run(run_name="rs4_v3", *, resume=False, dry_run=False, games=16, full_games=
+                 pending_close = "ABCDEF".index(state.transitions[-1]["from_phase"])
+             full = state.complete or state.phase_index != old_phase or pending_close is not None
+             output, report = _evaluate(directory, winner, full=full, games=games, full_games=full_games,
+-                                       minutes=minutes, seeds=seeds, label=f"steps_{state.relative_steps}")
++                                       minutes=minutes, seeds=seeds, label=f"steps_{state.relative_steps}",
++                                       action_mode=action_mode, functional_games=functional_games,
++                                       full_functional_games=full_functional_games)
+             advanced = _persist_evaluation(directory, winner, output, report, ledger, full=full,
+                                             closing_phase=(pending_close if pending_close is not None else old_phase) if full else None)
+             if advanced and not full:
+                 output, report = _evaluate(directory, winner, full=True, games=games, full_games=full_games,
+-                                           minutes=minutes, seeds=seeds, label=f"phase_{old_phase}_full_{state.relative_steps}")
++                                           minutes=minutes, seeds=seeds, label=f"phase_{old_phase}_full_{state.relative_steps}",
++                                           action_mode=action_mode, functional_games=functional_games,
++                                           full_functional_games=full_functional_games)
+                 _persist_evaluation(directory, winner, output, report, ledger, full=True, closing_phase=old_phase)
+             _, _, cfg, state = _checkpoint(directory, winner)
++        if not state.complete:
++            ledger["last_segment"] = dict(steps=state.relative_steps, limit=segment_end,
++                pending_skills=list(state.skill_debts), evaluation=ledger["candidates"][winner]["evaluation"])
++            atomic_json(refresh_ledger(directory, ledger), directory / "ledger.json")
++            print("Segmento acotado finalizado; revisar evaluación antes de continuar.", flush=True)
++            return ledger
+         ledger["complete"] = True
+         ledger["pending_skills"] = list(state.skill_debts)
+         if not ledger.get("final_report"):
+             output, report = _evaluate(directory, winner, full=True, games=games, full_games=full_games,
+-                                       minutes=minutes, seeds=seeds, label="final")
++                                       minutes=minutes, seeds=seeds, label="final", action_mode=action_mode,
++                                       functional_games=functional_games, full_functional_games=full_functional_games)
+             _persist_evaluation(directory, winner, output, report, ledger, full=True, closing_phase=5)
+-        final_report = json.loads((directory / ledger["final_report"]).read_text(encoding="utf-8"))
++        output, final_report = _evaluate(directory, winner, full=True, games=games, full_games=full_games,
++            minutes=minutes, seeds=seeds, label="holdout_champion", checkpoint=directory / "champion.pt",
++            holdout=True, action_mode=action_mode, functional_games=functional_games,
++            full_functional_games=full_functional_games)
++        ledger["holdout_report"] = str(output.relative_to(directory))
+         ledger["sporting_acceptance"] = sporting_acceptance(final_report)
+         ledger["sporting_success"] = not state.skill_debts and ledger["sporting_acceptance"]["passed"]
+         atomic_json(refresh_ledger(directory, ledger), directory / "ledger.json")
+@@ -520,6 +657,12 @@ def main():
+     parser.add_argument("--run", default="rs4_v3")
+     parser.add_argument("--resume", action="store_true")
+     parser.add_argument("--dry-run", action="store_true")
++    parser.add_argument("--evaluate-only", action="store_true", help="Reevaluar y reconciliar antes de continuar; no PPO")
++    parser.add_argument("--segment-steps", type=int, default=100_000_000,
++                        help="Continuación acotada (100M por defecto); 0 para presupuesto restante completo")
++    parser.add_argument("--action-mode", choices=("greedy", "sampled"), default="greedy")
++    parser.add_argument("--functional-games", type=int, default=16)
++    parser.add_argument("--full-functional-games", type=int, default=64)
+     parser.add_argument("--games", type=int, default=16, help="Partidos pares por rival/semilla en controles")
+     parser.add_argument("--full-games", type=int, default=128)
+     parser.add_argument("--minutes", type=float, default=2.)
+@@ -530,7 +673,9 @@ def main():
+     try:
+         result = run(args.run, resume=args.resume, dry_run=args.dry_run, games=args.games,
+                      full_games=args.full_games, minutes=args.minutes, seeds=args.seeds,
+-                     warmup=args.warmup, iters=args.iters)
++                     warmup=args.warmup, iters=args.iters, evaluate_only=args.evaluate_only,
++                     segment_steps=args.segment_steps or None, action_mode=args.action_mode,
++                     functional_games=args.functional_games, full_functional_games=args.full_functional_games)
+     except (OSError, ValueError, subprocess.CalledProcessError) as error:
+         parser.error(str(error))
+     except KeyboardInterrupt:
+diff --git a/train/rs4_program.py b/train/rs4_program.py
+index 799215f..e063be1 100644
+--- a/train/rs4_program.py
++++ b/train/rs4_program.py
+@@ -83,6 +83,8 @@ class ProgramState:
+         self.recovery_consumed = 0
+         self.recovery_block_skill = None
+         self.recovery_block_start = None
++        self.objective_signature = None
++        self.objective_contract = None
+         if saved is not None:
+             self._restore(saved)
+ 
+@@ -284,8 +286,7 @@ class ProgramState:
+                 weights[key] = weights.get(key, 0) + .5 / len(self.skill_debts)
+             total = sum(weights.values())
+             weights = {key: value / total for key, value in weights.items()}
+-        aliases = dict(throw_in="lateral", build_up="exit", defensive_transition="transition",
+-                       offensive_transition="transition")
++        aliases = dict(throw_in="lateral", build_up="exit")
+         canonical = {}
+         for key, value in weights.items():
+             key = aliases.get(key, key)
+@@ -296,7 +297,7 @@ class ProgramState:
+             guide = .02
+             phase["exercises"] = .4
+             focused = {"restarts": dict(corner=.5, lateral=.25, goal_kick=.25),
+-                       "defense": dict(defense=.7, transition=.3),
++                       "defense": dict(defense=.7, defensive_transition=.3),
+                        "attack": dict(attack=.6, exit=.4),
+                        "integrated": dict(exit=.4, attack=.3, defense=.3),
+                        "teammates": dict(exit=.5, attack=.5)}[self.recovery_block_skill]
+@@ -311,10 +312,18 @@ class ProgramState:
+             # El tramo final elimina también premios de práctica, no los goles.
+             bonus *= min(1., max(0., (self.remaining_steps - self.config["final_unassisted_steps"])
+                                  / max(1, self.effective_branch_limit - self.phase_start_steps - self.config["final_unassisted_steps"])))
++        from eval.rs4_objective import CONTRACT
++        corrected = self.objective_contract == CONTRACT
++        teammates = phase["teammates"]
++        if corrected and self.phase_index >= 2:
++            teammates = max(teammates, (.35, .45, .50, .50)[self.phase_index - 2])
+         return dict(phase_id=phase["id"], phase_name=phase["name"], guide_coef=guide,
+                     exercise_fraction=phase["exercises"], exercise_weights=weights,
+                     opponent_mix={name: phase[name] for name in ("scripted", "selfplay", "pool")},
+-                    frozen_teammates_fraction=phase["teammates"], restart_execute_bonus=bonus,
++                    frozen_teammates_fraction=teammates,
++                    teammate_learner_weights=(.5, .3, .2) if corrected else (1/3, 1/3, 1/3),
++                    scenario_difficulty=min(1., .2 * self.phase_index) if corrected else 0.,
++                    restart_execute_bonus=bonus,
+                     restart_bonus=bonus,
+                     restart_potential_coef=.025 * min(1., guide / .08),
+                     restart_stall_penalty=.25, recovery=recovery,
+@@ -328,6 +337,9 @@ class ProgramState:
+         Ausencia de evidencia NO equivale a aprobar. El evaluador mantiene sus
+         conteos y semillas originales junto a este resumen.
+         """
++        from eval.rs4_objective import CONTRACT, gates
++        if report.get("evaluation_contract") == CONTRACT:
++            return gates(report)
+         skills, baseline = report.get("skills", {}), report.get("baseline", {})
+         matches = report.get("matches", {})
+         def number(mapping, key):
+@@ -341,12 +353,40 @@ class ProgramState:
+         integrated, base_integrated = number(skills, "integrated_success"), number(baseline, "integrated_success")
+         teammates, base_teammates = number(skills, "teammate_success"), number(baseline, "teammate_success")
+         return dict(restarts=all(x is not None for x in restart) and restart[0] >= .8 and min(restart[1:]) >= .7,
+-                    defense=conceded is not None and base_conceded is not None and base_conceded > 0 and conceded <= .8 * base_conceded,
++                    defense=conceded is not None and base_conceded is not None and conceded <= .8 * base_conceded,
+                     attack=attack is not None and base_attack is not None and attack >= base_attack + .1,
+                     integrated=safe and integrated is not None and base_integrated is not None and integrated > base_integrated,
+                     teammates=safe and teammates is not None and base_teammates is not None and teammates > base_teammates)
+ 
++    def reconcile_objective(self, report):
++        """Reassess debts at the same weights/steps; preserve original evidence.
++
++        This is never a second approval and cannot advance a phase. Settings
++        adaptations are enabled only after evaluating the new objective.
++        """
++        from eval.rs4_objective import CONTRACT, signature, curriculum_signature
++        if report.get("suite", {}).get("holdout"):
++            raise ValueError("La suite reservada no modifica el currículo")
++        if report.get("evaluation_contract") != CONTRACT or not report.get("reference"):
++            raise ValueError("La reconciliación requiere referencia evaluada con el contrato actual")
++        if signature(report) != signature(report["reference"]):
++            raise ValueError("Referencia y candidato deben usar la misma suite")
++        current = curriculum_signature(report)
++        if self.objective_signature == current:
++            return
++        self.objective_signature, self.objective_contract = current, CONTRACT
++        gates = self.evaluation_gates(report)
++        taught = SKILLS[:min(5, self.phase_index + 1)]
++        self.skill_debts = [skill for skill in taught if not gates[skill]]
++        self.pass_streak = 0
++        self.last_evaluation_steps = self.relative_steps
++        self.evaluations.append(dict(steps=self.relative_steps, phase=self.phase["id"],
++                                     kind="objective_reconciliation", gates=gates, report=copy.deepcopy(report)))
++        self._update_recovery()
++
+     def record_evaluation(self, report):
++        if report.get("suite", {}).get("holdout"):
++            raise ValueError("La suite reservada no modifica el currículo")
+         if self.evaluations and self.relative_steps <= self.last_evaluation_steps:
+             raise ValueError("Una evaluación repetida del mismo punto no cuenta como segunda aprobación")
+         gates = self.evaluation_gates(report)
+@@ -372,7 +412,8 @@ class ProgramState:
+     def state_dict(self):
+         fields = ("phase_index", "relative_steps", "diagnostic_steps", "phase_start_steps", "pass_streak", "lr",
+                   "last_lr_iteration", "last_endpoint_iteration", "lr_kl_window", "lr_events", "last_evaluation_steps", "last_snapshot_steps", "skill_debts",
+-                  "evaluations", "transitions", "recovery_consumed", "recovery_block_skill", "recovery_block_start")
++                  "evaluations", "transitions", "recovery_consumed", "recovery_block_skill", "recovery_block_start",
++                  "objective_signature", "objective_contract")
+         return dict(version=VERSION, config=copy.deepcopy(self.config),
+                     **{name: copy.deepcopy(getattr(self, name)) for name in fields})
+ 
+@@ -383,6 +424,8 @@ class ProgramState:
+         for name in fresh:
+             if name not in ("version", "config"):
+                 if name not in saved:
++                    if name in ("objective_signature", "objective_contract"):
++                        continue  # old v3 checkpoints acquire this only through reevaluation
+                     raise ValueError(f"Estado RS4 incompleto: {name}")
+                 setattr(self, name, copy.deepcopy(saved[name]))
+         for key in ("phase_index", "relative_steps", "diagnostic_steps", "phase_start_steps", "pass_streak", "last_evaluation_steps",
+diff --git a/train/rs4_trainer.py b/train/rs4_trainer.py
+index 36e798d..3d880a8 100644
+--- a/train/rs4_trainer.py
++++ b/train/rs4_trainer.py
+@@ -193,7 +193,8 @@ class RS4V3Trainer(MultiTrainer):
+             s.controller[e, theirs] = opponent
+             companion_fraction = self.cfg.get("runtime", {}).get("benchmark_companion_fraction", settings["frozen_teammates_fraction"])
+             if self.rng.random() < companion_fraction:
+-                learners = int(self.rng.integers(1, 4))
++                learners = (int(self.rng.integers(1, 4)) if self.program.objective_contract is None else
++                            int(self.rng.choice((1, 2, 3), p=settings["teammate_learner_weights"])))
+                 frozen = self.rng.permutation(ours)[learners:]
+                 companions = ["scripted", *usable_pool]
+                 if self.bc_model is not None:
+@@ -498,6 +499,9 @@ class RS4V3Trainer(MultiTrainer):
+                       "rs4/tactical_potential_bound": settings["guide_coef"],
+                       "rs4/pass_possession_cap": self.slots[0].env.rcfg.team_pass_possession_cap,
+                       "rs4/tactical_coef": settings["guide_coef"], "rs4/tactical_reward_mean": tactical_sum / max(tactical_count, 1),
++                      "rs4/frozen_teammates_fraction": settings["frozen_teammates_fraction"],
++                      "rs4/single_learner_assignment_fraction": settings["frozen_teammates_fraction"] * settings["teammate_learner_weights"][0],
++                      "rs4/scenario_difficulty": settings["scenario_difficulty"],
+                       "rs4/tactical_reward_abs_mean": tactical_abs / max(tactical_count, 1)})
+         stats.update(component_stats)
+         for i, name in enumerate(RESTART_EVENT_NAMES):
+@@ -519,6 +523,11 @@ class RS4V3Trainer(MultiTrainer):
+             print(f"      carga rollout | filas aprendices {samples:,}/{length * self.total_rows:,} "
+                   f"({100 * stats['rollout/learner_fraction']:.1f}%) | políticas neuronales {len(self._routes)} "
+                   f"| setup {setup_seconds:.3f}s mantenimiento {maintenance_seconds:.3f}s", flush=True)
++            if self.program.objective_contract:
++                print(f"      objetivo {self.program.objective_contract} | compañeros congelados "
++                      f"{settings['frozen_teammates_fraction']:.0%} | asignaciones de una instancia "
++                      f"{stats['rs4/single_learner_assignment_fraction']:.1%} | dificultad "
++                      f"{settings['scenario_difficulty']:.2f}", flush=True)
+         self._last_iteration_timings = dict(setup=setup_seconds, maintenance=maintenance_seconds,
+                                             logging=time.perf_counter() - logging_started, schedule=0.)
+ 
+diff --git a/eval/rs4_objective.py b/eval/rs4_objective.py
+new file mode 100644
+--- /dev/null
++++ b/eval/rs4_objective.py
+@@ -0,0 +1,98 @@
++"""Versioned sporting criteria shared by evaluations, curriculum and selection."""
++from __future__ import annotations
++
++import hashlib
++import json
++import math
++
++CONTRACT = "RS4-v4-impact-1"
++TRAIN_SEEDS = (51, 73, 91)
++HOLDOUT_SEEDS = (137, 211, 307)
++TOLERANCE = .05
++
++
++def signature(report):
++    """Only identical scorer, controllers and suite may share sporting scores."""
++    return hashlib.sha256(json.dumps({key: report.get(key) for key in
++        ("evaluation_contract", "source_fingerprint", "suite", "seeds")},
++        sort_keys=True).encode()).hexdigest()
++
++
++def curriculum_signature(report):
++    # More games at a phase close improve precision without changing what the
++    # phase teaches or invalidating a streak from the identical control suite.
++    identity = {k: report.get(k) for k in ("evaluation_contract", "source_fingerprint", "seeds")}
++    identity["suite"] = {k: v for k, v in report.get("suite", {}).items()
++                         if k not in ("games", "functional_games")}
++    return hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
++
++
++def number(mapping, key):
++    value = mapping.get(key)
++    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) else None
++
++
++def no_regression_cells(report, reference=None):
++    reference = reference or report.get("reference", {})
++    ours = report.get("full_games", {}).get("cells", {})
++    theirs = reference.get("full_games", {}).get("cells", {})
++    if (not ours or set(ours) != set(theirs)
++            or {row.get("learner_count") for row in ours.values()} != {1, 2, 3, 4}):
++        return {"passed": False, "reason": "missing_or_different_cells", "failed_cells": []}
++    failures = []
++    for key, row in ours.items():
++        other = theirs[key]
++        a, b = number(row, "points"), number(other, "points")
++        if a is None or b is None or min(row.get("games", 0), other.get("games", 0)) < 32 or a < b - TOLERANCE:
++            failures.append(key)
++    return {"passed": not failures, "failed_cells": failures, "tolerance": TOLERANCE}
++
++
++def gates(report):
++    """Absolute competence plus improvement/non-regression; saturated baselines
++    cannot make competence impossible. Missing metrics always fail.
++    """
++    skills, baseline = report.get("skills", {}), report.get("baseline", {})
++    def at_least(key, floor, gain=0.):
++        a, b = number(skills, key), number(baseline, key)
++        if a is None or b is None:
++            return False
++        # If the baseline is near the ceiling, maintaining competence suffices.
++        target = max(floor, min(1., b + gain)) if b < 1 - gain else max(floor, b - .02)
++        return a >= target
++    conceded, base_conceded = number(skills, "defense_conceded"), number(baseline, "defense_conceded")
++    risk, base_risk = number(skills, "defense_danger_fraction"), number(baseline, "defense_danger_fraction")
++    defensive = (conceded is not None and base_conceded is not None
++                 and conceded <= max(.02, .8 * base_conceded)
++                 and at_least("defense_recovery", .6)
++                 and risk is not None and base_risk is not None and risk <= base_risk + .02)
++    safe = no_regression_cells(report)["passed"]
++    restarts = [number(skills, k) for k in ("restart_success", "corner_success_red", "corner_success_blue")]
++    return dict(restarts=all(x is not None for x in restarts) and restarts[0] >= .8 and min(restarts[1:]) >= .7,
++                defense=defensive,
++                attack=at_least("exit_success", .5, .05) and at_least("attack_success", .3, .05),
++                integrated=safe and at_least("integrated_success", .5),
++                teammates=safe and at_least("teammate_success", .3))
++
++
++def eligibility(report, reference=None):
++    reference = reference or report.get("reference", {})
++    if report.get("evaluation_contract") != CONTRACT or signature(report) != signature(reference):
++        return dict(passed=False, reason="different_contract_or_suite")
++    cells = no_regression_cells(report, reference)
++    a, b = report.get("skills", {}), reference.get("skills", {})
++    failures = []
++    for key, direction in (("restart_success", 1), ("defense_recovery", 1),
++                           ("defense_conceded", -1), ("exit_success", 1), ("attack_success", 1)):
++        x, y = number(a, key), number(b, key)
++        if x is None or y is None or direction * (x - y) < -TOLERANCE:
++            failures.append(key)
++    return dict(passed=cells["passed"] and not failures, cells=cells, failed_skills=failures)
++
++
++def selection_score(report):
++    """Worst single-instance cell first; global means cannot mask that use case."""
++    cells = report["full_games"]["cells"]
++    single = [r["points"] for r in cells.values() if r["learner_count"] == 1]
++    return (min(single), report["full_games"]["balanced_points"],
++            report["functional"]["mean_success"])
+diff --git a/tests/test_rs4_objective.py b/tests/test_rs4_objective.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_rs4_objective.py
+@@ -0,0 +1,231 @@
++"""Behavioral regressions from the 2B objective audit, with no production PPO."""
++import copy
++import json
++from itertools import product
++
++import numpy as np
++import pytest
++import torch
++import yaml
++
++from env.haxball_env import HaxballEnv
++from env.rs4_v3 import RS4ScenarioEnv, SCENARIOS
++from eval import rs4_v3 as evaluator
++from eval.rs4_objective import CONTRACT, gates, eligibility, selection_score
++from train.rs4_program import ProgramState, default_program
++from tools import run_rs4_v3 as runner
++
++
++def report():
++    cells = {str(count): dict(learner_count=count, games=96, points=.6) for count in (1, 2, 3, 4)}
++    skills = dict(restart_success=.9, corner_success_red=.9, corner_success_blue=.9,
++                  defense_conceded=0., defense_recovery=.8, defense_danger_fraction=.05,
++                  exit_success=.7, attack_success=.6, integrated_success=.6, teammate_success=.6)
++    base = dict(evaluation_contract=CONTRACT, source_fingerprint={"sha256": "same"},
++                suite=dict(games=16, functional_games=16, minutes=2., action_mode="greedy"),
++                seeds=[51, 73, 91], full_games=dict(cells=cells, balanced_points=.6),
++                skills=skills, functional=dict(mean_success=.7))
++    candidate = copy.deepcopy(base)
++    candidate.update(reference=copy.deepcopy(base), baseline=copy.deepcopy(skills), checkpoint_sha256="test")
++    return candidate
++
++
++def test_zero_conceded_baseline_can_approve_competent_recovery_but_not_inactivity():
++    r = report()
++    assert gates(r)["defense"]
++    r["skills"]["defense_recovery"] = 0
++    assert not gates(r)["defense"]
++    r["skills"].pop("defense_recovery")
++    assert not gates(r)["defense"]
++
++
++def test_regressed_single_instance_blocks_global_improvement_and_champion():
++    r = report()
++    r["full_games"]["balanced_points"] = .9
++    r["full_games"]["cells"]["1"]["points"] = .4
++    assert not gates(r)["teammates"]
++    assert not eligibility(r)["passed"]
++    assert selection_score(r) < selection_score(r["reference"])
++
++
++def test_incomplete_cells_and_other_source_or_action_contract_are_ineligible():
++    r = report()
++    r["full_games"]["cells"].pop("1")
++    assert not eligibility(r)["passed"]
++    r = report()
++    r["reference"]["suite"]["action_mode"] = "sampled"
++    assert not eligibility(r)["passed"]
++    r = report()
++    r["reference"]["source_fingerprint"]["sha256"] = "old"
++    assert not eligibility(r)["passed"]
++
++
++@pytest.mark.parametrize("name,attacking", [("offensive_transition", True), ("defensive_transition", False)])
++def test_transition_direction_survives_sampling_and_retargeting(name, attacking):
++    env = RS4ScenarioEnv(HaxballEnv(10, 4, "rs_one", out_of_bounds=True, obs_layout="universal", seed=1),
++                         dict(exercise_fraction=.4, exercise_weights={name: 1}))
++    env.reset()
++    selected = np.flatnonzero(env.is_drill)
++    assert np.all(env.scenario[selected] == SCENARIOS.index(name))
++    assert np.all(env.transition_attacking[selected] == attacking)
++    env.retarget(selected, 1 - env.drill_team[selected])
++    assert np.all(env.transition_attacking[selected] == attacking)
++
++
++@pytest.mark.parametrize("passes,control", [(0, True), (1, False), (1, True)])
++def test_exit_requires_received_pass_and_one_second_of_continuous_control(monkeypatch, passes, control):
++    env = RS4ScenarioEnv(HaxballEnv(1, 4, "rs_one", out_of_bounds=True, obs_layout="universal", seed=1),
++                         dict(guide_coef=0, restart_bonus=0))
++    env.reset()
++    env.assign([0], scenario="exit", team=0)
++    env.drill_limit[:] = 63
++    env.sim.ball_pos[:] = [-.1 * env.field_w, 0]
++    env.sim.player_pos[0, :4] = env.sim.ball_pos[0] + [[-20, 0], [-100, 100], [-150, -100], [-400, 0]]
++    env.sim.player_pos[0, 4:] = env.sim.ball_pos[0] + [[150, 0], [200, 100], [300, -100], [500, 0]]
++    if not control:
++        env.sim.player_pos[0, :4, 0] -= 200
++    calls = 0
++    def step(actions):
++        nonlocal calls
++        calls += 1
++        obs = env.observe().copy()
++        events = {k: np.zeros((1, 2), dtype=int) for k in ("passes", "progressive_passes", "restart_timeouts")}
++        events["passes"][0, 0] = passes if calls == 1 else 0
++        return obs, np.zeros((1, 8)), np.zeros(1, bool), dict(final_obs=obs, events=events,
++            kicked=np.zeros((1, 8), bool), goal=np.zeros(1, int), truncated=np.zeros(1, bool),
++            match_done=np.zeros(1, bool), final_score=np.full((1, 2), -1))
++    monkeypatch.setattr(env.base, "step", step)
++    for _ in range(21):
++        _, _, _, info = env.step(np.zeros((1, 8), int))
++    assert info["scenario_result"][0]["success"] == bool(passes and control)
++
++
++def test_factorial_matrix_has_every_seed_composition_style_color_and_proxy(monkeypatch):
++    calls = []
++    class Agent:
++        pass
++    monkeypatch.setattr(evaluator, "make_agent", lambda *a, **kw: Agent())
++    def full(agent, opponent, games, minutes, seed, color):
++        calls.append((seed, color, len(agent.learner_slots) if isinstance(agent, evaluator.MixedTeamAgent) else 4))
++        return dict(games=games, color=color, seed=seed, wins=games, draws=0, losses=0, points=1.,
++                    goals_for=games, goals_against=0, behavior={})
++    def functional(agent, scenario, games, seed, color, **kwargs):
++        return dict(scenario=scenario, games=games, seed=seed, color=color, success=.5, conceded=0,
++                    danger_fraction=0., goal_rate=.1, restarts=dict(resolved=games, successes=games))
++    monkeypatch.setattr(evaluator, "full_game", full)
++    monkeypatch.setattr(evaluator, "functional_trial", functional)
++    r = evaluator.evaluate("weights.pt", teammate_reference="teacher.pt", seeds=(51, 73, 91))
++    rows = r["full_games"]["rows"]
++    mixed = {(row["seed"], row["learner_count"], row["opponent"], row["teammate"], row["color"])
++             for row in rows if row["team_mode"] == "mixed"}
++    assert mixed == set(product((51, 73, 91), (1, 2, 3),
++        ("scripted:r3:0", "scripted:r3:1", "scripted:r3:2"),
++        ("scripted:r3:0", "scripted:r3:2", "teacher.pt"), (0, 1)))
++    assert r["suite"]["action_mode"] == "greedy"
++    assert r["skills"]["integrated_success"] == .5
++
++
++def test_reconciliation_keeps_steps_adam_weights_history_and_never_advances(tmp_path):
++    p = ProgramState(default_program(4_500_000_000))
++    p.advance_steps(1_942_311_810)
++    p.skill_debts = ["defense", "attack"]
++    p.pass_streak = 1
++    p.evaluations = [dict(steps=1_900_000_000, phase="C", report={"old": True}, gates={})]
++    p.last_evaluation_steps = 1_900_000_000
++    directory = tmp_path / "runs/program"
++    for branch in ("control", "memory"):
++        sub = directory / branch
++        sub.mkdir(parents=True)
++        (sub / "config.yaml").write_text(yaml.safe_dump({"rs4_program": p.config}))
++        torch.save(dict(steps=p.config["start_steps"] + p.relative_steps,
++                        model={"tensor": torch.tensor([3.])}, opt={"adam": torch.tensor([7.])},
++                        rs4_program_state=p.state_dict()), sub / "latest.pt")
++    ledger = dict(selected="control", total_budget_steps=6_000_000_000,
++                  candidates={b: dict(useful_steps=0) for b in ("control", "memory")}, assessments=[])
++    torch.save(dict(model={"tensor": torch.tensor([2.])}), directory / "parent.pt")
++    r = report()
++    r["checkpoint_sha256"] = runner.file_hash(directory / "control/latest.pt")
++    r["full_games"]["cells"]["1"]["points"] = .4  # no champion mutation; genuine debt assessment still occurs
++    output = directory / "evaluation.json"
++    output.write_text(json.dumps(r))
++    runner._persist_evaluation(directory, "control", output, r, ledger)
++    ck = torch.load(directory / "control/latest.pt", weights_only=False)
++    after = ck["rs4_program_state"]
++    assert after["relative_steps"] == p.relative_steps
++    assert after["phase_index"] == p.phase_index
++    assert after["pass_streak"] == 0
++    assert "defense" not in after["skill_debts"]
++    assert after["evaluations"][0]["report"] == {"old": True}
++    assert torch.equal(ck["model"]["tensor"], torch.tensor([3.]))
++    assert torch.equal(ck["opt"]["adam"], torch.tensor([7.]))
++    assert (directory / "objective_before_v4.pt").is_file()
++    restored = ProgramState(p.config, after)
++    assert restored.settings()["frozen_teammates_fraction"] == .35
++    restored.reconcile_objective(r)
++    assert len(restored.evaluations) == 2
++
++
++def test_old_checkpoint_missing_objective_fields_loads_without_progress_reset():
++    p = ProgramState(default_program())
++    p.advance_steps(1_942_311_810)
++    old = p.state_dict()
++    old.pop("objective_signature")
++    old.pop("objective_contract")
++    restored = ProgramState(p.config, old)
++    assert restored.relative_steps == p.relative_steps
++    assert restored.objective_signature is None
++
++
++def test_reserved_report_never_updates_curriculum_or_streak():
++    p = ProgramState(default_program())
++    p.advance_steps(100_000_000)
++    r = report()
++    r["suite"]["holdout"] = True
++    r["reference"]["suite"]["holdout"] = True
++    before = p.state_dict()
++    with pytest.raises(ValueError, match="reservada"):
++        p.reconcile_objective(r)
++    with pytest.raises(ValueError, match="reservada"):
++        p.record_evaluation(r)
++    assert p.state_dict() == before
++
++
++def test_champion_is_remeasured_and_kept_when_single_bot_cell_regresses(tmp_path, monkeypatch):
++    directory = tmp_path
++    champion = directory / "champion.pt"
++    champion.write_bytes(b"original-checkpoint")
++    ledger = dict(champion=dict(sha256=runner.file_hash(champion), score=[.99, .99]))
++    candidate = report()
++    candidate["full_games"]["cells"]["1"]["points"] = .75
++    candidate["full_games"]["balanced_points"] = .8
++    # Current parent .6 permits it, but the incumbent's same-suite result .85
++    # exposes a regression that the old global score could have hidden.
++    incumbent = report()
++    incumbent["full_games"]["cells"]["1"]["points"] = .85
++    calls = []
++    def evaluate(root, branch, **options):
++        calls.append(options)
++        return directory / "incumbent.json", incumbent
++    monkeypatch.setattr(runner, "_evaluate", evaluate)
++    payload = dict(rs4_program_state=dict(relative_steps=2_000_000_000))
++    runner._consider_champion(directory, "control", payload, directory / "candidate.json",
++                              candidate, ledger, closing_phase=2)
++    assert calls[0]["checkpoint"] == champion
++    assert calls[0]["minutes"] == 2
++    assert calls[0]["games"] == 16
++    assert champion.read_bytes() == b"original-checkpoint"
++    assert not (directory / "phase_C_champion.pt").exists()
++    assert ledger["champion"]["score"][0] == .85
++
++
++def test_checkpoint_hash_mismatch_is_rejected_before_any_mutation(tmp_path, monkeypatch):
++    path = tmp_path / "latest.pt"
++    path.write_bytes(b"current-checkpoint")
++    p = ProgramState(default_program())
++    monkeypatch.setattr(runner, "_checkpoint", lambda *a: (path, {}, {}, p))
++    before = p.state_dict()
++    with pytest.raises(ValueError, match="checkpoint actual"):
++        runner._persist_evaluation(tmp_path, "control", tmp_path / "stale.json", report(), {})
++    assert p.state_dict() == before
++    assert path.read_bytes() == b"current-checkpoint"
++    assert not (tmp_path / "objective_before_v4.pt").exists()
+diff --git a/reports/rs4_objective_corrections_20261002.md b/reports/rs4_objective_corrections_20261002.md
+new file mode 100644
+--- /dev/null
++++ b/reports/rs4_objective_corrections_20261002.md
+@@ -0,0 +1,43 @@
++# Correcciones del objetivo RS4 — contrato RS4-v4-impact-1
++
++Aplicadas al código sobre el programa RS4 v3 existente. No hay migración de arquitectura ni reinicio de pesos, Adam, fases o presupuesto. El contrato deportivo cambia; las notas anteriores siguen siendo evidencia histórica y no se comparan directamente con las nuevas.
++
++## Cambios
++
++- Defensa permite mantener cero goles cuando la referencia da cero, pero exige recuperación segura >=60% y no aumentar la exposición a peligro más de 2pp. Cuando la referencia concede, se pide una reducción de 20%, con un suelo de resolución del 2%. No basta quedarse quieto.
++- Salida requiere pase confirmado y un segundo de control continuo con apoyo después de superar la zona defensiva, o gol. Ataque requiere pase progresivo, medio segundo de creación central con control y una patada dirigida al arco posterior a esa creación, o gol. Se publican recepción, control, tiros, goles y peligro. El tiro es un proxy de trayectoria, no una certificación de ocasión de gol. Estas métricas no añaden premios PPO ni features privadas.
++- `defensive_transition` y `offensive_transition` conservan el sentido en muestreo, colocación y evaluación. Defensa sólo agrega el sentido defensivo. `transition` se conserva para callers antiguos, sin usarlo en la nueva suite deportiva.
++- La matriz cruza cada semilla, color, cantidad de aprendices 1/2/3 y cada estilo R3, con compañeros scripted de dos estilos y BC cuando existe. Cuatro aprendices conservan la matriz de R3 y referencias históricas. Slots rotan entre semillas y colores. Los inicios tienen un pequeño jitter reproducible para evitar copias idénticas con argmax.
++- Los cuatro tamaños de equipo aprendiz pesan igual en `balanced_points`. Cada celda exige no perder más de 5pp respecto de la referencia, con al menos 32 partidos agregados por celda; la evaluación habitual 3×16 llega a 48. Se publican conteos e intervalos descriptivos. Una mejora global no compensa una celda crítica que retrocede.
++- Selección de campeón requiere no regresión funcional y por celda, primero contra parent y después contra el campeón. Ambos se miden con la suite exacta del candidato; no se usan sus scores antiguos. Se prioriza la peor celda de una instancia, luego puntos equilibrados y éxito funcional. Los controles de cada 100M también pueden promover candidatos.
++- Controles y cierres duran dos minutos por defecto. Cierres aumentan también funcionales: 64 por escenario/color/semilla frente a 16 en controles. Modo greedy por defecto, configurable a sampled para comparar con el modo usado en sala. Referencia y proxies neuronales usan ese mismo modo.
++- Semillas reservadas 137/211/307 sólo se usan al cerrar el programa sobre el campeón seleccionado. Nunca actualizan deudas, rachas o selección. La aceptación requiere habilidades, no regresión por celda y mejora de partidos en al menos dos semillas reservadas.
++- El runner reevaluará parent, latest y campeón antes de PPO cuando detecte el contrato antiguo, otro scorer, modo o duración. Guarda `objective_before_v4.pt` una sola vez; añade una reconciliación al historial, cambia las deudas según evidencia nueva y pone la racha a cero. Reevaluar no avanza de fase ni consume muestras PPO. Los antiguos checkpoints v3 cargan con campos nuevos opcionales.
++- Después de reconciliar, los compañeros congelados pasan como mínimo a 35/45/50/50% en C/D/E/F. Dentro de ese grupo, 1/2/3 aprendices tienen probabilidades 50/30/20%. En C, una instancia recibe aproximadamente 17,5% de asignaciones, frente al ~6,7% previo. No equivale a porcentaje de muestras o minutos. La dificultad de ejercicios sube gradualmente por fase; la suite de evaluación usa el nivel final constante.
++- La CLI continúa en segmentos de 100M por defecto y vuelve al usuario con evaluación y deudas. `--segment-steps 0` pide explícitamente completar todo el presupuesto restante. El presupuesto nominal de fases conserva el comportamiento de avance con deuda; una fase nueva sigue sin certificar dominio.
++
++## Uso en el Pod
++
++Actualizar estos archivos en el Pod y detener el runner anterior limpiamente antes de ejecutar la versión nueva. Usar el run completo existente, que contiene config, parent, teacher, ledger, referencias y ambas ramas.
++
++Entrega portable: `reports/rs4_objective_v4_20261002.patch`, que incluye sólo estos cambios y sus pruebas/documentación. Copiarlo al repositorio del Pod y verificar `git apply --check reports/rs4_objective_v4_20261002.patch` antes de `git apply reports/rs4_objective_v4_20261002.patch`. Si la revisión del Pod difiere, resolver los conflictos de código antes de reanudar; el patch no contiene checkpoints ni cambios ajenos a este objetivo.
++
++```bash
++cd /root/HaxballRL
++.venv/bin/python -u -m tools.run_rs4_v3 --run rs4_v3_public --resume --evaluate-only
++.venv/bin/python -u -m tools.run_rs4_v3 --run rs4_v3_public --resume --segment-steps 100000000
++```
++
++El primer comando sólo evalúa y reconcilia. El segundo entrena un segmento acotado y evalúa después. No repetir prepare, upgrade, --init-from ni restaurar un checkpoint antiguo para aplicar estas correcciones.
++
++La nueva matriz es más costosa: con seis rivales, BC y 3 semillas hay 198 celdas de partido (3×(12+54)). Los controles con 16 partidos por celda son 3.168 partidas simuladas y los cierres con 128 son 25.344. Los rivales se mantienen constantes; la GPU de PPO está detenida mientras corre la evaluación en CPU. La duración es deliberadamente constante para que la tendencia pueda compararse.
++
++## Verificación y alcance
++
++Las regresiones cubren defensa con referencia cero, rechazo de inactividad, dirección de transiciones, salida con recepción/control, matriz cruzada, rechazo de regresiones de una instancia, rechazo de suites distintas, carga de checkpoints antiguos y reconciliación preservando pesos/Adam/contadores. La suite focalizada inicial aprobó 88 pruebas. La suite completa aprobó **716 pruebas, con 43 omitidas**; tras el ajuste final de validación del hash y aislamiento de la suite reservada, **58 regresiones focalizadas** adicionales pasaron. Avisos: exportador ONNX legado, no fallos de entrenamiento.
++
++Se ejecutó una evaluación técnica breve del checkpoint real de 1.942B, sin PPO ni reemplazarlo: un seed, 2 partidos por celda, 6 segundos por partido y 4 funcionales por celda. Sirve para comprobar ejecución, nuevos campos y métricas; está por debajo de la evidencia mínima para elegir campeón o acreditar nivel. Archivo: `reports/rs4_objective_v4_smoke_20261002.json`.
++
++La copia local sólo tiene `control/latest.pt`; faltan config, ledger, parent y las referencias exactas del programa. La reevaluación deportiva y reconciliación reales deben ejecutarse sobre el run completo del Pod. El código queda preparado para hacerlo, pero no se inventaron esas referencias ni se cambiaron las deudas del checkpoint local basándose en la prueba breve.
++
++Los umbrales siguen siendo criterios de ingeniería y necesitan contraste con el uso real. No se cambian LR, horizonte, arquitectura ni física del mapa a partir de hipótesis no probadas. La fidelidad de una sala concreta y la aceptación del híbrido siguen pendientes de evidencia de esa sala.

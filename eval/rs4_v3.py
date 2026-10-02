@@ -15,6 +15,7 @@ from env.haxball_env import HaxballEnv
 from env.rewards import RewardConfig
 from env.rs4_v3 import RS4ScenarioEnv, RestartCohorts, SCENARIOS
 from .agents import ModelAgent, ScriptedAgent, make_agent, reset_agents
+from .rs4_objective import CONTRACT
 
 
 def _file_fingerprint(path):
@@ -32,7 +33,9 @@ def evaluation_source_fingerprint():
     root = Path(__file__).resolve().parents[1]
     files = ("env/haxball_env.py", "env/rs4_v3.py", "env/rs4_tactics.py", "env/rewards.py",
              "bots/scripted.py", "eval/rs4_v3.py", "eval/agents.py", "sim/physics.py",
-             "sim/stadium.py", "stadiums/rs_one.hbs", "env/public_signals.py", "env/public_joints.py", "train/model.py")
+             "sim/stadium.py", "stadiums/rs_one.hbs", "env/public_signals.py", "env/public_joints.py", "train/model.py",
+             "env/observation.py", "env/rollout_callbacks.py", "eval/rs4_objective.py",
+             "train/rs4_program.py", "tools/evaluate_rs4_v3.py")
     hashes = {path: _file_fingerprint(root / path) for path in files}
     combined = hashlib.sha256("\n".join(f"{path}:{hashes[path]}" for path in files).encode()).hexdigest()
     return {"sha256": combined, "files": hashes}
@@ -79,6 +82,8 @@ def full_game(agent, opponent, games=16, minutes=2, seed=51, color=0):
     env = environment(games, seed, max_ticks=ticks)
     obs = env.reset()
     env._reset_envs(np.arange(games), kickoff_team=0)
+    # Distinct seeded initial states also for deterministic deployment policies.
+    env.sim.player_pos[:] += env.rng.uniform(-8, 8, env.sim.player_pos.shape)
     env._phi = env._potentials()
     obs = env.observe()
     red, blue = np.arange(4), np.arange(4, 8)
@@ -127,6 +132,7 @@ def functional_trial(agent, scenario, games=16, seed=51, color=0, teammate=None,
     base = environment(games, seed)
     env = RS4ScenarioEnv(base, {"drill_fraction": .4, "restart_bonus": 0, "guide_coef": 0,
                              "restart_potential_coef": 0, "pass_participant_credit": 0,
+                             "scenario_difficulty": 1.,
                              "scenario_weights": {scenario: 1}})
     env.reset()
     env.assign(np.arange(games), scenario=scenario, team=color)
@@ -166,12 +172,66 @@ def functional_trial(agent, scenario, games=16, seed=51, color=0, teammate=None,
             "success": sum(row["success"] for row in results) / games,
             "conceded": sum(row["conceded"] for row in results) / games,
             "mean_seconds": np.mean([row["ticks"] for row in results]) / 60,
-            "restarts": dict(opportunities), "mixed_teammates": teammate is not None}
+            "restarts": dict(opportunities), "mixed_teammates": teammate is not None,
+            "outcomes": results,
+            "metrics": {key: sum(r["metrics"][key] for r in results) / games
+                        for key in env.metrics},
+            "danger_fraction": sum(r["metrics"]["danger_ticks"] for r in results) / max(1, sum(r["ticks"] for r in results)),
+            "goal_rate": sum(r["metrics"]["goals"] > 0 for r in results) / games}
+
+
+def _cell_key(row):
+    return "|".join(str(row[key]) for key in ("learner_count", "opponent", "teammate", "color"))
+
+
+def match_summary(rows):
+    cells = {}
+    for row in rows:
+        key = _cell_key(row)
+        cell = cells.setdefault(key, {k: row[k] for k in ("learner_count", "opponent", "teammate", "color")})
+        for k in ("games", "wins", "draws", "losses", "goals_for", "goals_against"):
+            cell[k] = cell.get(k, 0) + row[k]
+    for cell in cells.values():
+        n = cell["games"]
+        p = cell["points"] = (cell["wins"] + .5 * cell["draws"]) / n
+        # Descriptive standard error of a 0/.5/1 result, not binomial winrate.
+        se = np.sqrt(max(0., (cell["wins"] + .25 * cell["draws"]) / n - p*p) / n)
+        cell["points_interval_95"] = [max(0., p - 1.96 * se), min(1., p + 1.96 * se)]
+    means = {str(count): float(np.mean([r["points"] for r in cells.values() if r["learner_count"] == count]))
+             for count in (1, 2, 3, 4)}
+    return dict(cells=cells, by_learner_count=means,
+                balanced_points=float(np.mean(list(means.values()))),
+                single_instance_points=means["1"],
+                mean_points=float(np.mean([r["points"] for r in rows])),
+                all_learner_mean_points=means["4"],
+                mixed_mean_points=float(np.mean([means[str(i)] for i in (1, 2, 3)])), rows=rows)
+
+
+def functional_summary(rows):
+    cells = {}
+    for row in rows:
+        count = len(row.get("learner_slots", (0, 1, 2, 3)))
+        key = f"{row['scenario']}|{count}|{row['color']}"
+        cell = cells.setdefault(key, dict(scenario=row["scenario"], learner_count=count,
+                                         color=row["color"], games=0, successes=0))
+        cell["games"] += row["games"]
+        cell["successes"] += int(round(row["success"] * row["games"]))
+    for cell in cells.values():
+        n, k = cell["games"], cell["successes"]
+        p = cell["success"] = k / n
+        z = 1.96
+        center = (p + z*z/(2*n)) / (1+z*z/n)
+        width = z*np.sqrt(p*(1-p)/n+z*z/(4*n*n)) / (1+z*z/n)
+        cell["success_interval_95"] = [max(0., center-width), min(1., center+width)]
+    return cells
 
 
 def evaluate(checkpoint, *, references=(), teammate_reference=None, seeds=(51, 73, 91),
-             games=16, functional_games=16, minutes=2):
-    agent = make_agent(str(checkpoint))
+             games=16, functional_games=16, minutes=2, action_mode="greedy", holdout=False):
+    if action_mode not in ("greedy", "sampled"):
+        raise ValueError("action_mode must be greedy or sampled")
+    greedy = action_mode == "greedy"
+    agent = make_agent(str(checkpoint), greedy=greedy)
     opponents = [f"scripted:r3:{style}" for style in range(3)] + [str(p) for p in references]
     full_rows, functional_rows = [], []
     full_by_seed, functional_by_seed = {}, {}
@@ -180,32 +240,41 @@ def evaluate(checkpoint, *, references=(), teammate_reference=None, seeds=(51, 7
         for opponent in opponents:
             for color in (0, 1):
                 torch.manual_seed(seed * 100 + color)
-                row = full_game(agent, make_agent(opponent), games, minutes, seed, color)
+                row = full_game(agent, make_agent(opponent, greedy=greedy), games, minutes, seed, color)
                 row["opponent"] = opponent
                 row["team_mode"] = "all_learner"
+                row.update(learner_count=4, teammate="none", learner_slots=list(range(4)))
                 full_rows.append(row)
                 seed_full.append(row)
-        # Bounded full-match companion cells, not only convenient practice.
-        # One/two/three learners rotate across seeds and player slots/colors.
-        for color in (0, 1):
-            count = 1 + seed_index % 3
-            slots = tuple((seed_index + color + i) % 4 for i in range(count))
-            proxy = make_agent(str(teammate_reference)) if teammate_reference else ScriptedAgent(policy="r3", seed=seed)
-            team = MixedTeamAgent(agent, proxy, slots)
-            opponent = f"scripted:r3:{seed_index % 3}"
-            torch.manual_seed(seed * 100 + color)
-            row = full_game(team, make_agent(opponent), games, minutes, seed, color)
-            row.update(opponent=opponent, team_mode="mixed", learner_slots=list(slots))
-            full_rows.append(row)
-            seed_full.append(row)
+        # Factorial cells: every seed sees every composition, color, rival and
+        # proxy. A strong 3-bot cell can never substitute for the single bot.
+        proxies = ["scripted:r3:0", "scripted:r3:2"]
+        if teammate_reference:
+            proxies.append(str(teammate_reference))
+        for count in (1, 2, 3):
+            for style in range(3):
+                for proxy_spec in proxies:
+                    for color in (0, 1):
+                        slots = tuple((seed_index + color + i) % 4 for i in range(count))
+                        proxy = make_agent(proxy_spec, greedy=greedy)
+                        team = MixedTeamAgent(agent, proxy, slots)
+                        opponent = f"scripted:r3:{style}"
+                        torch.manual_seed(seed * 100 + color)
+                        row = full_game(team, make_agent(opponent), games, minutes, seed, color)
+                        row.update(opponent=opponent, team_mode="mixed", learner_slots=list(slots),
+                                   learner_count=count, teammate=proxy_spec)
+                        full_rows.append(row)
+                        seed_full.append(row)
         for scenario in SCENARIOS:
+            if scenario == "transition":
+                continue  # explicit directions only in the sporting contract
             for color in (0, 1):
                 torch.manual_seed(seed * 100 + color)
                 row = functional_trial(agent, scenario, functional_games, seed, color)
                 functional_rows.append(row)
                 seed_functional.append(row)
         # Frozen imitator when provided; scripted approximation otherwise.
-        proxy = make_agent(str(teammate_reference)) if teammate_reference else ScriptedAgent(policy="r3", seed=seed)
+        proxy = make_agent(str(teammate_reference), greedy=greedy) if teammate_reference else ScriptedAgent(policy="r3", seed=seed)
         for count in (1, 2, 3):
             for color in (0, 1):
                 slots = tuple((seed_index + color + count + i) % 4 for i in range(count))
@@ -214,7 +283,7 @@ def evaluate(checkpoint, *, references=(), teammate_reference=None, seeds=(51, 7
                 row["scenario"], row["learner_slots"] = "teammate", list(slots)
                 functional_rows.append(row)
                 seed_functional.append(row)
-        full_by_seed[str(seed)] = {"mean_points": float(np.mean([r["points"] for r in seed_full]))}
+        full_by_seed[str(seed)] = {"mean_points": match_summary(seed_full)["balanced_points"]}
         functional_by_seed[str(seed)] = {"mean_success": float(np.mean([r["success"] for r in seed_functional]))}
     mean = lambda key, selected: float(np.mean([r[key] for r in selected])) if selected else 0.0
     scenario_rows = lambda *names: [row for row in functional_rows if row["scenario"] in names]
@@ -223,9 +292,15 @@ def evaluate(checkpoint, *, references=(), teammate_reference=None, seeds=(51, 7
     skills = {"restart_success": sum(r["restarts"].get("successes", 0) for r in restarts) / resolved if resolved else 0,
               "corner_success_red": mean("success", [r for r in restarts if r["scenario"] == "corner" and r["color"] == 0]),
               "corner_success_blue": mean("success", [r for r in restarts if r["scenario"] == "corner" and r["color"] == 1]),
-              "defense_conceded": mean("conceded", scenario_rows("defense", "transition")),
-              "attack_success": mean("success", scenario_rows("attack", "exit")),
-              "integrated_success": mean("success", functional_rows),
+              "defense_conceded": mean("conceded", scenario_rows("defense", "defensive_transition")),
+              "defense_recovery": mean("success", scenario_rows("defense", "defensive_transition")),
+              "defense_danger_fraction": mean("danger_fraction", scenario_rows("defense", "defensive_transition")),
+              "exit_success": mean("success", scenario_rows("exit")),
+              "attack_success": mean("success", scenario_rows("attack", "offensive_transition")),
+              "attack_goal_rate": mean("goal_rate", scenario_rows("attack", "offensive_transition")),
+              "integrated_success": min(mean("success", scenario_rows("exit")),
+                                          mean("success", scenario_rows("attack", "offensive_transition")),
+                                          mean("success", scenario_rows("defense", "defensive_transition"))),
               "teammate_success": mean("success", scenario_rows("teammate"))}
     behavior = Counter()
     for row in full_rows:
@@ -234,17 +309,23 @@ def evaluate(checkpoint, *, references=(), teammate_reference=None, seeds=(51, 7
             "source_fingerprint": evaluation_source_fingerprint(),
             "suite": {"games": games, "functional_games": functional_games, "minutes": minutes,
                       "opponents": opponents, "opponent_sha256": {p: _file_fingerprint(p) for p in opponents if Path(p).is_file()},
+                      "action_mode": action_mode, "holdout": holdout, "scenario_difficulty": 1.,
+                      "teammate_proxies": proxies,
                       "teammate_reference": str(teammate_reference) if teammate_reference else None,
                       "teammate_sha256": _file_fingerprint(teammate_reference)},
-            "evaluation_contract": "RS4-v3-cohorts-3", "full_games": {"mean_points": mean("points", full_rows),
-            "all_learner_mean_points": mean("points", [r for r in full_rows if r["team_mode"] == "all_learner"]),
-            "mixed_mean_points": mean("points", [r for r in full_rows if r["team_mode"] == "mixed"]),
-            "by_seed": full_by_seed, "rows": full_rows}, "functional": {"mean_success": mean("success", functional_rows),
+            "evaluation_contract": CONTRACT, "full_games": {**match_summary(full_rows),
+            "by_seed": full_by_seed}, "functional": {"mean_success": mean("success", functional_rows),
+            "cells": functional_summary(functional_rows),
             "by_seed": functional_by_seed, "skills": skills, "rows": functional_rows},
             "skills": skills, "behavior": dict(behavior),
             "behavior_definitions": {"dangerous_losses": "confirmed opponent transfer with ball in own defensive 35% zone",
               "coverage_recoveries": "after a transfer loss, at least two own players recover 10% field width behind the ball",
               "coverage_recovery_ticks": "sum of elapsed 60-Hz ticks for resolved recoveries; censored cases separate",
-              "restarts": "per opportunity, one resolved outcome; open/censored opportunities excluded from resolved success rate"},
+              "restarts": "per opportunity, one resolved outcome; open/censored opportunities excluded from resolved success rate",
+              "exit_success": "goal or confirmed pass followed by one second of controlled exit with support",
+              "attack_success": "goal or progressive pass, half-second of controlled central creation and subsequent goal-directed kick",
+              "defense_recovery": "one second of controlled clearance beyond own defensive third with support",
+              "integrated_success": "minimum of exit, creation/finishing and defensive recovery; match cells gated separately",
+              "shots": "observable goal-directed kick trajectory proxy, not an expected-goals model"},
             "limitations": ["Frozen imitators and scripted teammates are proxies, not validation with real humans.",
                              "Functional success is an engineering proxy; inspect selected full-match replays."]}

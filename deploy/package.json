@@ -6,10 +6,15 @@
   "main": "bot.js",
   "scripts": {
     "test": "node test_obs.js",
-    "start": "node bot.js"
+    "start": "node bot.js",
+    "hybrid": "node hybrid_server.js",
+    "hybrid:build": "node hybrid/build_extension.js",
+    "hybrid:probe": "node hybrid/probe_official.js",
+    "hybrid:test": "node test_hybrid.js"
   },
   "dependencies": {
     "node-haxball": "^2.3.1",
-    "onnxruntime-node": "^1.20.0"
+    "onnxruntime-node": "^1.20.0",
+    "ws": "^8.18.0"
   }
 }

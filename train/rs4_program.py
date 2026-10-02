@@ -83,6 +83,8 @@ class ProgramState:
         self.recovery_consumed = 0
         self.recovery_block_skill = None
         self.recovery_block_start = None
+        self.objective_signature = None
+        self.objective_contract = None
         if saved is not None:
             self._restore(saved)
 
@@ -284,8 +286,7 @@ class ProgramState:
                 weights[key] = weights.get(key, 0) + .5 / len(self.skill_debts)
             total = sum(weights.values())
             weights = {key: value / total for key, value in weights.items()}
-        aliases = dict(throw_in="lateral", build_up="exit", defensive_transition="transition",
-                       offensive_transition="transition")
+        aliases = dict(throw_in="lateral", build_up="exit")
         canonical = {}
         for key, value in weights.items():
             key = aliases.get(key, key)
@@ -296,7 +297,7 @@ class ProgramState:
             guide = .02
             phase["exercises"] = .4
             focused = {"restarts": dict(corner=.5, lateral=.25, goal_kick=.25),
-                       "defense": dict(defense=.7, transition=.3),
+                       "defense": dict(defense=.7, defensive_transition=.3),
                        "attack": dict(attack=.6, exit=.4),
                        "integrated": dict(exit=.4, attack=.3, defense=.3),
                        "teammates": dict(exit=.5, attack=.5)}[self.recovery_block_skill]
@@ -311,10 +312,18 @@ class ProgramState:
             # El tramo final elimina también premios de práctica, no los goles.
             bonus *= min(1., max(0., (self.remaining_steps - self.config["final_unassisted_steps"])
                                  / max(1, self.effective_branch_limit - self.phase_start_steps - self.config["final_unassisted_steps"])))
+        from eval.rs4_objective import CONTRACT
+        corrected = self.objective_contract == CONTRACT
+        teammates = phase["teammates"]
+        if corrected and self.phase_index >= 2:
+            teammates = max(teammates, (.35, .45, .50, .50)[self.phase_index - 2])
         return dict(phase_id=phase["id"], phase_name=phase["name"], guide_coef=guide,
                     exercise_fraction=phase["exercises"], exercise_weights=weights,
                     opponent_mix={name: phase[name] for name in ("scripted", "selfplay", "pool")},
-                    frozen_teammates_fraction=phase["teammates"], restart_execute_bonus=bonus,
+                    frozen_teammates_fraction=teammates,
+                    teammate_learner_weights=(.5, .3, .2) if corrected else (1/3, 1/3, 1/3),
+                    scenario_difficulty=min(1., .2 * self.phase_index) if corrected else 0.,
+                    restart_execute_bonus=bonus,
                     restart_bonus=bonus,
                     restart_potential_coef=.025 * min(1., guide / .08),
                     restart_stall_penalty=.25, recovery=recovery,
@@ -328,6 +337,9 @@ class ProgramState:
         Ausencia de evidencia NO equivale a aprobar. El evaluador mantiene sus
         conteos y semillas originales junto a este resumen.
         """
+        from eval.rs4_objective import CONTRACT, gates
+        if report.get("evaluation_contract") == CONTRACT:
+            return gates(report)
         skills, baseline = report.get("skills", {}), report.get("baseline", {})
         matches = report.get("matches", {})
         def number(mapping, key):
@@ -341,12 +353,40 @@ class ProgramState:
         integrated, base_integrated = number(skills, "integrated_success"), number(baseline, "integrated_success")
         teammates, base_teammates = number(skills, "teammate_success"), number(baseline, "teammate_success")
         return dict(restarts=all(x is not None for x in restart) and restart[0] >= .8 and min(restart[1:]) >= .7,
-                    defense=conceded is not None and base_conceded is not None and base_conceded > 0 and conceded <= .8 * base_conceded,
+                    defense=conceded is not None and base_conceded is not None and conceded <= .8 * base_conceded,
                     attack=attack is not None and base_attack is not None and attack >= base_attack + .1,
                     integrated=safe and integrated is not None and base_integrated is not None and integrated > base_integrated,
                     teammates=safe and teammates is not None and base_teammates is not None and teammates > base_teammates)
 
+    def reconcile_objective(self, report):
+        """Reassess debts at the same weights/steps; preserve original evidence.
+
+        This is never a second approval and cannot advance a phase. Settings
+        adaptations are enabled only after evaluating the new objective.
+        """
+        from eval.rs4_objective import CONTRACT, signature, curriculum_signature
+        if report.get("suite", {}).get("holdout"):
+            raise ValueError("La suite reservada no modifica el currículo")
+        if report.get("evaluation_contract") != CONTRACT or not report.get("reference"):
+            raise ValueError("La reconciliación requiere referencia evaluada con el contrato actual")
+        if signature(report) != signature(report["reference"]):
+            raise ValueError("Referencia y candidato deben usar la misma suite")
+        current = curriculum_signature(report)
+        if self.objective_signature == current:
+            return
+        self.objective_signature, self.objective_contract = current, CONTRACT
+        gates = self.evaluation_gates(report)
+        taught = SKILLS[:min(5, self.phase_index + 1)]
+        self.skill_debts = [skill for skill in taught if not gates[skill]]
+        self.pass_streak = 0
+        self.last_evaluation_steps = self.relative_steps
+        self.evaluations.append(dict(steps=self.relative_steps, phase=self.phase["id"],
+                                     kind="objective_reconciliation", gates=gates, report=copy.deepcopy(report)))
+        self._update_recovery()
+
     def record_evaluation(self, report):
+        if report.get("suite", {}).get("holdout"):
+            raise ValueError("La suite reservada no modifica el currículo")
         if self.evaluations and self.relative_steps <= self.last_evaluation_steps:
             raise ValueError("Una evaluación repetida del mismo punto no cuenta como segunda aprobación")
         gates = self.evaluation_gates(report)
@@ -372,7 +412,8 @@ class ProgramState:
     def state_dict(self):
         fields = ("phase_index", "relative_steps", "diagnostic_steps", "phase_start_steps", "pass_streak", "lr",
                   "last_lr_iteration", "last_endpoint_iteration", "lr_kl_window", "lr_events", "last_evaluation_steps", "last_snapshot_steps", "skill_debts",
-                  "evaluations", "transitions", "recovery_consumed", "recovery_block_skill", "recovery_block_start")
+                  "evaluations", "transitions", "recovery_consumed", "recovery_block_skill", "recovery_block_start",
+                  "objective_signature", "objective_contract")
         return dict(version=VERSION, config=copy.deepcopy(self.config),
                     **{name: copy.deepcopy(getattr(self, name)) for name in fields})
 
@@ -383,6 +424,8 @@ class ProgramState:
         for name in fresh:
             if name not in ("version", "config"):
                 if name not in saved:
+                    if name in ("objective_signature", "objective_contract"):
+                        continue  # old v3 checkpoints acquire this only through reevaluation
                     raise ValueError(f"Estado RS4 incompleto: {name}")
                 setattr(self, name, copy.deepcopy(saved[name]))
         for key in ("phase_index", "relative_steps", "diagnostic_steps", "phase_start_steps", "pass_streak", "last_evaluation_steps",

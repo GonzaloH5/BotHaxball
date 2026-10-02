@@ -1,0 +1,10 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><title>RS4 híbrido — Servicio local</title><link rel="stylesheet" href="options.css"></head>
+<body><main><h1>RS4 híbrido</h1><p>El modelo corre en tu PC. Esta extensión no conecta otro jugador.</p>
+<form id="settings"><label>Puerto local <input id="port" type="number" min="1" max="65535" value="17841" required></label>
+<label>Token del servicio <input id="token" type="password" autocomplete="off" required minlength="32"></label>
+<label>Atajo propio <input id="shortcut" type="text" readonly placeholder="Hacé clic y presioná tu tecla o combinación" aria-describedby="shortcut-help"></label>
+<p id="shortcut-help">Hacé clic en el campo y presioná la combinación que quieras. Evitá teclas de juego y atajos reservados por Windows o el navegador. Esc sigue reservado para volver al humano.</p>
+<button id="save-shortcut" type="button">Guardar atajo</button> <button id="clear-shortcut" type="button">Sin atajo</button><p id="shortcut-status" role="status"></p>
+<button type="submit">Guardar y conectar</button></form><p id="status" role="status"></p>
+<p>Arranque: <code>node deploy/hybrid_server.js --model deploy/rs4_public/model.onnx</code></p>
+<p>Después abrí HaxBall, confirmá el permiso de la sala y pulsá «Comprobar configuración». Tu atajo alterna el control; Esc vuelve al humano. También podés usar el botón del panel.</p></main><script src="shortcut.js"></script><script src="options.js"></script></body></html>

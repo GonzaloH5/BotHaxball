@@ -1,0 +1,72 @@
+{
+  "layout": "universal",
+  "self_dim": 71,
+  "ent_dim": 8,
+  "n_actions": 18,
+  "rule_observation": "masked",
+  "recurrent": false,
+  "memory_size": 0,
+  "frame_skip": 3,
+  "max_ticks": 7200,
+  "tasks": [
+    "rs4_4v4"
+  ],
+  "ps_cfg": {
+    "charge": 96,
+    "power_inv": 2.3,
+    "grav": 0.1
+  },
+  "checkpoint": "runs/rs4_v3_public/control/latest.pt",
+  "steps": 6483077250,
+  "public_signals": {
+    "version": 1,
+    "offset": 56,
+    "features": [
+      "restart_visible",
+      "restart_own",
+      "restart_rival",
+      "cue_conflict",
+      "ball_cue",
+      "barrier_cue",
+      "lateral_geometry",
+      "corner_geometry",
+      "goal_kick_geometry",
+      "contact_own",
+      "contact_rival",
+      "contact_confidence",
+      "contact_age",
+      "restart_age",
+      "public_schema"
+    ],
+    "red_colors": [
+      16711680,
+      15035990,
+      15496280,
+      16727860
+    ],
+    "blue_colors": [
+      255,
+      5671397,
+      4767481,
+      1031417
+    ],
+    "barrier_discs": [],
+    "barrier_segments": [],
+    "contact_source": "sampled_geometry",
+    "unknown_owner": -1,
+    "auto_joints": true,
+    "joint_profile": "rs4_paired_lateral_v1"
+  },
+  "training_program": "rs4_v3",
+  "frozen_normalizers": true,
+  "memory_contract": {
+    "previous_action": "actually_executed_action",
+    "sentinel": 18,
+    "reset_on": [
+      "episode_end",
+      "controller_change",
+      "player_change"
+    ],
+    "scope": "one_state_per_player_and_policy"
+  }
+}

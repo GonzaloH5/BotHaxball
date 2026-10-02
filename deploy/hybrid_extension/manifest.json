@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "RS4 híbrido — Humano / Bot",
+  "version": "0.1.5",
+  "minimum_chrome_version": "116",
+  "description": "Control compartido de un único jugador, sólo en salas propias o autorizadas.",
+  "permissions": ["storage"],
+  "host_permissions": ["https://www.haxball.com/*", "http://127.0.0.1/*"],
+  "background": {"service_worker": "background.js"},
+  "action": {"default_popup": "options.html"},
+  "options_page": "options.html",
+  "content_scripts": [
+    {"matches": ["https://www.haxball.com/*"], "include_globs": ["*://www.haxball.com/*/__cache_static__/g/game.html*"],
+      "all_frames": true, "run_at": "document_start", "world": "MAIN", "js": ["official_profile.js", "arbiter.js", "shortcut.js", "page.js"]},
+    {"matches": ["https://www.haxball.com/*"], "include_globs": ["*://www.haxball.com/*/__cache_static__/g/game.html*"],
+      "all_frames": true, "run_at": "document_start", "js": ["content.js"]}
+  ]
+}

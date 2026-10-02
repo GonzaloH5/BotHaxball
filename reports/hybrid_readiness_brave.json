@@ -1,0 +1,23 @@
+{
+  "browser": "brave",
+  "passed": true,
+  "extensionId": "dbgnocagfefjbihcdmmppbgimefebcfg",
+  "nativeSourceHash": "322d1904fc09896e5a16482f53e35a6e046c50a40c0270646305700b7420e885",
+  "handoffs": 100,
+  "samePlayer": true,
+  "secondConnection": false,
+  "customShortcut": "Ctrl + Alt + B",
+  "shortcutRepeatIgnored": true,
+  "shortcutDisableWorks": true,
+  "chatShortcutIgnored": true,
+  "backgroundBot": true,
+  "pausedRafWithFreshActions": true,
+  "focusEvents": "dispatched/headless",
+  "secondTabDenied": true,
+  "realRoom": false,
+  "actionablePrerequisites": true,
+  "qualification": "Preflight aprobado · p95 6.9 ms · frame ×1.000 · sala real 30 min: pendiente",
+  "serviceFailureNeutral": true,
+  "backgroundServiceFailureNeutral": true,
+  "unknownClientManualWorks": true
+}

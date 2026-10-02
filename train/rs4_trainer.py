@@ -193,7 +193,8 @@ class RS4V3Trainer(MultiTrainer):
             s.controller[e, theirs] = opponent
             companion_fraction = self.cfg.get("runtime", {}).get("benchmark_companion_fraction", settings["frozen_teammates_fraction"])
             if self.rng.random() < companion_fraction:
-                learners = int(self.rng.integers(1, 4))
+                learners = (int(self.rng.integers(1, 4)) if self.program.objective_contract is None else
+                            int(self.rng.choice((1, 2, 3), p=settings["teammate_learner_weights"])))
                 frozen = self.rng.permutation(ours)[learners:]
                 companions = ["scripted", *usable_pool]
                 if self.bc_model is not None:
@@ -498,6 +499,9 @@ class RS4V3Trainer(MultiTrainer):
                       "rs4/tactical_potential_bound": settings["guide_coef"],
                       "rs4/pass_possession_cap": self.slots[0].env.rcfg.team_pass_possession_cap,
                       "rs4/tactical_coef": settings["guide_coef"], "rs4/tactical_reward_mean": tactical_sum / max(tactical_count, 1),
+                      "rs4/frozen_teammates_fraction": settings["frozen_teammates_fraction"],
+                      "rs4/single_learner_assignment_fraction": settings["frozen_teammates_fraction"] * settings["teammate_learner_weights"][0],
+                      "rs4/scenario_difficulty": settings["scenario_difficulty"],
                       "rs4/tactical_reward_abs_mean": tactical_abs / max(tactical_count, 1)})
         stats.update(component_stats)
         for i, name in enumerate(RESTART_EVENT_NAMES):
@@ -519,6 +523,11 @@ class RS4V3Trainer(MultiTrainer):
             print(f"      carga rollout | filas aprendices {samples:,}/{length * self.total_rows:,} "
                   f"({100 * stats['rollout/learner_fraction']:.1f}%) | políticas neuronales {len(self._routes)} "
                   f"| setup {setup_seconds:.3f}s mantenimiento {maintenance_seconds:.3f}s", flush=True)
+            if self.program.objective_contract:
+                print(f"      objetivo {self.program.objective_contract} | compañeros congelados "
+                      f"{settings['frozen_teammates_fraction']:.0%} | asignaciones de una instancia "
+                      f"{stats['rs4/single_learner_assignment_fraction']:.1%} | dificultad "
+                      f"{settings['scenario_difficulty']:.2f}", flush=True)
         self._last_iteration_timings = dict(setup=setup_seconds, maintenance=maintenance_seconds,
                                             logging=time.perf_counter() - logging_started, schedule=0.)
 

@@ -4,6 +4,7 @@ import argparse
 import json
 from pathlib import Path
 from eval.rs4_v3 import evaluate
+from eval.rs4_objective import HOLDOUT_SEEDS
 from tools.audit_rs4_simulator import digest
 import torch
 
@@ -19,10 +20,14 @@ def main():
     ap.add_argument("--games", type=int, default=16)
     ap.add_argument("--functional-games", type=int, default=16)
     ap.add_argument("--minutes", type=float, default=2)
+    ap.add_argument("--action-mode", choices=("greedy", "sampled"), default="greedy")
+    ap.add_argument("--holdout", action="store_true", help="Final reserved seeds; never used for selection")
     ap.add_argument("--reference-report", help="Reuse an immutable evaluated baseline")
     ap.add_argument("--torch-threads", type=int, default=2)
     ap.add_argument("--physics-threads", type=int, default=4)
     args = ap.parse_args()
+    if args.holdout:
+        args.seeds = list(HOLDOUT_SEEDS)
     from train.runtime import cpu_budget
     if args.torch_threads < 1 or args.physics_threads < 1:
         ap.error("Thread counts must be positive")
@@ -38,7 +43,8 @@ def main():
     if args.games < 1 or args.functional_games < 1 or args.minutes <= 0:
         ap.error("Games and minutes must be positive")
     common = dict(seeds=args.seeds, games=args.games, functional_games=args.functional_games,
-                  minutes=args.minutes, teammate_reference=args.teammate_reference)
+                  minutes=args.minutes, teammate_reference=args.teammate_reference,
+                  action_mode=args.action_mode, holdout=args.holdout)
     refs = [args.reference] if args.reference else []
     report = evaluate(args.checkpoint, references=[*refs, *args.opponents], **common)
     cache_exists = args.reference_report and Path(args.reference_report).is_file()
@@ -66,8 +72,8 @@ def main():
     if reference:
         report["reference"] = reference
         report["baseline"] = reference["functional"]["skills"]
-        report["matches"] = {"points": report["full_games"]["mean_points"],
-                             "baseline_points": reference["full_games"]["mean_points"]}
+        report["matches"] = {"points": report["full_games"]["balanced_points"],
+                             "baseline_points": reference["full_games"]["balanced_points"]}
     else:
         report["matches"] = {"points": report["full_games"]["mean_points"]}
     out = Path(args.out)

@@ -1175,3 +1175,35 @@ usan los pasos de etapa acumulados, incluidos los entrenados en estos perfiles. 
 de una sola etapa para un checkpoint que ya avanzó a etapa 1 o superior.
 
 Uso responsable: usar el bot sólo en salas propias o con permiso. En salas públicas o competitivas contra personas es hacer trampa.
+
+### RS4 híbrido: humano y bot en el mismo jugador oficial
+
+Extensión MV3 sin publicar para Brave/Chrome, con inferencia ONNX **local**. No crea
+otro jugador, no entra por terminal a la sala y no modifica entrenamiento/checkpoints.
+Sólo admite RS ONE 4v4, un modelo RS4 v3 con señales públicas v1 y el cliente oficial
+verificado por huella; si no son compatibles, permanece disponible el juego manual.
+
+Desde la raíz del proyecto en Windows:
+
+```powershell
+npm ci --prefix deploy
+node deploy/hybrid/build_extension.js
+# Exportar una copia local del especialista público, no el generalista:
+.venv\Scripts\python.exe -m export.to_onnx runs/rs4_v3_public/control/latest.pt --out deploy/rs4_public/model
+node deploy/hybrid_server.js --model deploy/rs4_public/model.onnx
+```
+
+En `brave://extensions` (o `chrome://extensions`), activar modo desarrollador y
+**Cargar descomprimida** → carpeta `deploy/hybrid_extension`. Abrir el popup, copiar
+el token que muestra el servicio y conectar. Recargar la web oficial si ya estaba
+abierta; entrar manualmente a una sala autorizada. En el panel confirmar permiso y
+«Comprobar configuración». El botón o tu atajo elegido alternan; Esc devuelve control humano.
+El popup permite capturar cualquier tecla/combinación y «Guardar atajo» sin reemparejar;
+las instalaciones nuevas empiezan sin atajo, para no interferir con teclas F del sistema.
+BOT continúa al minimizar o cambiar de ventana mediante pulsos del servicio local;
+los fallos reales, estados viejos y congelación de pestaña siguen suspendiendo por seguridad.
+
+El preflight local bloquea el bot si falla latencia/frame time. Las pruebas aisladas
+no sustituyen la aceptación de 30 minutos en una sala real: aún pendiente.
+Instalación, contratos, diagnóstico y protocolo de aceptación en
+[deploy/hybrid/README.md](deploy/hybrid/README.md).

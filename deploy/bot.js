@@ -30,8 +30,7 @@ const { buildObsUniversal } = require("./obs_universal");
 const { assertObservationContract } = require("./observation_contract");
 const { PolicyMemory } = require("./policy_memory");
 const { PublicSignalTracker } = require("./public_signals");
-const os = require("os");
-const { spawnSync } = require("child_process");
+const { sampleLogits, geometryFromText } = require("./runtime");
 
 // ------------------------------------------------------------------ args
 const args = process.argv.slice(2);
@@ -62,15 +61,9 @@ for (const [flag, key] of [["--rs4-red-colors", "red_colors"], ["--rs4-blue-colo
 const UNIVERSAL = META.layout === "universal";
 const RULES = arg("--rules", "auto");
 const REPO = path.resolve(__dirname, "..");
-const PYTHON = process.env.HAXBALL_PYTHON ||
-  path.join(REPO, ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
 
 function stadiumGeometry(stadium) {
-  const file = path.join(os.tmpdir(), `haxballrl_stadium_${process.pid}.hbs`);
-  fs.writeFileSync(file, Utils.exportStadium(stadium));
-  const r = spawnSync(PYTHON, ["-m", "export.stadium_geom", file], { cwd: REPO, encoding: "utf8", maxBuffer: 64 << 20 });
-  if (r.status !== 0) throw new Error(`export.stadium_geom falló: ${r.stderr || r.error}`);
-  return JSON.parse(r.stdout);
+  return geometryFromText(Utils.exportStadium(stadium));
 }
 
 function rulesFor(name) {
@@ -81,13 +74,7 @@ function rulesFor(name) {
 const R_PLAYER = 15, R_BALL = 10, KICK_REACH = 4;
 
 function sample(logits) {
-  if (temperature <= 0) return logits.indexOf(Math.max(...logits));
-  const mx = Math.max(...logits);
-  const e = logits.map((l) => Math.exp((l - mx) / temperature));
-  const s = e.reduce((a, b) => a + b, 0);
-  let r = Math.random() * s;
-  for (let i = 0; i < e.length; i++) { r -= e[i]; if (r <= 0) return i; }
-  return e.length - 1;
+  return sampleLogits(logits, temperature);
 }
 
 function BotPlugin(session) {

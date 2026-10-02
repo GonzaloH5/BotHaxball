@@ -22,6 +22,8 @@ import torch
 from train.checkpoints import atomic_torch_save
 from train.rs4_program import ProgramState, VERSION
 from train.runtime import load_config
+from eval.rs4_objective import (CONTRACT, HOLDOUT_SEEDS, signature, curriculum_signature,
+                                eligibility, selection_score, gates as objective_gates)
 from .prepare_rs4 import ROOT, file_hash
 
 
@@ -46,8 +48,8 @@ def normalized_evaluation(report, reference=None):
     result.setdefault("skills", copy.deepcopy(report.get("functional", {}).get("skills", {})))
     result.setdefault("baseline", copy.deepcopy(reference.get("functional", {}).get("skills", {})))
     if "matches" not in result:
-        result["matches"] = dict(points=report.get("full_games", {}).get("mean_points"),
-                                 baseline_points=reference.get("full_games", {}).get("mean_points"))
+        result["matches"] = dict(points=report.get("full_games", {}).get("balanced_points", report.get("full_games", {}).get("mean_points")),
+                                 baseline_points=reference.get("full_games", {}).get("balanced_points", reference.get("full_games", {}).get("mean_points")))
     return result
 
 
@@ -78,6 +80,8 @@ def select_candidate(control, memory, control_benchmark, memory_benchmark):
     gates = dict(throughput=bool(valid_speed), functional=bool(functional), matches=bool(matches),
                  seed_consistency=len(seeds) >= 2, same_device=devices_match,
                  same_profile=mixing_match, same_contract=same_contract, memory=bool(safe_memory))
+    if control.get("evaluation_contract") == CONTRACT:
+        gates["critical_cells"] = eligibility(memory, control)["passed"]
     return dict(selected="memory" if all(gates.values()) else "control", gates=gates,
                 positive_seeds=seeds, throughput_ratio=m_speed / c_speed if numeric(c_speed) and numeric(m_speed) and c_speed > 0 else None)
 
@@ -85,6 +89,17 @@ def select_candidate(control, memory, control_benchmark, memory_benchmark):
 def sporting_acceptance(report):
     """Éxito deportivo requiere evidencia repetida; no sólo consumir el presupuesto."""
     reference = report.get("reference", {})
+    if report.get("evaluation_contract") == CONTRACT:
+        criteria = objective_gates(report)
+        criteria["critical_non_regression"] = eligibility(report)["passed"]
+        criteria["reserved_suite"] = (report.get("suite", {}).get("holdout") is True
+                                      and tuple(report.get("seeds", ())) == HOLDOUT_SEEDS)
+        candidates = report.get("full_games", {}).get("by_seed", {})
+        baselines = reference.get("full_games", {}).get("by_seed", {})
+        improved = [s for s in HOLDOUT_SEEDS if candidates.get(str(s), {}).get("mean_points", -1)
+                    > baselines.get(str(s), {}).get("mean_points", 1)]
+        criteria["match_seeds"] = len(improved) >= 2
+        return dict(passed=all(criteria.values()), gates=criteria, positive_match_seeds=improved)
     candidate_f, baseline_f = report.get("functional", {}), reference.get("functional", {})
     candidate_g, baseline_g = report.get("full_games", {}), reference.get("full_games", {})
     def improved(candidate, baseline, field):
@@ -184,16 +199,20 @@ def _render_phase(directory, phase, ledger):
                                    seed=51, minutes=1)
 
 
-def _evaluate(directory, branch, *, full, games, full_games, minutes, seeds, label):
+def _evaluate(directory, branch, *, full, games, full_games, minutes, seeds, label,
+              checkpoint=None, action_mode="greedy", functional_games=16, full_functional_games=64,
+              holdout=False):
     from eval.rs4_v3 import evaluation_source_fingerprint
-    candidate, _, _, _ = _checkpoint(directory, branch)
+    candidate = Path(checkpoint) if checkpoint is not None else _checkpoint(directory, branch)[0]
     manifest = json.loads((directory / "specialization.json").read_text(encoding="utf-8"))
     reports = directory / manifest.get("evaluation_directory", "evaluations")
     reports.mkdir(exist_ok=True)
     output = reports / f"{branch}_{label}.json"
     identity = dict(checkpoint_sha256=file_hash(candidate), reference_sha256=file_hash(directory / "parent.pt"),
-                    games=full_games if full else games, minutes=minutes if full else min(minutes, .5),
-                    seeds=list(seeds), evaluation_sources=evaluation_source_fingerprint())
+                    games=full_games if full else games, minutes=minutes,
+                    functional_games=full_functional_games if full else functional_games,
+                    action_mode=action_mode, holdout=holdout,
+                    seeds=list(HOLDOUT_SEEDS if holdout else seeds), evaluation_sources=evaluation_source_fingerprint())
     manifest = json.loads((directory / "specialization.json").read_text(encoding="utf-8"))
     historical = []
     for item in manifest.get("historical_opponents", []):
@@ -210,14 +229,21 @@ def _evaluate(directory, branch, *, full, games, full_games, minutes, seeds, lab
         identity["teacher_sha256"] = teacher["sha256"]
     # Source upgrades must not reuse a baseline measured with another scorer.
     # Retain the old file; create a namespaced baseline rather than aborting.
-    source_tag = identity["evaluation_sources"]["sha256"][:12]
+    import hashlib
+    suite_tag = hashlib.sha256(json.dumps({k:v for k,v in identity.items() if k != "checkpoint_sha256"},
+                                         sort_keys=True).encode()).hexdigest()[:12]
+    source_tag = identity["evaluation_sources"]["sha256"][:12] + "_" + suite_tag
     reference_cache = reports / f"reference_{'full' if full else 'control'}_{source_tag}.json"
     cache = output.with_suffix(".identity.json")
     if not output.exists() or not cache.exists() or json.loads(cache.read_text(encoding="utf-8")) != identity:
         command = [sys.executable, "-m", "tools.evaluate_rs4_v3", "--checkpoint", str(candidate),
                    "--reference", str(directory / "parent.pt"), "--out", str(output),
                    "--games", str(identity["games"]), "--minutes", str(identity["minutes"]),
-                   "--seeds", *map(str, seeds), "--reference-report", str(reference_cache)]
+                   "--functional-games", str(identity["functional_games"]),
+                   "--action-mode", action_mode,
+                   "--seeds", *map(str, identity["seeds"]), "--reference-report", str(reference_cache)]
+        if holdout:
+            command.append("--holdout")
         if historical:
             command.extend(["--opponents", *historical])
         if teacher:
@@ -228,13 +254,76 @@ def _evaluate(directory, branch, *, full, games, full_games, minutes, seeds, lab
     return output, report
 
 
+def _consider_champion(directory, branch, checkpoint, output, report, ledger, closing_phase):
+    """Reevaluate incumbent under the candidate's exact suite before comparison."""
+    decision = eligibility(report)
+    ledger.setdefault("champion_decisions", []).append(dict(
+        steps=checkpoint["rs4_program_state"]["relative_steps"], report=str(output.relative_to(directory)),
+        eligibility=decision))
+    ledger["champion_decisions"] = ledger["champion_decisions"][-64:]
+    champion_path = directory / "champion.pt"
+    suite = report["suite"]
+    incumbent_report = report["reference"]
+    incumbent_output = None
+    if champion_path.is_file():
+        expected_hash = ledger.get("champion", {}).get("sha256")
+        if expected_hash and file_hash(champion_path) != expected_hash:
+            raise ValueError("El campeón cambió fuera del runner; no comparar otro modelo")
+        incumbent_output, incumbent_report = _evaluate(directory, branch, full=False, games=suite["games"],
+            full_games=suite["games"], functional_games=suite["functional_games"],
+            full_functional_games=suite["functional_games"], minutes=suite["minutes"],
+            seeds=report["seeds"], action_mode=suite["action_mode"],
+            checkpoint=champion_path, label=f"incumbent_{report['checkpoint_sha256'][:12]}")
+        if signature(incumbent_report) != signature(report):
+            raise ValueError("Campeón y candidato no comparten suite de evaluación")
+    score = selection_score(report)
+    # A candidate must also protect the incumbent's critical capabilities.
+    incumbent_safe = decision["passed"] and eligibility(report, incumbent_report)["passed"]
+    promotes = incumbent_safe and score > selection_score(incumbent_report)
+    if not champion_path.is_file():
+        parent = torch.load(directory / "parent.pt", map_location="cpu", weights_only=False)
+        atomic_torch_save(parent, champion_path)
+    if promotes:
+        atomic_torch_save(checkpoint, champion_path)
+        ledger["champion"] = dict(branch=branch, steps=checkpoint["rs4_program_state"]["relative_steps"],
+            score=list(score), report=str(output.relative_to(directory)), signature=signature(report),
+            sha256=file_hash(champion_path))
+    else:
+        previous = ledger.get("champion", {})
+        ledger["champion"] = {**previous, "branch": previous.get("branch", "reference"),
+                              "steps": previous.get("steps", 0), "score": list(selection_score(incumbent_report)),
+                              "signature": signature(incumbent_report), "sha256": file_hash(champion_path),
+                              "revalidated_report": str(incumbent_output.relative_to(directory)) if incumbent_output else str(output.relative_to(directory))}
+    if closing_phase is not None and incumbent_safe:
+        phase = "ABCDEF"[closing_phase]
+        # Phase replays use the same non-regression criterion; keep any previous
+        # file as evidence rather than silently replacing it with an unsafe one.
+        if promotes or not (directory / f"phase_{phase}_champion.pt").exists():
+            atomic_torch_save(checkpoint, directory / f"phase_{phase}_champion.pt")
+            ledger.setdefault("phase_champions", {})[phase] = dict(branch=branch,
+                steps=checkpoint["rs4_program_state"]["relative_steps"], score=list(score),
+                signature=signature(report), report=str(output.relative_to(directory)),
+                sha256=file_hash(directory / f"phase_{phase}_champion.pt"))
+
+
 def _persist_evaluation(directory, branch, output, report, ledger, *, full=False, closing_phase=None):
     candidate, ck, cfg, state = _checkpoint(directory, branch)
     old_phase = state.phase_index
-    if not state.evaluations or state.last_evaluation_steps != state.relative_steps:
+    corrected = report.get("evaluation_contract") == CONTRACT
+    if corrected and report.get("checkpoint_sha256") != file_hash(candidate):
+        raise ValueError("El informe no corresponde al checkpoint actual; reevaluar antes de modificar el programa")
+    reconcile = corrected and state.objective_signature != curriculum_signature(report)
+    if reconcile:
+        backup = directory / "objective_before_v4.pt"
+        if not backup.exists():
+            atomic_torch_save(ck, backup)
+        state.reconcile_objective(report)
+        ledger.setdefault("objective_reconciliations", []).append(dict(steps=state.relative_steps,
+            report=str(output.relative_to(directory)), signature=state.objective_signature,
+            debts=list(state.skill_debts)))
+    elif not state.evaluations or state.last_evaluation_steps != state.relative_steps:
         state.record_evaluation(report)
     ck["rs4_program_state"] = state.state_dict()
-    atomic_torch_save(ck, candidate)
     ledger["candidates"][branch]["evaluation"] = str(output.relative_to(directory))
     ledger["assessments"].append(dict(branch=branch, steps=state.relative_steps,
                                        phase=state.phase["id"], report=str(output.relative_to(directory))))
@@ -243,7 +332,9 @@ def _persist_evaluation(directory, branch, output, report, ledger, *, full=False
     # Selección de campeón independiente, no por training reward/último checkpoint.
     skills = report.get("functional", {}).get("mean_success")
     points = report.get("full_games", {}).get("mean_points")
-    if full and all(isinstance(v, (int, float)) and math.isfinite(v) for v in (skills, points)):
+    if corrected and ledger.get("selected") == branch:
+        _consider_champion(directory, branch, ck, output, report, ledger, closing_phase)
+    elif full and all(isinstance(v, (int, float)) and math.isfinite(v) for v in (skills, points)):
         score = (float(points), float(skills))
         previous = ledger.get("champion", {})
         old = tuple(previous.get("score", (-math.inf, -math.inf)))
@@ -260,6 +351,7 @@ def _persist_evaluation(directory, branch, output, report, ledger, *, full=False
                 atomic_torch_save(ck, path)
                 ledger["phase_champions"][phase] = dict(branch=branch, steps=state.relative_steps,
                     score=list(score), report=str(output.relative_to(directory)), sha256=file_hash(path))
+    atomic_torch_save(ck, candidate)
     atomic_json(refresh_ledger(directory, ledger), directory / "ledger.json")
     if full and closing_phase is not None and ledger.get("selected") == branch:
         _render_phase(directory, "ABCDEF"[closing_phase], ledger)
@@ -364,13 +456,18 @@ def execution_outline(directory):
 
 
 def run(run_name="rs4_v3", *, resume=False, dry_run=False, games=16, full_games=128,
-        minutes=2., seeds=(51, 73, 91), warmup=3, iters=8):
+        minutes=2., seeds=(51, 73, 91), warmup=3, iters=8, evaluate_only=False,
+        segment_steps=None, action_mode="greedy", functional_games=16, full_functional_games=64):
     if not run_name or run_name in (".", "..") or any(c in run_name for c in '/\\:'):
         raise ValueError("run debe ser un nombre simple")
     if games < 2 or games % 2 or full_games < games or full_games % 2 or minutes <= 0:
         raise ValueError("games/full-games pares >=2, full-games>=games, minutos positivos")
     if tuple(seeds) != (51, 73, 91):
         raise ValueError("La selección exige semillas 51,73,91")
+    if functional_games < 1 or full_functional_games < functional_games or action_mode not in ("greedy", "sampled"):
+        raise ValueError("Perfil de evaluación inválido")
+    if segment_steps is not None and (not isinstance(segment_steps, int) or segment_steps < 1):
+        raise ValueError("segment_steps debe ser un entero positivo")
     directory = ROOT / "runs" / run_name
     manifest = json.loads((directory / "specialization.json").read_text(encoding="utf-8"))
     if manifest.get("kind") != "rs4_v3_program" or manifest.get("version") != VERSION:
@@ -396,12 +493,14 @@ def run(run_name="rs4_v3", *, resume=False, dry_run=False, games=16, full_games=
         else:
             import fcntl
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        if ledger["complete"]:
+        if ledger["complete"] and not evaluate_only:
             for phase in sorted(ledger.get("phase_champions", {})):
                 _render_phase(directory, phase, ledger)
             atomic_json(ledger, directory / "ledger.json")
             return ledger
         pilot = manifest["pilot_steps"]
+        if evaluate_only and ledger["selected"] is None:
+            raise ValueError("Primero debe existir una rama seleccionada; evaluate-only nunca ejecuta pilotos PPO")
         if ledger["selected"] is None:
             for branch in ("control", "memory"):
                 _, _, cfg, state = _checkpoint(directory, branch)
@@ -411,18 +510,24 @@ def run(run_name="rs4_v3", *, resume=False, dry_run=False, games=16, full_games=
                         _train_chunk(directory, branch, target)
                         atomic_json(refresh_ledger(directory, ledger), directory / "ledger.json")
                     output, report = _evaluate(directory, branch, full=False, games=games, full_games=full_games,
-                                               minutes=minutes, seeds=seeds, label=f"pilot_{target}")
+                                               minutes=minutes, seeds=seeds, label=f"pilot_{target}",
+                                               action_mode=action_mode, functional_games=functional_games,
+                                               full_functional_games=full_functional_games)
                     _persist_evaluation(directory, branch, output, report, ledger)
                     _, _, cfg, state = _checkpoint(directory, branch)
                 if state.evaluation_due:
                     output, report = _evaluate(directory, branch, full=False, games=games, full_games=full_games,
-                                               minutes=minutes, seeds=seeds, label=f"pilot_{state.relative_steps}")
+                                               minutes=minutes, seeds=seeds, label=f"pilot_{state.relative_steps}",
+                                               action_mode=action_mode, functional_games=functional_games,
+                                               full_functional_games=full_functional_games)
                     _persist_evaluation(directory, branch, output, report, ledger)
                 ledger["candidates"][branch]["complete"] = True
             reports = {}
             for branch in ("control", "memory"):
                 output, reports[branch] = _evaluate(directory, branch, full=True, games=games, full_games=full_games,
-                                                   minutes=minutes, seeds=seeds, label="pilot_full")
+                                                   minutes=minutes, seeds=seeds, label="pilot_full",
+                                                   action_mode=action_mode, functional_games=functional_games,
+                                                   full_functional_games=full_functional_games)
                 ledger["candidates"][branch]["evaluation"] = str(output.relative_to(directory))
             benchmarks = _benchmarks(directory, warmup, iters)
             ledger["diagnostic_ppo_steps"] = benchmarks["control"].get("diagnostic_work_total", sum(
@@ -451,24 +556,41 @@ def run(run_name="rs4_v3", *, resume=False, dry_run=False, games=16, full_games=
         state.charge_diagnostics(ledger.get("diagnostic_ppo_steps", 0))
         checkpoint["rs4_program_state"] = state.state_dict()
         atomic_torch_save(checkpoint, candidate)
+        from eval.rs4_v3 import evaluation_source_fingerprint
+        prior = state.evaluations[-1]["report"] if state.evaluations else {}
+        refresh = (state.objective_contract != CONTRACT or
+                   prior.get("source_fingerprint") != evaluation_source_fingerprint() or
+                   prior.get("suite", {}).get("action_mode") != action_mode or
+                   prior.get("suite", {}).get("minutes") != minutes)
+        if refresh or evaluate_only:
+            output, report = _evaluate(directory, winner, full=True, games=games, full_games=full_games,
+                minutes=minutes, seeds=seeds, label=f"objective_v4_{state.relative_steps}",
+                action_mode=action_mode, functional_games=functional_games, full_functional_games=full_functional_games)
+            _persist_evaluation(directory, winner, output, report, ledger, full=True)
+            _, _, cfg, state = _checkpoint(directory, winner)
+        if evaluate_only:
+            return ledger
+        segment_end = min(state.effective_branch_limit, state.relative_steps + segment_steps) if segment_steps else state.effective_branch_limit
         for phase in sorted(ledger.get("phase_champions", {})):
             _render_phase(directory, phase, ledger)
         atomic_json(refresh_ledger(directory, ledger), directory / "ledger.json")
-        while not state.complete:
+        while not state.complete and state.relative_steps < segment_end:
             if state.transitions:
                 transition = state.transitions[-1]
                 phase = transition["from_phase"]
                 if (transition["steps"] == state.relative_steps
                         and phase not in ledger.get("phase_champions", {})):
                     output, report = _evaluate(directory, winner, full=True, games=games, full_games=full_games,
-                                               minutes=minutes, seeds=seeds, label=f"phase_{phase}_recovered_{state.relative_steps}")
+                                               minutes=minutes, seeds=seeds, label=f"phase_{phase}_recovered_{state.relative_steps}",
+                                               action_mode=action_mode, functional_games=functional_games,
+                                               full_functional_games=full_functional_games)
                     _persist_evaluation(directory, winner, output, report, ledger, full=True,
                                           closing_phase="ABCDEF".index(phase))
                     _, _, cfg, state = _checkpoint(directory, winner)
             old_phase = state.phase_index
             interval = cfg["rs4_program"]["evaluation_every_steps"]
             nominal_end = state.phase_start_steps + state.phase["steps"]
-            target = min(state.effective_branch_limit, state.last_evaluation_steps + interval)
+            target = min(state.effective_branch_limit, state.last_evaluation_steps + interval, segment_end)
             if old_phase < 5:
                 target = min(target, nominal_end)
             if target > state.relative_steps:
@@ -480,21 +602,36 @@ def run(run_name="rs4_v3", *, resume=False, dry_run=False, games=16, full_games=
                 pending_close = "ABCDEF".index(state.transitions[-1]["from_phase"])
             full = state.complete or state.phase_index != old_phase or pending_close is not None
             output, report = _evaluate(directory, winner, full=full, games=games, full_games=full_games,
-                                       minutes=minutes, seeds=seeds, label=f"steps_{state.relative_steps}")
+                                       minutes=minutes, seeds=seeds, label=f"steps_{state.relative_steps}",
+                                       action_mode=action_mode, functional_games=functional_games,
+                                       full_functional_games=full_functional_games)
             advanced = _persist_evaluation(directory, winner, output, report, ledger, full=full,
                                             closing_phase=(pending_close if pending_close is not None else old_phase) if full else None)
             if advanced and not full:
                 output, report = _evaluate(directory, winner, full=True, games=games, full_games=full_games,
-                                           minutes=minutes, seeds=seeds, label=f"phase_{old_phase}_full_{state.relative_steps}")
+                                           minutes=minutes, seeds=seeds, label=f"phase_{old_phase}_full_{state.relative_steps}",
+                                           action_mode=action_mode, functional_games=functional_games,
+                                           full_functional_games=full_functional_games)
                 _persist_evaluation(directory, winner, output, report, ledger, full=True, closing_phase=old_phase)
             _, _, cfg, state = _checkpoint(directory, winner)
+        if not state.complete:
+            ledger["last_segment"] = dict(steps=state.relative_steps, limit=segment_end,
+                pending_skills=list(state.skill_debts), evaluation=ledger["candidates"][winner]["evaluation"])
+            atomic_json(refresh_ledger(directory, ledger), directory / "ledger.json")
+            print("Segmento acotado finalizado; revisar evaluación antes de continuar.", flush=True)
+            return ledger
         ledger["complete"] = True
         ledger["pending_skills"] = list(state.skill_debts)
         if not ledger.get("final_report"):
             output, report = _evaluate(directory, winner, full=True, games=games, full_games=full_games,
-                                       minutes=minutes, seeds=seeds, label="final")
+                                       minutes=minutes, seeds=seeds, label="final", action_mode=action_mode,
+                                       functional_games=functional_games, full_functional_games=full_functional_games)
             _persist_evaluation(directory, winner, output, report, ledger, full=True, closing_phase=5)
-        final_report = json.loads((directory / ledger["final_report"]).read_text(encoding="utf-8"))
+        output, final_report = _evaluate(directory, winner, full=True, games=games, full_games=full_games,
+            minutes=minutes, seeds=seeds, label="holdout_champion", checkpoint=directory / "champion.pt",
+            holdout=True, action_mode=action_mode, functional_games=functional_games,
+            full_functional_games=full_functional_games)
+        ledger["holdout_report"] = str(output.relative_to(directory))
         ledger["sporting_acceptance"] = sporting_acceptance(final_report)
         ledger["sporting_success"] = not state.skill_debts and ledger["sporting_acceptance"]["passed"]
         atomic_json(refresh_ledger(directory, ledger), directory / "ledger.json")
@@ -520,6 +657,12 @@ def main():
     parser.add_argument("--run", default="rs4_v3")
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--evaluate-only", action="store_true", help="Reevaluar y reconciliar antes de continuar; no PPO")
+    parser.add_argument("--segment-steps", type=int, default=100_000_000,
+                        help="Continuación acotada (100M por defecto); 0 para presupuesto restante completo")
+    parser.add_argument("--action-mode", choices=("greedy", "sampled"), default="greedy")
+    parser.add_argument("--functional-games", type=int, default=16)
+    parser.add_argument("--full-functional-games", type=int, default=64)
     parser.add_argument("--games", type=int, default=16, help="Partidos pares por rival/semilla en controles")
     parser.add_argument("--full-games", type=int, default=128)
     parser.add_argument("--minutes", type=float, default=2.)
@@ -530,7 +673,9 @@ def main():
     try:
         result = run(args.run, resume=args.resume, dry_run=args.dry_run, games=args.games,
                      full_games=args.full_games, minutes=args.minutes, seeds=args.seeds,
-                     warmup=args.warmup, iters=args.iters)
+                     warmup=args.warmup, iters=args.iters, evaluate_only=args.evaluate_only,
+                     segment_steps=args.segment_steps or None, action_mode=args.action_mode,
+                     functional_games=args.functional_games, full_functional_games=args.full_functional_games)
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
         parser.error(str(error))
     except KeyboardInterrupt:
