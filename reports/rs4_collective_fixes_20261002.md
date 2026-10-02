@@ -20,6 +20,25 @@ La mala presión, las intercepciones omitidas y los desmarques insuficientes sig
 
 Validación: batería completa con 733 pruebas aprobadas, 43 omitidas y 12 avisos de deprecación ONNX. Después del último ajuste de la guía de pase hacia atrás se repitieron las pruebas colectivas y del entorno: 52 aprobadas. `git diff --check` y la comprobación inversa del parche también pasaron.
 
-Código y pruebas modificados localmente. No se cambiaron archivos ni procesos en el Pod. Incorporar la versión después de que termine el runner activo; cambiar el evaluador durante la prueba mezclaría versiones de la evidencia. Los cambios alteran la firma de fuentes: las evaluaciones previas se conservan pero no se reutilizan como si fueran de esta versión.
+Código publicado en `origin/main`, commit `fdb186d`. Nueva versión descargada y validada por separado en `/workspace/rs4_update_fdb186d` del Pod: 31 pruebas aprobadas, una omitida; CUDA RTX 3090 y configuraciones CUDA/Torch 2/física 4 comprobadas. El checkout usado por el proceso activo permanece en la versión anterior. Incorporar la versión después de que termine el runner activo; cambiar el evaluador durante la prueba mezclaría versiones de la evidencia. Los cambios alteran la firma de fuentes: las evaluaciones previas se conservan pero no se reutilizan como si fueran de esta versión.
 
 El archivo `rs4_collective_fixes_20261002.patch` contiene sólo estos cambios de código y tests, incluyendo el nuevo archivo de regresiones. Se puede comprobar con `git apply --check` y aplicar sobre el código de partida. Los pesos y el optimizador se conservan; se necesita entrenamiento posterior para medir el efecto en el aprendiz.
+
+### Comando preparado en el Pod
+
+Cuando haya terminado el runner actual:
+
+```bash
+bash /workspace/rs4_update_fdb186d/pod_resume_collective_fixes.sh
+```
+
+El script verifica que no haya runner, evaluador o entrenador activo en este proyecto, actualiza por fast-forward al commit fijado y comprueba hashes de los pesos, configuraciones y ledger. Después comprueba CUDA y ejecuta el dry-run antes de lanzar, mediante nohup, la reevaluación seguida de un tramo real de 100M pasos. Si queda un proceso activo, sale con código 75 sin actualizar ni lanzar otro.
+
+Para ver el log del nuevo arranque:
+
+```bash
+cd /workspace/HaxballRL
+tail -f "$(cat pod_logs/rs4_collective_latest_log.txt)"
+```
+
+Los scripts también están guardados en este repositorio bajo `reports/pod_apply_collective_fixes.sh` y `reports/pod_resume_collective_fixes.sh`. La protección contra actualización durante un proceso activo fue comprobada en el Pod. El dry-run posterior a la actualización y el arranque se ejecutarán cuando se invoque el comando después de terminar el proceso actual; no se afirma que esos pasos ya hayan ocurrido.
