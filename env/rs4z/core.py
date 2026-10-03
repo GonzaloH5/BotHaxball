@@ -88,7 +88,7 @@ class RS4ZEnv:
         self.rf[:, K.RF_BALL_INV] = b["invMass"]
         self.outside = np.zeros((N, P), dtype=np.bool_)
         self.max_delay = int(max_delay)
-        self.H = 1 + -(-self.max_delay // self.frame_skip)
+        self.H = max(3, 1 + -(-self.max_delay // self.frame_skip))  # ≥3: la obs v2 lleva 3 decisiones
         self.act_hist = np.zeros((N, P, self.H), dtype=np.int64)
         self.delay = np.zeros((N, P), dtype=np.int64)
         self.ev = np.zeros((N, K.EV_SIZE), dtype=np.int64)
