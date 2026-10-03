@@ -12,8 +12,7 @@ ASSIGNMENTS = np.array(list(permutations(range(4))), dtype=np.int64)
 
 
 @njit(cache=True)
-def passing_outlets(ball, own, opp, gx):
-    """Two distinct, reachable passing lanes; separation alone is not support."""
+def _receiver_scores(ball, own, opp, gx):
     scores = np.zeros(4)
     for p in range(4):
         dx, dy = own[p, 0] - ball[0], own[p, 1] - ball[1]
@@ -28,11 +27,38 @@ def passing_outlets(ball, own, opp, gx):
                                       opp[q, 1] - ball[1] - min(t, 1.) * dy)
                 lane = min(lane, 1. - math.exp(-distance / (.045 * gx)))
         scores[p] = lane * math.exp(-length / (.8 * gx))
+    return scores
+
+
+@njit(cache=True)
+def passing_outlets(ball, own, opp, gx):
+    """Two distinct, reachable passing lanes; separation alone is not support."""
+    scores = _receiver_scores(ball, own, opp, gx)
     best = 0.0
     for p in range(4):
         for q in range(p + 1, 4):
             separation = min(1., math.hypot(own[p, 0] - own[q, 0], own[p, 1] - own[q, 1]) / (.22 * gx))
             best = max(best, math.sqrt(scores[p] * scores[q]) * separation)
+    return best
+
+
+@njit(cache=True)
+def penetrating_outlet(ball, own, opp, gx, gh):
+    """Reachable off-ball receiver near goal, ahead or available for a cutback.
+
+    Mere area occupancy is insufficient: a marked/blocked receiver scores less.
+    This is a bounded geometric potential, never a per-tick entry bonus.
+    """
+    scores = _receiver_scores(ball, own, opp, gx)
+    best = 0.0
+    for p in range(4):
+        depth = min(1., max(0., (own[p, 0] / gx - .50) / .35))
+        central = math.exp(-max(0., abs(own[p, 1]) - gh) / max(gh, .05 * gx))
+        space = 1.0
+        for q in range(4):
+            distance = math.hypot(own[p, 0] - opp[q, 0], own[p, 1] - opp[q, 1])
+            space = min(space, 1. - math.exp(-distance / (.06 * gx)))
+        best = max(best, scores[p] * depth * central * space)
     return best
 
 
@@ -152,6 +178,15 @@ def components(player_pos, player_team, ball_pos, gx, fh, gh, version=1):
             if version >= 2:
                 left = dynamic_targets(ball, control, gx, fh, gh, -1.0)
                 right = dynamic_targets(ball, control, gx, fh, gh, 1.0)
+                # Only with a credible access advantage in the attacking half:
+                # one runner offers a finishing lane instead of a second wide
+                # rebound station. Keeper/balance targets remain unchanged.
+                penetration = (min(1., max(0., (control - .55) / .30))
+                               * min(1., max(0., (ball[0] / gx - .25) / .35)))
+                if version >= 4:
+                    for target in (left, right):
+                        finishing_y = max(-gh, min(gh, target[3, 1]))
+                        target[3, 1] += penetration * (finishing_y - target[3, 1])
                 result[row, team, 0] = _formation_v2_score(own, left, right, gx)
                 if version >= 3:
                     # Geometry constraints rather than identities: one accesses
@@ -165,6 +200,9 @@ def components(player_pos, player_team, ball_pos, gx, fh, gh, version=1):
                             depth = max(depth, math.exp(-abs(own[p, 1] - .35 * ball[1]) / (.45 * fh)))
                     outlets = passing_outlets(ball, own, opp, gx)
                     coverage = (1 - control) * depth + control * (.5 * depth + .5 * outlets)
+                    if version >= 4:
+                        runner = penetrating_outlet(ball, own, opp, gx, gh)
+                        coverage += control * penetration * (.35 * runner - .25 * depth - .10 * outlets)
                     result[row, team, 0] = (.55 * result[row, team, 0]
                                             + .25 * coverage + .20 * (1 - pressure))
             else:

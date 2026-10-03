@@ -500,7 +500,7 @@ class RS4V3Trainer(MultiTrainer):
                       "rollout/simulated_samples": length * self.total_rows,
                       "rollout/learner_samples": samples,
                       "rollout/learner_fraction": samples / (length * self.total_rows),
-                      "rs4/formation_version": 3, "rs4/restart_potential_bound": settings["restart_potential_coef"],
+                      "rs4/formation_version": self.slots[0].env.rs4_formation_version, "rs4/restart_potential_bound": settings["restart_potential_coef"],
                       "rs4/tactical_potential_bound": settings["guide_coef"],
                       "rs4/pass_possession_cap": self.slots[0].env.rcfg.team_pass_possession_cap,
                       "rs4/tactical_coef": settings["guide_coef"], "rs4/tactical_reward_mean": tactical_sum / max(tactical_count, 1),

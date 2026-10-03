@@ -86,7 +86,14 @@ def _restart_geometry(positions, teams, owner, ball, gx, fh, coefficient):
                 player = assignment[role + 1]
                 cost += np.hypot(own[player, 0] - targets[role, 0], own[player, 1] - targets[role, 1]) / 3
             support = np.exp(-cost / (.28 * gx))
-            best = max(best, .7 * executor + .3 * support)
+            redundant = 0.0
+            for role in range(1, 4):
+                player = assignment[role]
+                distance = np.hypot(own[player, 0] - bx, own[player, 1] - by)
+                redundant += np.exp(-(distance / (.14 * gx)) ** 2) / 3
+            # Extra takers must leave the ball to create outlets. Previously
+            # the executor's 70% weight let a crowd retain a high score.
+            best = max(best, (.55 * executor + .45 * support) * (1. - .45 * redundant))
         for p in range(len(teams)):
             if teams[p] == team:
                 result[row, p] = coefficient * best
@@ -115,7 +122,8 @@ def configure_rs4_v3(env, settings):
     if base.T != 4 or base.rules is not None or base.goal_kick_speed != 10.5:
         raise ValueError("RS4 v3 requires rs_one 4v4 with simplified restarts")
     rc = base.rcfg
-    old_coefficients = (rc.rs4_reward_version, rc.rs4_tactical_coef, rc.rs4_restart_approach)
+    old_coefficients = (rc.rs4_reward_version, rc.rs4_tactical_coef, rc.rs4_restart_approach,
+                        base.rs4_formation_version)
     rc.rs4_reward_version = 3
     rc.goal = 1.0
     rc.gamma = .998
@@ -129,10 +137,11 @@ def configure_rs4_v3(env, settings):
     rc.team_spread_floor = 0.0
     rc.shaping_coef = 0.0
     rc.rs4_pass_participant = float(settings.get("pass_participant_credit", .0005))
-    base.rs4_formation_version = 3
+    base.rs4_formation_version = 4
     base.corner_reset_prob = 0.0  # handled by full-match-aware scenario assignment
     base.random_reset_prob = 0.0
-    if old_coefficients != (rc.rs4_reward_version, rc.rs4_tactical_coef, rc.rs4_restart_approach):
+    if old_coefficients != (rc.rs4_reward_version, rc.rs4_tactical_coef, rc.rs4_restart_approach,
+                            base.rs4_formation_version):
         base._rs4_phi = base._rs4_potential() if rc.rs4_tactical_coef else None
         base._phi = base._potentials()
 
@@ -400,6 +409,12 @@ class RS4ScenarioEnv:
                     # Keep the travel-based deadline below; do not manufacture
                     # failures by requiring an impossible sprint to the corner.
                     own = self.rng.uniform([-.8 * W, -.75 * H], [.65 * W, .75 * H], (4, 2))
+                elif self.difficulty > 0 and self.rng.random() < .5 * self.difficulty:
+                    # Reproduce the observed three-taker crowd: two players
+                    # must separate to offer passes, not all chase the restart.
+                    own[:3] = ball + [[-.03 * W, -.10 * wing * H],
+                                      [-.06 * W, -.13 * wing * H],
+                                      [-.09 * W, -.16 * wing * H]]
                 velocity[:] = 0
             elif kind == "exit":
                 ball[0] = -.65 * W
@@ -416,6 +431,14 @@ class RS4ScenarioEnv:
                     own[2:, 0] = ball[0] - self.rng.uniform(.15, .45, 2) * W
                 opp[0] = ball + [90 - 55 * self.difficulty, 0]
                 opp[1] = ball + [140 - 50 * self.difficulty, .2 * wing * H]
+                if self.difficulty > 0 and self.rng.random() < .5 * self.difficulty:
+                    # Compact defense and a wide carrier: practice finding an
+                    # inside receiver/cutback instead of waiting for rebounds.
+                    ball = np.array([.60 * W, .48 * wing * H])
+                    own[1] = ball + [-25, 0]
+                    own[2:] = [[.42 * W, -.25 * wing * H], [.50 * W, .20 * wing * H]]
+                    opp[:3] = [[.68 * W, .18 * wing * H], [.78 * W, -.18 * wing * H],
+                               [.72 * W, .40 * wing * H]]
             else:  # defensive access and loss with teammates initially advanced
                 ball[0] = (-.40 - .20 * self.difficulty) * W
                 velocity[0] = -self.rng.uniform(1 + self.difficulty, 4 + self.difficulty)
