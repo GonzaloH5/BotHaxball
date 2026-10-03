@@ -10,8 +10,9 @@ from train.model import load_model
 
 
 class ModelAgent:
-    def __init__(self, path: str, greedy: bool = False):
-        self.model = load_model(path)
+    def __init__(self, path: str, greedy: bool = False, device="cpu"):
+        self.device = torch.device(device)
+        self.model = load_model(path).to(self.device)
         self.public_config = (torch.load(path, map_location="cpu", weights_only=False).get("env", {}).get("public_signal_config", {})
                               if getattr(self.model, "public_signals_version", 0) else {})
         self.greedy = greedy
@@ -25,7 +26,7 @@ class ModelAgent:
             return
         if done is None or env not in self._states:
             self._states[env] = (self.model.initial_state(env.N * env.P).reshape(env.N, env.P, -1),
-                                torch.full((env.N, env.P), self.model.n_actions, dtype=torch.long))
+                                torch.full((env.N, env.P), self.model.n_actions, dtype=torch.long, device=self.device))
         else:
             memory, previous = self._states[env]
             memory[done] = 0
@@ -40,7 +41,7 @@ class ModelAgent:
             selected[..., 56:71] = env.public_features()[:, players]
         elif getattr(env, "_public_signals", None) is not None:
             selected[..., 56:71] = 0  # old full/masked references keep their input contract
-        o = torch.from_numpy(selected.reshape(-1, obs.shape[-1]))
+        o = torch.from_numpy(selected.reshape(-1, obs.shape[-1])).to(self.device)
         if getattr(self.model, "is_recurrent", False):
             if env not in self._states:
                 self.reset(env)
@@ -53,7 +54,7 @@ class ModelAgent:
         a = logits.argmax(-1) if self.greedy else torch.distributions.Categorical(logits=logits).sample()
         if getattr(self.model, "is_recurrent", False):
             previous[:, players] = a.reshape(env.N, len(players))
-        return a.numpy().reshape(obs.shape[0], len(players))
+        return a.cpu().numpy().reshape(obs.shape[0], len(players))
 
     def record_executed(self, env, actions):
         if getattr(self.model, "is_recurrent", False) and env in self._states:
@@ -126,7 +127,7 @@ def env_kwargs(cfg: dict) -> dict:
             "kickoff_timeout": cfg.get("kickoff_timeout", 180)}
 
 
-def make_agent(spec: str, greedy: bool = False):
+def make_agent(spec: str, greedy: bool = False, device="cpu"):
     if spec == "scripted":
         return ScriptedAgent()
     if spec.startswith("scripted:"):
@@ -137,4 +138,4 @@ def make_agent(spec: str, greedy: bool = False):
         return ScriptedAgent(float(parts[1]))
     if spec == "random":
         return RandomAgent()
-    return ModelAgent(spec, greedy)
+    return ModelAgent(spec, greedy, device=device)

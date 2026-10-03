@@ -140,7 +140,10 @@ def refresh_ledger(directory, ledger):
         ledger["diagnostic_ppo_steps"] = sum(attempt["charged_steps"] for attempt in work["attempts"])
         ledger["diagnostic_uses_upper_bound"] = any(attempt["status"] != "reconciled" for attempt in work["attempts"])
     ledger["retained_steps"] = sum(item["useful_steps"] for item in ledger["candidates"].values())
-    ledger["consumed_steps"] = ledger["retained_steps"] + ledger.get("diagnostic_ppo_steps", 0)
+    hardware = directory / "hardware_diagnostic_work.json"
+    if hardware.exists():
+        ledger["hardware_diagnostic_ppo_steps"] = sum(item["charged_steps"] for item in json.loads(hardware.read_text())["attempts"])
+    ledger["consumed_steps"] = ledger["retained_steps"] + ledger.get("diagnostic_ppo_steps", 0) + ledger.get("hardware_diagnostic_ppo_steps", 0)
     if ledger["consumed_steps"] > ledger["total_budget_steps"]:
         raise ValueError("El programa excedió 6B muestras útiles; no se amplía ni se oculta el exceso")
     return ledger
@@ -221,6 +224,12 @@ def _evaluate(directory, branch, *, full, games, full_games, minutes, seeds, lab
             raise ValueError("Una referencia histórica cambió; no comparar con otra matriz")
         historical.append(str(rival))
     identity["historical_opponents"] = historical
+    runtime_path = directory / "evaluation_runtime.json"
+    evaluation_runtime = json.loads(runtime_path.read_text()) if runtime_path.exists() else {}
+    device = evaluation_runtime.get("device", "cpu")
+    if device not in ("cpu", "cuda"):
+        raise ValueError("Invalid evaluation device")
+    identity["inference_device"] = device
     teacher = manifest.get("bc_teacher")
     if teacher:
         teacher_path = directory / teacher["path"]
@@ -251,6 +260,8 @@ def _evaluate(directory, branch, *, full, games, full_games, minutes, seeds, lab
                    "--functional-games", str(identity["functional_games"]),
                    "--action-mode", action_mode,
                    "--seeds", *map(str, identity["seeds"]), "--reference-report", str(reference_cache)]
+        command.extend(["--device", device, "--torch-threads", str(evaluation_runtime.get("torch_threads", 2)),
+                        "--physics-threads", str(evaluation_runtime.get("physics_threads", 4))])
         if holdout:
             command.append("--holdout")
         if historical:
@@ -563,6 +574,7 @@ def run(run_name="rs4_v3", *, resume=False, dry_run=False, games=16, full_games=
         winner = ledger["selected"]
         candidate, checkpoint, cfg, state = _checkpoint(directory, winner)
         state.charge_diagnostics(ledger.get("diagnostic_ppo_steps", 0))
+        state.charge_hardware_diagnostics(ledger.get("hardware_diagnostic_ppo_steps", 0))
         checkpoint["rs4_program_state"] = state.state_dict()
         atomic_torch_save(checkpoint, candidate)
         from eval.rs4_v3 import evaluation_source_fingerprint

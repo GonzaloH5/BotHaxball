@@ -68,6 +68,7 @@ class ProgramState:
         self.phase_index = 0
         self.relative_steps = 0
         self.diagnostic_steps = 0
+        self.hardware_diagnostic_steps = 0
         self.phase_start_steps = 0
         self.pass_streak = 0
         self.lr = float(self.config["lr"]["initial"])
@@ -147,7 +148,20 @@ class ProgramState:
 
     @property
     def effective_branch_limit(self):
-        return self.config["branch_budget_steps"] - self.diagnostic_steps
+        return self.config["branch_budget_steps"] - self.diagnostic_steps - self.hardware_diagnostic_steps
+
+    def charge_hardware_diagnostics(self, n):
+        """Monotone runtime benchmark cost, separate from immutable pilot cost."""
+        _integer(n, "hardware_diagnostic_steps")
+        if n == self.hardware_diagnostic_steps:
+            return
+        if n < self.hardware_diagnostic_steps:
+            raise ValueError("El coste hardware no puede disminuir")
+        total = self.diagnostic_steps + n
+        if (total > self.config["phases"][-1]["steps"] - self.config["final_unassisted_steps"]
+                or self.relative_steps + self.config["final_unassisted_steps"] > self.config["branch_budget_steps"] - total):
+            raise ValueError("El diagnóstico hardware consume el tramo final reservado")
+        self.hardware_diagnostic_steps = n
 
     def charge_diagnostics(self, n):
         """Cobrar benchmarks descartados una sola vez, sin mover el ancla inicial.
@@ -410,7 +424,7 @@ class ProgramState:
         return dict(gates=gates, advanced=changed, skill_debts=list(self.skill_debts))
 
     def state_dict(self):
-        fields = ("phase_index", "relative_steps", "diagnostic_steps", "phase_start_steps", "pass_streak", "lr",
+        fields = ("phase_index", "relative_steps", "diagnostic_steps", "hardware_diagnostic_steps", "phase_start_steps", "pass_streak", "lr",
                   "last_lr_iteration", "last_endpoint_iteration", "lr_kl_window", "lr_events", "last_evaluation_steps", "last_snapshot_steps", "skill_debts",
                   "evaluations", "transitions", "recovery_consumed", "recovery_block_skill", "recovery_block_start",
                   "objective_signature", "objective_contract")
@@ -424,7 +438,7 @@ class ProgramState:
         for name in fresh:
             if name not in ("version", "config"):
                 if name not in saved:
-                    if name in ("objective_signature", "objective_contract"):
+                    if name in ("objective_signature", "objective_contract", "hardware_diagnostic_steps"):
                         continue  # old v3 checkpoints acquire this only through reevaluation
                     raise ValueError(f"Estado RS4 incompleto: {name}")
                 setattr(self, name, copy.deepcopy(saved[name]))
@@ -438,4 +452,7 @@ class ProgramState:
         if any(skill not in SKILLS for skill in self.skill_debts):
             raise ValueError("Deuda de habilidad desconocida")
         if self.diagnostic_steps > self.config["phases"][-1]["steps"] - self.config["final_unassisted_steps"]:
+            raise ValueError("Diagnóstico guardado consume el tramo final reservado")
+        _integer(self.hardware_diagnostic_steps, "hardware_diagnostic_steps")
+        if self.diagnostic_steps + self.hardware_diagnostic_steps > self.config["phases"][-1]["steps"] - self.config["final_unassisted_steps"]:
             raise ValueError("Diagnóstico guardado consume el tramo final reservado")

@@ -227,11 +227,11 @@ def functional_summary(rows):
 
 
 def evaluate(checkpoint, *, references=(), teammate_reference=None, seeds=(51, 73, 91),
-             games=16, functional_games=16, minutes=2, action_mode="greedy", holdout=False):
+             games=16, functional_games=16, minutes=2, action_mode="greedy", holdout=False, device="cpu"):
     if action_mode not in ("greedy", "sampled"):
         raise ValueError("action_mode must be greedy or sampled")
     greedy = action_mode == "greedy"
-    agent = make_agent(str(checkpoint), greedy=greedy)
+    agent = make_agent(str(checkpoint), greedy=greedy, device=device)
     opponents = [f"scripted:r3:{style}" for style in range(3)] + [str(p) for p in references]
     full_rows, functional_rows = [], []
     full_by_seed, functional_by_seed = {}, {}
@@ -240,7 +240,7 @@ def evaluate(checkpoint, *, references=(), teammate_reference=None, seeds=(51, 7
         for opponent in opponents:
             for color in (0, 1):
                 torch.manual_seed(seed * 100 + color)
-                row = full_game(agent, make_agent(opponent, greedy=greedy), games, minutes, seed, color)
+                row = full_game(agent, make_agent(opponent, greedy=greedy, device=device), games, minutes, seed, color)
                 row["opponent"] = opponent
                 row["team_mode"] = "all_learner"
                 row.update(learner_count=4, teammate="none", learner_slots=list(range(4)))
@@ -256,7 +256,7 @@ def evaluate(checkpoint, *, references=(), teammate_reference=None, seeds=(51, 7
                 for proxy_spec in proxies:
                     for color in (0, 1):
                         slots = tuple((seed_index + color + i) % 4 for i in range(count))
-                        proxy = make_agent(proxy_spec, greedy=greedy)
+                        proxy = make_agent(proxy_spec, greedy=greedy, device=device)
                         team = MixedTeamAgent(agent, proxy, slots)
                         opponent = f"scripted:r3:{style}"
                         torch.manual_seed(seed * 100 + color)
@@ -274,7 +274,7 @@ def evaluate(checkpoint, *, references=(), teammate_reference=None, seeds=(51, 7
                 functional_rows.append(row)
                 seed_functional.append(row)
         # Frozen imitator when provided; scripted approximation otherwise.
-        proxy = make_agent(str(teammate_reference), greedy=greedy) if teammate_reference else ScriptedAgent(policy="r3", seed=seed)
+        proxy = make_agent(str(teammate_reference), greedy=greedy, device=device) if teammate_reference else ScriptedAgent(policy="r3", seed=seed)
         for count in (1, 2, 3):
             for color in (0, 1):
                 slots = tuple((seed_index + color + count + i) % 4 for i in range(count))
@@ -309,7 +309,7 @@ def evaluate(checkpoint, *, references=(), teammate_reference=None, seeds=(51, 7
             "source_fingerprint": evaluation_source_fingerprint(),
             "suite": {"games": games, "functional_games": functional_games, "minutes": minutes,
                       "opponents": opponents, "opponent_sha256": {p: _file_fingerprint(p) for p in opponents if Path(p).is_file()},
-                      "action_mode": action_mode, "holdout": holdout, "scenario_difficulty": 1.,
+                      "action_mode": action_mode, "holdout": holdout, "scenario_difficulty": 1., "inference_device": str(device),
                       "teammate_proxies": proxies,
                       "teammate_reference": str(teammate_reference) if teammate_reference else None,
                       "teammate_sha256": _file_fingerprint(teammate_reference)},

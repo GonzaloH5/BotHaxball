@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 repo=/workspace/HaxballRL
-target=fdb186d
+target=$(cat /workspace/rs4_update_fdb186d/REVISION)
 cd "$repo"
+exec 9>runs/rs4_v3_public/.runner.lock
+if ! flock -n 9; then
+    echo 'Hay un runner o benchmark activo. La actualización está preparada; repetir al terminar.'
+    exit 75
+fi
 
 # Refuse to swap evaluator/trainer sources underneath a running process.
 .venv/bin/python - <<'PY'
@@ -70,7 +75,7 @@ for branch in ('control', 'memory'):
     cfg = yaml.safe_load(Path(f'runs/rs4_v3_public/{branch}/config.yaml').read_text())
     ppo = cfg['ppo']
     assert ppo['device'] == 'cuda', f'{branch}: device no es cuda'
-    assert ppo['torch_threads'] == 2 and ppo['numba_threads'] == 4, f'{branch}: revisar threads'
+    assert ppo['torch_threads'] >= 1 and ppo['numba_threads'] >= 1, f'{branch}: revisar threads'
 print('Actualización aplicada. Pesos, optimizadores, configuración y ledger conservados.')
 PY
 git rev-parse HEAD > pod_logs/collective_update_applied.txt

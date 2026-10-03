@@ -25,6 +25,7 @@ def main():
     ap.add_argument("--reference-report", help="Reuse an immutable evaluated baseline")
     ap.add_argument("--torch-threads", type=int, default=2)
     ap.add_argument("--physics-threads", type=int, default=4)
+    ap.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
     args = ap.parse_args()
     if args.holdout:
         args.seeds = list(HOLDOUT_SEEDS)
@@ -36,7 +37,9 @@ def main():
     from numba import get_num_threads, set_num_threads
     physics_threads = min(args.physics_threads, cpu_budget(), get_num_threads())
     set_num_threads(physics_threads)
-    print(f"Independent evaluation runtime: cpu | Torch {torch_threads} | physics {physics_threads}", flush=True)
+    if args.device == "cuda" and not torch.cuda.is_available():
+        ap.error("CUDA is unavailable")
+    print(f"Independent evaluation runtime: {args.device} | Torch {torch_threads} | physics {physics_threads}", flush=True)
     for path in [args.checkpoint, args.reference, args.teammate_reference, *args.opponents]:
         if path and not Path(path).is_file():
             ap.error(f"Checkpoint missing: {path}")
@@ -44,7 +47,7 @@ def main():
         ap.error("Games and minutes must be positive")
     common = dict(seeds=args.seeds, games=args.games, functional_games=args.functional_games,
                   minutes=args.minutes, teammate_reference=args.teammate_reference,
-                  action_mode=args.action_mode, holdout=args.holdout)
+                  action_mode=args.action_mode, holdout=args.holdout, device=args.device)
     refs = [args.reference] if args.reference else []
     report = evaluate(args.checkpoint, references=[*refs, *args.opponents], **common)
     cache_exists = args.reference_report and Path(args.reference_report).is_file()
@@ -68,7 +71,7 @@ def main():
     else:
         reference = None
     report["checkpoint_sha256"] = digest(args.checkpoint)
-    report["runtime"] = {"device": "cpu", "torch_threads": torch_threads, "physics_threads": physics_threads}
+    report["runtime"] = {"device": args.device, "torch_threads": torch_threads, "physics_threads": physics_threads}
     if reference:
         report["reference"] = reference
         report["baseline"] = reference["functional"]["skills"]
