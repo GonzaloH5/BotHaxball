@@ -295,6 +295,11 @@ class RS4V3Trainer(MultiTrainer):
             if s.modes[e] == SCRIPTED:
                 s.match_window.append(bucket)
                 s.match_window = s.match_window[-400:]
+                # Shared console/TensorBoard logging reads winrate() from this
+                # legacy window. Use the same complete, non-drill matches and
+                # learner-relative scores as the RS4 points metric, including
+                # history restored from checkpoints.
+                s.wr_window = [(row[3], row[4]) for row in s.match_window]
             # Indices can move when history is evicted. Resolve stable names at
             # result time; never attribute a held controller to another member.
             name = str(s.opponent_key[e]).removeprefix("pool:")
