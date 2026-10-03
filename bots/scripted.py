@@ -85,6 +85,9 @@ def scripted_actions(env, players=None, eps=0.0, rng=None, env_indices=None, pol
     return actions
 
 
+KICKOFF_PASS_GIVE_UP_TICKS = 240
+
+
 def _restart_actions(env, rows, players, actions, policy="r2"):
     """Árbitro disponible sólo para el baseline: no añade entradas a la política RL.
 
@@ -108,13 +111,21 @@ def _restart_actions(env, rows, players, actions, policy="r2"):
         owner[active], kind[active] = env.setpiece_team[active], env.setpiece_kind[active]
     if not (owner[rows] >= 0).any():
         return actions
+    # El pase de saque inicial puede orbitar sin alinearse nunca (8 direcciones +
+    # inercia). Pasado este margen se abandona el pase y se saca hacia adelante,
+    # antes del límite de 405 ticks que termina el episodio.
+    ticks = getattr(env, "kickoff_ticks", None)
+    pass_allowed = (np.ones(sim.N, dtype=np.bool_) if ticks is None
+                    else np.asarray(ticks) < KICKOFF_PASS_GIVE_UP_TICKS)
     return _restart_kernel(rows, players, actions, sim.ball_pos, sim.player_pos,
                            sim.player_team, env.sign, owner, kind, excluded, forced,
-                           env.goal_x, float(sim.st.player["radius"] + sim.st.ball["radius"]), policy == "r3")
+                           env.goal_x, float(sim.st.player["radius"] + sim.st.ball["radius"]), policy == "r3",
+                           pass_allowed)
 
 
 @njit(cache=True, nogil=True)
-def _restart_kernel(rows, players, actions, bp, pp, team, sign, owner, kind, excluded, forced, gx, radii, pass_kickoff=False):
+def _restart_kernel(rows, players, actions, bp, pp, team, sign, owner, kind, excluded, forced, gx, radii, pass_kickoff,
+                    pass_allowed):
     for i in range(len(rows)):
         n = rows[i]
         if owner[n] < 0:
@@ -129,7 +140,7 @@ def _restart_kernel(rows, players, actions, bp, pp, team, sign, owner, kind, exc
         if forced[n] >= 0 and not excluded[n, forced[n]]:
             taker = forced[n]
         receiver = -1
-        if pass_kickoff and kind[n] == 6:
+        if pass_kickoff and kind[n] == 6 and pass_allowed[n]:
             best_lane = 0.0
             for q in range(pp.shape[1]):
                 if team[q] != owner[n] or q == taker or excluded[n, q]:

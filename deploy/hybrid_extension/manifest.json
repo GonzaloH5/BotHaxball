@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "RS4 híbrido — Humano / Bot",
-  "version": "0.1.5",
+  "version": "0.3.0",
   "minimum_chrome_version": "116",
   "description": "Control compartido de un único jugador, sólo en salas propias o autorizadas.",
   "permissions": ["storage"],

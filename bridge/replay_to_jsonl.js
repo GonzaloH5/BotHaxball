@@ -71,6 +71,9 @@ function finish(why) {
   process.exit(0);
 }
 
+// Copia serializable de los arreglos de propiedades (Float32Array/arrays con null).
+const plain = (v) => (v == null ? null : Array.from(v, (x) => (x == null || Number.isNaN(x) ? null : (typeof x === "number" ? r(x) : x))));
+
 const data = new Uint8Array(fs.readFileSync(file));
 const ev = (name, extra) => write({ type: "event", name, frame: reader ? frame() : 0, ...extra });
 reader = Replay.read(data, {
@@ -81,7 +84,9 @@ reader = Replay.read(data, {
   onGameStart: () => ev("game_start", {}),
   onGameStop: () => ev("game_stop", {}),
   onStadiumChange: (st) => ev("stadium_change", { stadium: st.name, stadiumFile: saveStadium(st) }),
-  onSetDiscProperties: (id, type) => ev("disc_props", { id, kind: type }),
+  // data1: [x, y, vx, vy, gx, gy, radius, bCoef, invMass, damping] (null = sin cambio)
+  // data2: [color, cMask, cGroup]. type 0 = disco del estadio, 1 = jugador (id de jugador).
+  onSetDiscProperties: (id, type, data1, data2) => ev("disc_props", { id, kind: type, data1: plain(data1), data2: plain(data2) }),
   onPlayerDiscPropertiesChange: (id) => ev("disc_props", { id, kind: "player" }),
   onBallDiscPropertiesChange: () => ev("disc_props", { id: 0, kind: "ball" }),
   onGamePauseChange: (paused) => ev("pause", { paused }),

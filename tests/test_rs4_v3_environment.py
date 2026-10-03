@@ -18,7 +18,7 @@ def practice(n=10, **settings):
                                   obs_layout="universal", seed=51), settings)
 
 
-@pytest.mark.parametrize("scenario", SCENARIOS)
+@pytest.mark.parametrize("scenario", [name for name in SCENARIOS if name != "recorded"])  # ver test_rs4_recorded.py
 @pytest.mark.parametrize("color", (0, 1))
 def test_practice_preserves_rs4_and_no_private_observation(scenario, color):
     env = practice(2)

@@ -1,0 +1,162 @@
+{
+ "reference": "reports/rs4_b1/eval/v3_2568M_final.json",
+ "cell_level": "pair",
+ "seeds": {
+  "reports/rs4_b1/eval/B_s1_final.json": {
+   "valid": true,
+   "restarts": {
+    "success": 0.9666319082377477,
+    "passed": true
+   },
+   "no_regression": {
+    "passed": false,
+    "regressions": [
+     {
+      "cell": "C:\\Users\\gonza\\Documents\\HaxballRL\\runs\\bc_rs4_v2_20261001\\bc.pt|C:\\Users\\gonza\\Documents\\HaxballRL\\runs\\pod_archive_20261003\\runs\\rs4_v3_public\\champion.pt",
+      "difference": -0.078125,
+      "ci90_upper": -0.041015625
+     },
+     {
+      "cell": "C:\\Users\\gonza\\Documents\\HaxballRL\\runs\\bc_rs4_v2_20261001\\bc.pt|scripted:r3:1",
+      "difference": -0.0703125,
+      "ci90_upper": -0.033203125
+     },
+     {
+      "cell": "C:\\Users\\gonza\\Documents\\HaxballRL\\runs\\pod_archive_20261003\\runs\\rs4_v5d\\eval_50M.pt|scripted:r3:1",
+      "difference": -0.068359375,
+      "ci90_upper": -0.041015625
+     }
+    ],
+    "undecided_cells": 0,
+    "note": null
+   },
+   "improvement": {
+    "difference": 0.013454861111111112,
+    "ci95": [
+     -0.003477647569444444,
+     0.031038411458333328
+    ],
+    "passed": false
+   },
+   "shortcuts": {
+    "passed": true,
+    "detail": {
+     "own_goals_per_game": {
+      "candidate": 0.1584201388888889,
+      "reference": 0.24869791666666666,
+      "passed": true
+     },
+     "kickoff_stalls_per_game": {
+      "candidate": 0.0,
+      "reference": 0.0,
+      "passed": true
+     },
+     "parked_fraction": {
+      "candidate": 0.09525487075617284,
+      "reference": 0.06576352719907408,
+      "passed": true
+     },
+     "two_keepers_fraction": {
+      "candidate": 0.05469823013117284,
+      "reference": 0.0535522762345679,
+      "passed": true
+     },
+     "unique_trajectories": {
+      "candidate": 1.0,
+      "passed": true
+     }
+    }
+   },
+   "passed": false
+  },
+  "reports/rs4_b1/eval/B_s2_final.json": {
+   "valid": true,
+   "restarts": {
+    "success": 0.9551616266944735,
+    "passed": true
+   },
+   "no_regression": {
+    "passed": false,
+    "regressions": [
+     {
+      "cell": "C:\\Users\\gonza\\Documents\\HaxballRL\\runs\\bc_rs4_v2_20261001\\bc.pt|C:\\Users\\gonza\\Documents\\HaxballRL\\runs\\pod_archive_20261003\\runs\\rs4_v3_public\\champion.pt",
+      "difference": -0.1015625,
+      "ci90_upper": -0.06640625
+     },
+     {
+      "cell": "C:\\Users\\gonza\\Documents\\HaxballRL\\runs\\bc_rs4_v2_20261001\\bc.pt|scripted:r3:1",
+      "difference": -0.18359375,
+      "ci90_upper": -0.14453125
+     },
+     {
+      "cell": "C:\\Users\\gonza\\Documents\\HaxballRL\\runs\\pod_archive_20261003\\runs\\rs4_v5d\\eval_50M.pt|C:\\Users\\gonza\\Documents\\HaxballRL\\runs\\pod_archive_20261003\\runs\\rs4_v3_public\\champion.pt",
+      "difference": -0.0546875,
+      "ci90_upper": -0.015625
+     },
+     {
+      "cell": "C:\\Users\\gonza\\Documents\\HaxballRL\\runs\\pod_archive_20261003\\runs\\rs4_v5d\\eval_50M.pt|C:\\Users\\gonza\\Documents\\HaxballRL\\runs\\pod_archive_20261003\\runs\\rs4_v5d\\eval_300M.pt",
+      "difference": -0.087890625,
+      "ci90_upper": -0.02734375
+     },
+     {
+      "cell": "C:\\Users\\gonza\\Documents\\HaxballRL\\runs\\pod_archive_20261003\\runs\\rs4_v5d\\eval_50M.pt|scripted:r3:1",
+      "difference": -0.107421875,
+      "ci90_upper": -0.072265625
+     },
+     {
+      "cell": "scripted:r3:2|C:\\Users\\gonza\\Documents\\HaxballRL\\runs\\pod_archive_20261003\\runs\\rs4_v3_public\\champion.pt",
+      "difference": -0.08203125,
+      "ci90_upper": -0.03125
+     },
+     {
+      "cell": "scripted:r3:2|scripted:r3:1",
+      "difference": -0.080078125,
+      "ci90_upper": -0.029296875
+     }
+    ],
+    "undecided_cells": 0,
+    "note": null
+   },
+   "improvement": {
+    "difference": -0.07465277777777778,
+    "ci95": [
+     -0.09224175347222222,
+     -0.05750325520833333
+    ],
+    "passed": false
+   },
+   "shortcuts": {
+    "passed": false,
+    "detail": {
+     "own_goals_per_game": {
+      "candidate": 0.1540798611111111,
+      "reference": 0.24869791666666666,
+      "passed": true
+     },
+     "kickoff_stalls_per_game": {
+      "candidate": 0.0,
+      "reference": 0.0,
+      "passed": true
+     },
+     "parked_fraction": {
+      "candidate": 0.14988401813271604,
+      "reference": 0.06576352719907408,
+      "passed": false
+     },
+     "two_keepers_fraction": {
+      "candidate": 0.052075376157407406,
+      "reference": 0.0535522762345679,
+      "passed": true
+     },
+     "unique_trajectories": {
+      "candidate": 1.0,
+      "passed": true
+     }
+    }
+   },
+   "passed": false
+  }
+ },
+ "reproducible": false,
+ "passed": false
+}

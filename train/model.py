@@ -191,9 +191,10 @@ class SetActorCritic(nn.Module):
 
     def __init__(self, self_dim: int, ent_dim: int = 8, n_actions: int = 18, hidden: int = 256,
                  layers: int = 2, ent_hidden: int = 64, pooling: str = "meanmax", ent_layers: int = 2,
-                 rule_observation: str = "full", public_signals_version: int = 0):
+                 rule_observation: str = "full", public_signals_version: int = 0, critic_features: int = 0):
         super().__init__()
         self.self_dim, self.ent_dim, self.n_actions = self_dim, ent_dim, n_actions
+        self.critic_features = int(critic_features)
         if pooling not in ("meanmax", "attention", "attentive_meanmax"):
             raise ValueError(f"pooling desconocido: {pooling}")
         self.hidden, self.layers, self.ent_hidden, self.pooling = hidden, layers, ent_hidden, pooling
@@ -235,6 +236,11 @@ class SetActorCritic(nn.Module):
             # Zero residual preserves the entire policy/value at migration time.
             self.public_proj = nn.Linear(15, joint, bias=False)
             nn.init.zeros_(self.public_proj.weight)
+        if self.critic_features:
+            # Estado privilegiado sólo para el valor (entrenamiento). En cero: al
+            # migrar conserva exactamente el crítico; la política nunca lo usa.
+            self.critic_proj = nn.Linear(self.critic_features, joint, bias=False)
+            nn.init.zeros_(self.critic_proj.weight)
         self.pi = nn.Linear(hidden, n_actions)
         self.v = nn.Linear(hidden, 1)
         nn.init.orthogonal_(self.pi.weight, 0.01)
@@ -245,7 +251,8 @@ class SetActorCritic(nn.Module):
         return dict(type="set", self_dim=self.self_dim, ent_dim=self.ent_dim, n_actions=self.n_actions,
                     hidden=self.hidden, layers=self.layers, ent_hidden=self.ent_hidden, pooling=self.pooling,
                     ent_layers=self.ent_layers, rule_observation=self.rule_observation,
-                    **({"public_signals_version": self.public_signals_version} if self.public_signals_version else {}))
+                    **({"public_signals_version": self.public_signals_version} if self.public_signals_version else {}),
+                    **({"critic_features": self.critic_features} if self.critic_features else {}))
 
     def _split(self, obs):
         s = obs[:, : self.self_dim]
@@ -316,15 +323,24 @@ class SetActorCritic(nn.Module):
         if source.get("type", "set") != "set":
             raise ValueError("La migración compatible requiere un checkpoint set feedforward")
         missing, unexpected = self.load_state_dict(checkpoint["model"], strict=False)
+        # public_proj nace en cero: un BC sin señales públicas conserva su política.
         allowed_prefixes = ("q.", "attn.", "residual_attn.", "mate_attn_proj.",
-                            "opp_attn_proj.", "attn_gate")
+                            "opp_attn_proj.", "attn_gate", "public_proj.", "critic_proj.")
         bad = [name for name in missing if not name.startswith(allowed_prefixes)]
         if bad or unexpected:
             raise ValueError(f"Checkpoint incompatible: faltan {bad}, sobran {unexpected}")
 
-    def forward(self, obs: torch.Tensor):
+    def forward(self, obs: torch.Tensor, critic: torch.Tensor | None = None):
         x = self._features(obs)
-        return self.pi(self.pi_body(x)), self.v(self.v_body(x)).squeeze(-1)
+        return self.pi(self.pi_body(x)), self._value(x, critic)
+
+    def _value(self, x, critic=None):
+        if critic is not None and self.critic_features:
+            x = x + self.critic_proj(critic)
+        return self.v(self.v_body(x)).squeeze(-1)
+
+    def value(self, obs: torch.Tensor, critic: torch.Tensor | None = None) -> torch.Tensor:
+        return self._value(self._features(obs), critic)
 
     def logits(self, obs: torch.Tensor) -> torch.Tensor:
         return self.pi(self.pi_body(self._features(obs)))

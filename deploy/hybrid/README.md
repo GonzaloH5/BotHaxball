@@ -1,11 +1,84 @@
-# RS4 híbrido 0.1: instalación y aceptación
+# RS4 Control 0.3: instalación y aceptación
+
+## Gestor de salas y múltiples bots (0.3.0)
+
+Además del control híbrido de tu jugador, la extensión ahora abre una consola
+«Salas y bots». Está disponible en el panel de HaxBall y en la configuración de
+la extensión. Reiniciar el servicio local, recargar la extensión y emparejar con
+el token nuevo antes de usarla. El comando del servicio sigue siendo:
+
+```powershell
+node deploy/hybrid_server.js --model deploy/rs4_public/model.onnx
+```
+
+- **Agregar a sala:** pegar el enlace oficial o ID y la contraseña si corresponde.
+- **Crear sala:** elegir nombre, mapa, capacidad, límites de goles/minutos y
+  visibilidad pública. Introducir un token reciente obtenido manualmente en
+  `https://www.haxball.com/headlesstoken`. Es distinto del token local de emparejamiento.
+- **Perfiles:** hasta ocho bots activos por servicio, con nombres distintos por
+  grupo, avatar de hasta dos unidades UTF-16, país de dos letras, equipo solicitado
+  y modelo local. Los perfiles se recuerdan al iniciar un grupo. No se guardan el
+  token headless ni la contraseña de la sala en el almacenamiento de la extensión.
+- **Modelos:** el modelo pasado al servicio y los modelos Clásico/Multitarea si
+  existen en `deploy/model.onnx` y `deploy/multi/model.onnx`, con su JSON asociado.
+  Se permiten sólo esos archivos y los mapas `.hbs` descubiertos en `stadiums`.
+- **Instancias:** pausar/reanudar inferencia, solicitar equipo, desconectar un bot
+  o detener todos. El primer perfil al crear sala actúa de host, permite iniciar,
+  pausar/continuar y detener el partido. Los demás esperan el enlace para entrar.
+  Los equipos mostrados son los observados; en salas ajenas el host conserva la
+  autoridad para asignarlos. No se evitan límites por IP, capacidad o admisión.
+
+Cada instancia ejecuta `deploy/bot.js` en su propio proceso, con memoria de política
+independiente y un hilo de inferencia. Cerrar la consola no desconecta los bots.
+Cerrar el servicio detiene sus procesos; una desconexión del padre también termina
+el bot. Hay timeout de conexión y cancelación de los bots todavía en cola. No se
+reconectan automáticamente instancias que hayan terminado.
+
+El gestor usa `/fleet` con autenticación local, separado del protocolo híbrido
+`/rs4`. No recibe comandos desde el puente de la página de HaxBall. Los bots
+administrados tampoco aceptan los comandos de chat del antiguo bot por terminal.
+Los secretos viajan al proceso por entorno, no por argumentos de línea de comandos,
+y no se incluyen en los estados del gestor. No se agregan permisos de navegador.
+
+El mapa no instala el script de reglas de una sala: cargar Real Soccer ONE por sí
+solo no reproduce poderes ni arbitraje del servidor original. Elegir el modelo
+apropiado. La prueba automatizada del gestor usa procesos y salas simulados;
+hosting WebRTC real, aceptación del token y varias conexiones desde la misma IP
+requieren validación con una sala real.
+
+```powershell
+node deploy/test_bot_manager.js
+node deploy/test_bot_managed_runtime.js
+node deploy/test_bot_memory.js
+node deploy/test_manager_browser.js
+```
+
+## Panel de control 0.2.0
+
+El panel compacto muestra modo, atajo, conexión y el motivo que impide activar el
+bot. «Opciones y diagnóstico» abre una consola con altura limitada para conservar
+espacio de juego, requisitos de preparación, inferencia y edad de la última
+propuesta. Las métricas sin muestras durante tres segundos se muestran como «—».
+El último resultado del preflight se conserva como referencia; «Preflight vigente»
+indica si todavía es válido para la configuración actual.
+
+El historial mantiene hasta 60 cambios de estado en memoria por página.
+«Descargar diagnóstico» exporta un JSON con versión, estado, modelo, requisitos,
+métricas y eventos. No exporta credenciales, chat ni frames de juego. «Limpiar
+eventos» borra sólo el historial visible; no cambia el control ni la validación.
+
+La configuración incorpora estado del servicio y pestaña propietaria, visibilidad
+opcional del token, guardado independiente del atajo y una guía con comando
+copiable. No se agregan permisos de navegador. Para actualizar, recargar la
+extensión en `brave://extensions` y luego la página de HaxBall.
 
 ## Qué hace y qué no
 
-Un solo jugador y una sola conexión oficial del navegador. La extensión alterna
-las entradas del humano y del modelo a través del controlador nativo. El servicio
-Node sólo recibe geometría y estado seleccionado e infiere en ONNX; nunca importa
-`Room`, autentica un jugador, crea WebRTC, entrena, graba partidas o lee el chat.
+En el modo híbrido hay un solo jugador y una sola conexión oficial del navegador.
+La extensión alterna las entradas del humano y del modelo por el controlador
+nativo. El protocolo de inferencia sólo recibe geometría y estado seleccionado.
+El gestor adicional crea conexiones WebRTC propias únicamente al iniciar bots
+desde su consola. Ninguno de estos modos entrena ni modifica checkpoints.
 Usar exclusivamente en salas propias o con autorización.
 
 Primera versión: **Real Soccer ONE**, 4 jugadores por color, modelos del programa

@@ -24,7 +24,7 @@ assert.doesNotThrow(()=>assertObservationContract({layout:'universal',rule_obser
 // and sampling while inference is busy. Never connects to a room.
 (async()=>{
   const code=fs.readFileSync(path.join(__dirname,'bot.js'),'utf8');
-  const plugin=code.slice(code.indexOf('function BotPlugin(session)'),code.indexOf('\n(async () =>'));
+  const plugin=code.slice(code.indexOf('function BotPlugin('),code.indexOf('\n(async () =>'));
   const disc=(x=0,y=0,color=0xffffff)=>({pos:{x,y},speed:{x:0,y:0},color});
   const me={id:1,team:{id:1},disc:disc(20),isKicking:true};
   const ball=disc(0,0,0xff0000), samples=[], pending=[];

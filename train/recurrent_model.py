@@ -40,19 +40,23 @@ class RecurrentSetActorCritic(SetActorCritic):
         previous = F.one_hot(previous_action.long(), self.n_actions + 1).to(features.dtype)
         return self.gru(torch.cat([features, previous], dim=-1), memory)
 
-    def _heads(self, features, memory):
+    def _heads(self, features, memory, critic=None):
         logits = self.pi(self.pi_body(features)) + self.memory_pi(memory)
-        value = self.v(self.v_body(features)) + self.memory_v(memory)
+        value_features = features + self.critic_proj(critic) if critic is not None and self.critic_features else features
+        value = self.v(self.v_body(value_features)) + self.memory_v(memory)
         return logits, value.squeeze(-1)
 
-    def step(self, obs, memory, previous_action, episode_start=None):
+    def step(self, obs, memory, previous_action, episode_start=None, critic=None):
         features = self._features(obs)
         memory = self._advance(features, memory, previous_action, episode_start)
-        logits, value = self._heads(features, memory)
+        logits, value = self._heads(features, memory, critic)
         return logits, value, memory
 
-    def sequence(self, obs, memory, previous_action, episode_start):
-        """(tiempo, secuencias, obs). No mezclar ticks al formar minibatches."""
+    def sequence(self, obs, memory, previous_action, episode_start, critic=None):
+        """(tiempo, secuencias, obs). No mezclar ticks al formar minibatches.
+
+        `critic` (tiempo, secuencias, k): estado privilegiado sólo para el valor; la memoria
+        y la política nunca lo reciben, así el actor desplegado no depende de él."""
         length, batch, width = obs.shape
         features = self._features(obs.reshape(length * batch, width)).reshape(length, batch, -1)
         history = []
@@ -60,8 +64,9 @@ class RecurrentSetActorCritic(SetActorCritic):
             memory = self._advance(features[t], memory, previous_action[t], episode_start[t])
             history.append(memory)
         states = torch.stack(history)
+        flat_critic = None if critic is None else critic.reshape(length * batch, -1)
         logits, values = self._heads(features.reshape(length * batch, -1),
-                                     states.reshape(length * batch, self.memory_size))
+                                     states.reshape(length * batch, self.memory_size), flat_critic)
         return logits.reshape(length, batch, -1), values.reshape(length, batch), memory
 
     def initialize_from(self, checkpoint):
@@ -73,10 +78,10 @@ class RecurrentSetActorCritic(SetActorCritic):
             raise ValueError("La memoria requiere un checkpoint universal de tipo set")
         missing, unexpected = self.load_state_dict(checkpoint["model"], strict=False)
         allowed_prefixes = ("gru.", "memory_pi.", "memory_v.", "q.", "attn.", "residual_attn.",
-                            "mate_attn_proj.", "opp_attn_proj.", "attn_gate")
-        allowed = {name for name in self.state_dict() if name.startswith(allowed_prefixes)}
-        if set(missing) != allowed or unexpected:
-            raise ValueError(f"Checkpoint BC incompatible: faltan {missing}, sobran {unexpected}")
+                            "mate_attn_proj.", "opp_attn_proj.", "attn_gate", "critic_proj.", "public_proj.")
+        bad = [name for name in missing if not name.startswith(allowed_prefixes)]
+        if bad or unexpected:
+            raise ValueError(f"Checkpoint BC incompatible: faltan {bad}, sobran {unexpected}")
         nn.init.zeros_(self.memory_pi.weight)
         nn.init.zeros_(self.memory_v.weight)
 

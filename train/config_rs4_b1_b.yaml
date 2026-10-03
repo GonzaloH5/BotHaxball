@@ -1,0 +1,12 @@
+# RS4-b1, candidato B (PLAN_RS4.md sección 3): la política de A con una GRU residual de
+# 64 unidades. memory_pi y memory_v nacen en cero, así que al inicio B reproduce exactamente
+# las acciones y el valor de A (test de paridad: tests/test_rs4_b1.py). Mismos hiperparámetros,
+# recompensa, compañeros y presupuesto que A: sólo cambia la arquitectura.
+#   python -m tools.rs4_b1_launch --candidate B --seed 1
+extends: config_rs4_b1.yaml
+run_name: rs4_b1_b
+model:
+  type: recurrent_set
+  memory_size: 64
+ppo:
+  sequence_length: 32

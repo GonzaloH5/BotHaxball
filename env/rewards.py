@@ -38,6 +38,16 @@ class RewardConfig:
     rs4_tactical_coef: float = 0.0  # opt-in sólo rs_one 4v4; guía conjunta acotada
     rs4_reward_version: int = 2
     rs4_pass_participant: float = 0.0  # small extra credit, inside the possession cap
+    # RS4 v5 (opt-in): suma cero entre equipos; vale doble si se pierde en campo propio.
+    possession_change: float = 0.0
+    # RS4 v5 (opt-in): -x a AMBOS equipos si el partido/episodio vence sin goles.
+    # No es suma cero a propósito: el empate 0-0 deja de ser un refugio seguro.
+    no_goal_penalty: float = 0.0
+    # RS4 v5d (opt-in): -x por decisión a AMBOS equipos con juego en curso. A
+    # diferencia de no_goal_penalty (2400 decisiones después, invisible con
+    # γ=0,995) entra en el horizonte; como el gol termina el episodio, abrir el
+    # juego conviene. Mantener x/(1-γ) < rs4_restart_stall para no premiar trabas.
+    no_goal_step_penalty: float = 0.0
 
     # Cooperación global: sólo se usa con equipos de 2+ jugadores.
     team_pass_success: float = 0.0015

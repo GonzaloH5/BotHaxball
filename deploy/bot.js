@@ -35,6 +35,12 @@ const { sampleLogits, geometryFromText } = require("./runtime");
 // ------------------------------------------------------------------ args
 const args = process.argv.slice(2);
 const arg = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
+const MANAGED = args.includes('--managed');
+const managedSecrets = MANAGED ? JSON.parse(process.env.RS4_BOT_SECRETS || '{}') : {};
+delete process.env.RS4_BOT_SECRETS;
+let managedRoom = null;
+const report = data => { if (MANAGED && process.connected) process.send(data); };
+if (MANAGED) process.on('disconnect',()=>{try{managedRoom?.setKeyState(0);managedRoom?.leave();}finally{process.exit(0);}});
 const MODEL = arg("--model", path.join(__dirname, "model.onnx"));
 const META = JSON.parse(fs.readFileSync(MODEL.replace(/\.onnx$/, ".json"), "utf8"));
 let temperature = parseFloat(arg("--temp", "0.0"));
@@ -77,7 +83,8 @@ function sample(logits) {
   return sampleLogits(logits, temperature);
 }
 
-function BotPlugin(session) {
+function BotPlugin(session, managed = false) {
+  let managedEnabled = true;
   Object.setPrototypeOf(this, Plugin.prototype);
   Plugin.call(this, "rlBot", true, {
     version: "1.0", author: "HaxballRL", description: "Bot PPO self-play",
@@ -332,7 +339,7 @@ function BotPlugin(session) {
   this.onGameStop = () => {
     resetPolicy();
 
-    if (that.room.isHost) {
+    if (that.room.isHost && !managed) {
       setTimeout(() => {
         if (!that.room.gameState) {
           that.room.startGame();
@@ -356,6 +363,7 @@ function BotPlugin(session) {
   };
 
   this.onGameTick = () => {
+    if (!managedEnabled) return;
     const s = UNIVERSAL ? snapshotUniversal() : snapshot();
     if (!s) {
       if (policyActive) resetPolicy();
@@ -401,7 +409,7 @@ function BotPlugin(session) {
   this.onPlayerJoin = (p) => {
     resetPolicy();
     const room = that.room;
-    if (!room.isHost) return;
+    if (!room.isHost || managed) return;
     room.sendChat(`Hola ${p.name}! Soy un bot entrenado con RL. Comandos: !bot red|blue|spec, !start, !greedy, !temp x`);
     const me = room.currentPlayer;
     if (me.team.id === 0) room.setPlayerTeam(me.id, 1);
@@ -414,6 +422,7 @@ function BotPlugin(session) {
   };
 
   this.onPlayerChat = (id, msg) => {
+    if (managed) return; // Managed instances accept commands only over local IPC.
     const room = that.room;
     const me = room.currentPlayer;
     const [cmd, val] = msg.trim().split(/\s+/);
@@ -428,28 +437,38 @@ function BotPlugin(session) {
       room.startGame();
     }
   };
+  this.setManagedEnabled = enabled => { managedEnabled = enabled; resetPolicy(); resetControls(); };
 }
 
 (async () => {
   if (API.ready) await API.ready;
-  const session = await ort.InferenceSession.create(MODEL);
+  if (MANAGED && !process.connected) return process.exit(0);
+  const session = await ort.InferenceSession.create(MODEL, MANAGED ? {intraOpNumThreads:1,interOpNumThreads:1} : {});
+  const plugin = new BotPlugin(session, MANAGED);
   console.log(UNIVERSAL
     ? `modelo ${MODEL} (multi-tarea: cualquier mapa y formato; entrenado en ${(META.tasks || []).join(", ")})`
     : `modelo ${MODEL} (obs ${META.obs_dim}, ${META.n_per_team}v${META.n_per_team}, estadio ${META.stadium})`);
   const common = {
     storage: {
       player_name: arg("--player", "RL-Bot"),
-      avatar: "8",
+      avatar: arg('--avatar', '8'),
       geo: {
         lat: -34.6037,
         lon: -58.3816,
-        flag: "ar"
+        flag: arg('--flag', 'ar')
       }
     },
-    plugins: [new BotPlugin(session)],
+    plugins: [plugin],
     onOpen: (room) => {
       console.log("conectado a la sala:", room.name);
-      room.onAfterRoomLink = (link) => console.log("link de la sala:", link);
+      managedRoom = room;
+      report({type:'connected',playerId:room.currentPlayerId,isHost:room.isHost});
+      room.onAfterRoomLink = (link) => { console.log("link de la sala:", link); report({type:'link',link}); };
+      if (MANAGED) {
+        room.setAvatar(arg('--avatar','8'));
+        if (room.isHost) {room.setTimeLimit(Number(arg('--time-limit','3')));room.setScoreLimit(Number(arg('--score-limit','3')));}
+        room.setPlayerTeam(room.currentPlayerId,Number(arg('--team','0')));
+      }
 
       if (STADIUM_ARG) {
         const stadiumPath = path.join(REPO, "stadiums", `${STADIUM_ARG}.hbs`);
@@ -464,20 +483,37 @@ function BotPlugin(session) {
         }
       }
     },
-    onClose: (e) => { console.log("sala cerrada", e?.toString?.() ?? ""); process.exit(0); },
+    onClose: (e) => { report({type:'closed',error:e?.toString?.() || ''}); console.log("sala cerrada", e?.toString?.() ?? ""); process.exit(0); },
   };
   if (joinId) {
     const [, authObj] = await Utils.generateAuth();
-    Room.join({ id: joinId, authObj, password: arg("--password", undefined) }, common);
+    Room.join({ id: joinId, authObj, password: managedSecrets.password || arg("--password", undefined) }, common);
   } else {
-    const token = process.env.HAXBALL_TOKEN || arg("--token", null);
+    const token = managedSecrets.token || process.env.HAXBALL_TOKEN || arg("--token", null);
     if (!token) {
       console.error("Falta el token: sacalo en https://www.haxball.com/headlesstoken y pasalo con HAXBALL_TOKEN=... o --token");
       process.exit(1);
     }
     Room.create({
-      name: arg("--name", "HaxballRL bot"), password: arg("--password", undefined),
-      showInRoomList: args.includes("--public"), maxPlayerCount: 8, token, noPlayer: false,
+      name: arg("--name", "HaxballRL bot"), password: managedSecrets.password || arg("--password", undefined),
+      showInRoomList: args.includes("--public"), maxPlayerCount: Number(arg('--max-players','8')), token, noPlayer: false,
     }, common);
   }
-})();
+  if (MANAGED) {
+    const finish = () => { try {managedRoom?.setKeyState(0);managedRoom?.leave();} finally {process.exit(0);} };
+    process.on('message',m=>{
+      if (m?.type==='stop') return finish();
+      if (!managedRoom) return;
+      try {
+        if (m.type==='enabled' && typeof m.enabled==='boolean') {plugin.setManagedEnabled(m.enabled);report({type:'enabled',enabled:m.enabled});}
+        else if (m.type==='team' && [0,1,2].includes(m.team)) managedRoom.setPlayerTeam(m.playerId??managedRoom.currentPlayerId,m.team);
+        else if (m.type==='game' && managedRoom.isHost) {
+          if(m.action==='start') managedRoom.startGame();
+          else if(m.action==='stop') managedRoom.stopGame();
+          else if(m.action==='pause') managedRoom.pauseGame();
+        }
+      } catch {report({type:'commandError',error:'No se pudo aplicar el comando en la sala.'});}
+    });
+    setInterval(()=>{if(managedRoom)report({type:'state',team:managedRoom.currentPlayer?.team?.id??0,playing:!!managedRoom.gameState});},1000).unref();
+  }
+})().catch(e=>{report({type:'closed',error:e.message});console.error(e.message);process.exit(1);});

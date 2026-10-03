@@ -10,7 +10,9 @@
     "hybrid": "node hybrid_server.js",
     "hybrid:build": "node hybrid/build_extension.js",
     "hybrid:probe": "node hybrid/probe_official.js",
-    "hybrid:test": "node test_hybrid.js"
+    "hybrid:test": "node test_hybrid.js",
+    "manager:test": "node test_bot_manager.js && node test_bot_managed_runtime.js",
+    "manager:test-browser": "node test_manager_browser.js"
   },
   "dependencies": {
     "node-haxball": "^2.3.1",

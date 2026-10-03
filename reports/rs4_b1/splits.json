@@ -1,0 +1,898 @@
+{
+ "version": "RS4-b1-splits-1",
+ "rules": [
+  "* Deduplicación por contenido (SHA-256, ya registrada en data/rs4_jsonl/index.json).",
+  "* Sesión = fecha del nombre (AAAA-MM-DD) o, si no hay fecha, sala normalizada: todas las",
+  "  grabaciones de una sesión van a la misma partición (mismos jugadores, misma noche).",
+  "* Contaminación declarada: las grabaciones que entrenaron los imitadores BC v2/v5",
+  "  (`data/bc_rs4_v2`, partición por hash md5 del nombre con 12% de validación) no pueden ir",
+  "  a prueba. Prueba = sesiones sin ninguna grabación de entrenamiento BC.",
+  "* Desarrollo = sesiones elegidas por hash estable entre las restantes (~20% de grabaciones).",
+  ""
+ ],
+ "summary": {
+  "prueba": {
+   "grabaciones": 7,
+   "no_usada": 4,
+   "validacion_bc": 3,
+   "sesiones": 7
+  },
+  "entrenamiento": {
+   "grabaciones": 45,
+   "entrenamiento_bc": 40,
+   "no_usada": 2,
+   "validacion_bc": 3,
+   "sesiones": 16
+  },
+  "desarrollo": {
+   "grabaciones": 13,
+   "validacion_bc": 4,
+   "entrenamiento_bc": 9,
+   "sesiones": 6
+  }
+ },
+ "sessions": {
+  "sala:mrhost 4 buenos aires": {
+   "split": "prueba",
+   "recordings": [
+    "_MrHOST_-_4_-_Buenos_Aires_-1790563275736 (1).hbr2"
+   ]
+  },
+  "sala:mrhost x haxcl santiago": {
+   "split": "entrenamiento",
+   "recordings": [
+    "argbol1t__70f72c3802b7.hbr2",
+    "argperuu21__8c288f6ecbca.hbr2"
+   ]
+  },
+  "sala:mrhost x ihl lima": {
+   "split": "prueba",
+   "recordings": [
+    "argbol2t__a6471cbc4a3f.hbr2"
+   ]
+  },
+  "sala:mrhost 3 sao paulo": {
+   "split": "entrenamiento",
+   "recordings": [
+    "argbra1tfinal__cd4dbf2b9761.hbr2"
+   ]
+  },
+  "fecha:2026-09-24": {
+   "split": "entrenamiento",
+   "recordings": [
+    "HBReplay-2026-09-24-23h36m.hbr2",
+    "HaxOfi-2026-09-24-02-31-14.hbr2"
+   ]
+  },
+  "fecha:2026-09-28": {
+   "split": "desarrollo",
+   "recordings": [
+    "HBReplay-2026-09-28-23h24m.hbr2",
+    "HBReplay-2026-09-28-23h36m.hbr2",
+    "HaxOfi-2026-09-28-01-31-55.hbr2",
+    "HaxOfi-2026-09-28-02-26-57.hbr2"
+   ]
+  },
+  "fecha:2026-09-22": {
+   "split": "prueba",
+   "recordings": [
+    "HaxOfi-replay-2026-09-22-02-17-17.hbr2"
+   ]
+  },
+  "fecha:2026-05-03": {
+   "split": "entrenamiento",
+   "recordings": [
+    "HBReplay-2026-05-03-22h26m-69f7fe8c03a974.47171323.hbr2",
+    "HBReplay-2026-05-03-23h35m-69f81473d9eb43.45445286.hbr2"
+   ]
+  },
+  "fecha:2026-08-07": {
+   "split": "entrenamiento",
+   "recordings": [
+    "HBReplay-2026-08-07-23h50m-6a769bca112b64.48927767.hbr2"
+   ]
+  },
+  "fecha:2026-08-10": {
+   "split": "desarrollo",
+   "recordings": [
+    "HBReplay-2026-08-10-22h52m-6a7a8758e4ed66.76030860.hbr2",
+    "HBReplay-2026-08-10-23h14m-6a7a86729a3a39.62903594.hbr2"
+   ]
+  },
+  "fecha:2026-08-23": {
+   "split": "entrenamiento",
+   "recordings": [
+    "HBReplay-2026-08-23-23h10m__7b0b0a57af23.hbr2"
+   ]
+  },
+  "fecha:2026-09-09": {
+   "split": "desarrollo",
+   "recordings": [
+    "HBReplay-2026-09-09-22h34m (1)-6aa20ad8c5b818.83480954.hbr2"
+   ]
+  },
+  "fecha:2026-09-10": {
+   "split": "prueba",
+   "recordings": [
+    "HBReplay-2026-09-10-22h04m.hbr2"
+   ]
+  },
+  "fecha:2026-09-13": {
+   "split": "desarrollo",
+   "recordings": [
+    "HBReplay-2026-09-13-21h56m.hbr2",
+    "HBReplay-2026-09-13-22h32m.hbr2",
+    "HBReplay-2026-09-13-22h42m.hbr2"
+   ]
+  },
+  "fecha:2026-09-14": {
+   "split": "prueba",
+   "recordings": [
+    "HBReplay-2026-09-14-22h27m.hbr2"
+   ]
+  },
+  "fecha:2026-09-16": {
+   "split": "entrenamiento",
+   "recordings": [
+    "HBReplay-2026-09-16-22h38m.hbr2"
+   ]
+  },
+  "fecha:2026-09-21": {
+   "split": "entrenamiento",
+   "recordings": [
+    "HBReplay-2026-09-21-22h31m.hbr2",
+    "HBReplay-2026-09-21-23h28m.hbr2",
+    "HBReplay-2026-09-21-23h30m.hbr2",
+    "HBReplay-2026-09-21-23h36m.hbr2",
+    "HBReplay-2026-09-21-23h42m.hbr2"
+   ]
+  },
+  "fecha:2026-09-23": {
+   "split": "entrenamiento",
+   "recordings": [
+    "HBReplay-2026-09-23-23h27m.hbr2",
+    "HBReplay-2026-09-23-23h32m.hbr2",
+    "HBReplay-2026-09-23-23h33m.hbr2",
+    "HBReplay-2026-09-23-23h36m.hbr2",
+    "HBReplay-2026-09-23-23h37m.hbr2"
+   ]
+  },
+  "fecha:2026-09-25": {
+   "split": "entrenamiento",
+   "recordings": [
+    "HBReplay-2026-09-25-23h31m.hbr2"
+   ]
+  },
+  "fecha:2026-09-27": {
+   "split": "entrenamiento",
+   "recordings": [
+    "HBReplay-2026-09-27-23h30m.hbr2",
+    "HBReplay-2026-09-27-23h31m.hbr2",
+    "HBReplay-2026-09-27-23h40m.hbr2",
+    "HBReplay-2026-09-27-23h54m.hbr2"
+   ]
+  },
+  "sala:x hosting services miami": {
+   "split": "desarrollo",
+   "recordings": [
+    "Ofi_VsEcu_F1CA__818da7640beb.hbr2"
+   ]
+  },
+  "sala:taberna de qdv i haxarg": {
+   "split": "desarrollo",
+   "recordings": [
+    "QDV 4-3 NT Liga Elite T7.hbr2",
+    "QDV 7-3 Elite.hbr2"
+   ]
+  },
+  "sala:exiled vs queso de vaca i haxarg": {
+   "split": "prueba",
+   "recordings": [
+    "QDV 5-0 EHC Eternity.hbr2"
+   ]
+  },
+  "sala:qnt vs i haxarg": {
+   "split": "prueba",
+   "recordings": [
+    "QDV 5-0 QNT Eternity.hbr2"
+   ]
+  },
+  "sala:sdh t5 real soccer 4v4": {
+   "split": "entrenamiento",
+   "recordings": [
+    "RSX4REPLAY-13-50-26__64d117b71d39.hbr2"
+   ]
+  },
+  "sala:sut stadium i haxarg": {
+   "split": "entrenamiento",
+   "recordings": [
+    "SUTPEÑAROL.hbr2",
+    "SUTV707COPA__d26d6ffd32d5.hbr2",
+    "sutizkcuartodaida__2a3a252cd0ee.hbr2",
+    "sutizkrsx4__7ec4268f1a67.hbr2",
+    "sutizkvuelta__99e844e251a0.hbr2",
+    "sutmut.hbr2",
+    "sutomrsx4__bcf35eb84508.hbr2",
+    "sutqacrsx4__d41c2b846bb4.hbr2",
+    "sutsffx__1654b79eae86.hbr2",
+    "suttvyofi__af5f8ecb53b6.hbr2",
+    "suttvyrsx4__034d42773413.hbr2",
+    "sutucofi__6b658458764f.hbr2",
+    "sutucrsx4__77927942efd5.hbr2",
+    "sutvkrsx4__b7cf6c4d09d6.hbr2",
+    "sutvtofi__2a3419903494.hbr2"
+   ]
+  },
+  "sala:qdv vs sut i haxarg": {
+   "split": "entrenamiento",
+   "recordings": [
+    "sutqdvofi__c3926139e50b.hbr2"
+   ]
+  },
+  "sala:sut stadiu i haxarg": {
+   "split": "entrenamiento",
+   "recordings": [
+    "SUTSKRSX4__3bfe06569bbc.hbr2"
+   ]
+  },
+  "sala:uc3 vs i haxarg": {
+   "split": "entrenamiento",
+   "recordings": [
+    "uc3exiled.hbr2",
+    "uc3vk.hbr2"
+   ]
+  }
+ },
+ "recordings": {
+  "_MrHOST_-_4_-_Buenos_Aires_-1790563275736 (1).hbr2": {
+   "sha256": "981d7d99bd3620622298f15d4fb3c2965e02654862f075d1efc90306e5259aff",
+   "jsonl": "_MrHOST_-_4_-_Buenos_Aires_-1790563275736 (1)/replay__MrHOST_-_4_-_Buenos_Aires_-1790563275736_1_.jsonl.gz",
+   "room": "🔵⚪🔵 MrHOST - 4 - Buenos Aires 🔵⚪🔵",
+   "session": "sala:mrhost 4 buenos aires",
+   "bc": "no_usada",
+   "only_rs_one": true,
+   "split": "prueba",
+   "contaminacion": null
+  },
+  "argbol1t__70f72c3802b7.hbr2": {
+   "sha256": "5a2a593403ae60488800c7d79a907b0e60f6cd83fefdeffcd720499c2f547969",
+   "jsonl": "argbol1t__70f72c3802b7/replay_argbol1t__70f72c3802b7.jsonl.gz",
+   "room": "🔴⚪🔵 MrHOST x HAXCL - Santiago - 2 🔵⚪🔴",
+   "session": "sala:mrhost x haxcl santiago",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "entrenamiento",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "argbol2t__a6471cbc4a3f.hbr2": {
+   "sha256": "0ec78224f0a04c27254dfe286950e32e7426ba1ef6677ac65a2f5f15a344b2ed",
+   "jsonl": "argbol2t__a6471cbc4a3f/replay_argbol2t__a6471cbc4a3f.jsonl.gz",
+   "room": "🔴⚪🔴 MrHOST x IHL - Lima - 1 🔴⚪🔴",
+   "session": "sala:mrhost x ihl lima",
+   "bc": "no_usada",
+   "only_rs_one": false,
+   "split": "prueba",
+   "contaminacion": null
+  },
+  "argbra1tfinal__cd4dbf2b9761.hbr2": {
+   "sha256": "c097c3bb3a59effc2b7e304bbafb074dc19984cf5dd63c164a397034b151daec",
+   "jsonl": "argbra1tfinal__cd4dbf2b9761/replay_argbra1tfinal__cd4dbf2b9761.jsonl.gz",
+   "room": "🟢🟡🔵 MrHOST - 3 - São Paulo 🔵🟡🟢",
+   "session": "sala:mrhost 3 sao paulo",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "entrenamiento",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "argperuu21__8c288f6ecbca.hbr2": {
+   "sha256": "b9b478f9361a718922c07804c423d5c653ff95d1a5e8973393bb40cf218cdb21",
+   "jsonl": "argperuu21__8c288f6ecbca/replay_argperuu21__8c288f6ecbca.jsonl.gz",
+   "room": "🔴⚪🔵 MrHOST x HAXCL - Santiago - 3 🔵⚪🔴",
+   "session": "sala:mrhost x haxcl santiago",
+   "bc": "no_usada",
+   "only_rs_one": false,
+   "split": "entrenamiento",
+   "contaminacion": null
+  },
+  "HaxOfi-2026-09-24-02-31-14.hbr2": {
+   "sha256": "a12c92b3f5ccf66c0589a1af9f8977a799bec04b1a32cee24b605f2c29ce519c",
+   "jsonl": "HaxOfi-2026-09-24-02-31-14/replay_HaxOfi-2026-09-24-02-31-14.jsonl.gz",
+   "room": "🔵⚪ qnt I HAXARG 🏆🧉",
+   "session": "fecha:2026-09-24",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "entrenamiento",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "HaxOfi-2026-09-28-01-31-55.hbr2": {
+   "sha256": "9e75eb8967159ced6939d8a606d43f2a765d77464a6765a62f91848fb2a25989",
+   "jsonl": "HaxOfi-2026-09-28-01-31-55/replay_HaxOfi-2026-09-28-01-31-55.jsonl.gz",
+   "room": "🔵⚪ CAA vs ??? I HAXARG 🏆🧉",
+   "session": "fecha:2026-09-28",
+   "bc": "validacion_bc",
+   "only_rs_one": true,
+   "split": "desarrollo",
+   "contaminacion": "usada para validar/elegir BC"
+  },
+  "HaxOfi-2026-09-28-02-26-57.hbr2": {
+   "sha256": "4ea8b107eb726ac66ae42329308b7232c2ed0f9bf1e905fe2fe5d4fcf371b487",
+   "jsonl": "HaxOfi-2026-09-28-02-26-57/replay_HaxOfi-2026-09-28-02-26-57.jsonl.gz",
+   "room": "🔵⚪ CAA vs ??? I HAXARG 🏆🧉",
+   "session": "fecha:2026-09-28",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "desarrollo",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "HaxOfi-replay-2026-09-22-02-17-17.hbr2": {
+   "sha256": "09edb0411197aabd506ad8bb832c48f7cef2e86251e8d33c73782c7e25b204c7",
+   "jsonl": "HaxOfi-replay-2026-09-22-02-17-17/replay_HaxOfi-replay-2026-09-22-02-17-17.jsonl.gz",
+   "room": "🔵⚪ UCB vs OFI I HAXARG 🏆🧉",
+   "session": "fecha:2026-09-22",
+   "bc": "validacion_bc",
+   "only_rs_one": true,
+   "split": "prueba",
+   "contaminacion": "usada para validar/elegir BC"
+  },
+  "HBReplay-2026-05-03-22h26m-69f7fe8c03a974.47171323.hbr2": {
+   "sha256": "12f54270e9391cca3218a2407929c8ae4883c203ca7323e1c6c42f0b645a92f8",
+   "jsonl": "HBReplay-2026-05-03-22h26m-69f7fe8c03a974.47171323/replay_HBReplay-2026-05-03-22h26m-69f7fe8c03a974.47171323.jsonl.gz",
+   "room": "🔵⚪ TV vs UCB I HAXARG 🏆🧉",
+   "session": "fecha:2026-05-03",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "entrenamiento",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "HBReplay-2026-05-03-23h35m-69f81473d9eb43.45445286.hbr2": {
+   "sha256": "4577165843a9da2b59bb48ec5c8ce687400575b24def4cf88a63c2e6e84d3b4d",
+   "jsonl": "HBReplay-2026-05-03-23h35m-69f81473d9eb43.45445286/replay_HBReplay-2026-05-03-23h35m-69f81473d9eb43.45445286.jsonl.gz",
+   "room": "🔵⚪ VK vs VT I HAXARG 🏆🧉",
+   "session": "fecha:2026-05-03",
+   "bc": "validacion_bc",
+   "only_rs_one": true,
+   "split": "entrenamiento",
+   "contaminacion": "usada para validar/elegir BC"
+  },
+  "HBReplay-2026-08-07-23h50m-6a769bca112b64.48927767.hbr2": {
+   "sha256": "fcc45e9d4b5ac8826bf16e7b06ad0f7f6629315b4e2814b5b6fc355c366930fe",
+   "jsonl": "HBReplay-2026-08-07-23h50m-6a769bca112b64.48927767/replay_HBReplay-2026-08-07-23h50m-6a769bca112b64.48927767.jsonl.gz",
+   "room": "🔵⚪ SUT STADIUM I HAXARG 🏆🧉",
+   "session": "fecha:2026-08-07",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "entrenamiento",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "HBReplay-2026-08-10-22h52m-6a7a8758e4ed66.76030860.hbr2": {
+   "sha256": "565cfb9bb1132ecc91e1924d96b497a48d87719fc9357c4cc44fb54aadd7d6f2",
+   "jsonl": "HBReplay-2026-08-10-22h52m-6a7a8758e4ed66.76030860/replay_HBReplay-2026-08-10-22h52m-6a7a8758e4ed66.76030860.jsonl.gz",
+   "room": "🔵⚪ QDV vs UC I HAXARG 🏆🧉",
+   "session": "fecha:2026-08-10",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "desarrollo",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "HBReplay-2026-08-10-23h14m-6a7a86729a3a39.62903594.hbr2": {
+   "sha256": "9fceebe0c3d2c1f12b87f5faf20310ffc827f705c9b7d0e03878505e1cfd84fc",
+   "jsonl": "HBReplay-2026-08-10-23h14m-6a7a86729a3a39.62903594/replay_HBReplay-2026-08-10-23h14m-6a7a86729a3a39.62903594.jsonl.gz",
+   "room": "🔵⚪ QDV vs UC I HAXARG 🏆🧉",
+   "session": "fecha:2026-08-10",
+   "bc": "validacion_bc",
+   "only_rs_one": true,
+   "split": "desarrollo",
+   "contaminacion": "usada para validar/elegir BC"
+  },
+  "HBReplay-2026-08-23-23h10m__7b0b0a57af23.hbr2": {
+   "sha256": "0447e436bb0475bacdb97866dbbaf1b57fd7d84eb31a01b23aa8ca93f24dc360",
+   "jsonl": "HBReplay-2026-08-23-23h10m__7b0b0a57af23/replay_HBReplay-2026-08-23-23h10m__7b0b0a57af23.jsonl.gz",
+   "room": "🔴⚪🔴 MrHOST x IHL - Lima - 2 🔴⚪🔴",
+   "session": "fecha:2026-08-23",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "entrenamiento",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "HBReplay-2026-09-09-22h34m (1)-6aa20ad8c5b818.83480954.hbr2": {
+   "sha256": "1257ebc1288d46d4332c56db53539098f3bff24a9d33114e82d909763942f2ab",
+   "jsonl": "HBReplay-2026-09-09-22h34m (1)-6aa20ad8c5b818.83480954/replay_HBReplay-2026-09-09-22h34m_1_-6aa20ad8c5b818.83480954.jsonl.gz",
+   "room": "🔵⚪ AMIGOS CRY vs ??? I HAXARG 🏆🧉",
+   "session": "fecha:2026-09-09",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "desarrollo",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "HBReplay-2026-09-10-22h04m.hbr2": {
+   "sha256": "aad57691114e4ad0d4d6042e528822c3392321bf9b7013bdb996afd7a33410e2",
+   "jsonl": "HBReplay-2026-09-10-22h04m/replay_HBReplay-2026-09-10-22h04m.jsonl.gz",
+   "room": "🔵⚪ VHL STADIUM I HAXARG 🏆🧉",
+   "session": "fecha:2026-09-10",
+   "bc": "validacion_bc",
+   "only_rs_one": true,
+   "split": "prueba",
+   "contaminacion": "usada para validar/elegir BC"
+  },
+  "HBReplay-2026-09-13-21h56m.hbr2": {
+   "sha256": "4bf4d9076e5f9307beceabafdc07da53dcccff28e800bd7276a870e48c8e429e",
+   "jsonl": "HBReplay-2026-09-13-21h56m/replay_HBReplay-2026-09-13-21h56m.jsonl.gz",
+   "room": "🔵⚪🔵 MrHOST - 2 - Buenos Aires 🔵⚪🔵",
+   "session": "fecha:2026-09-13",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "desarrollo",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "HBReplay-2026-09-13-22h32m.hbr2": {
+   "sha256": "9a054bc18f5a643bcc6e29642c0ca365ba408e0cdfd181a185800055e976895f",
+   "jsonl": "HBReplay-2026-09-13-22h32m/replay_HBReplay-2026-09-13-22h32m.jsonl.gz",
+   "room": "🔵⚪🔵 MrHOST - 2 - Buenos Aires 🔵⚪🔵",
+   "session": "fecha:2026-09-13",
+   "bc": "validacion_bc",
+   "only_rs_one": true,
+   "split": "desarrollo",
+   "contaminacion": "usada para validar/elegir BC"
+  },
+  "HBReplay-2026-09-13-22h42m.hbr2": {
+   "sha256": "7f8b67b097c3398c6f117d4c7b9436669215392c7da220b24e17bbc3f29a9fd8",
+   "jsonl": "HBReplay-2026-09-13-22h42m/replay_HBReplay-2026-09-13-22h42m.jsonl.gz",
+   "room": "🔵⚪ DAN vs ??? I HAXARG 🏆🧉",
+   "session": "fecha:2026-09-13",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "desarrollo",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "HBReplay-2026-09-14-22h27m.hbr2": {
+   "sha256": "ccd1de33e4b33a3677c75041542db1b32a80dd71f2918ca78216ec13b75b94c2",
+   "jsonl": "HBReplay-2026-09-14-22h27m/replay_HBReplay-2026-09-14-22h27m.jsonl.gz",
+   "room": "🔵⚪🔵 MrHOST - 4 - Buenos Aires 🔵⚪🔵",
+   "session": "fecha:2026-09-14",
+   "bc": "no_usada",
+   "only_rs_one": true,
+   "split": "prueba",
+   "contaminacion": null
+  },
+  "HBReplay-2026-09-16-22h38m.hbr2": {
+   "sha256": "10e3a61c5e9be22a5fd5818f85d6b2bfcc164273e3c163129c0016b6699e6d63",
+   "jsonl": "HBReplay-2026-09-16-22h38m/replay_HBReplay-2026-09-16-22h38m.jsonl.gz",
+   "room": "🔵⚪ VB vs I HAXARG 🏆🧉",
+   "session": "fecha:2026-09-16",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "entrenamiento",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "HBReplay-2026-09-21-22h31m.hbr2": {
+   "sha256": "bd12444da756c4c4ef5ea2bcbb5230f450fe7ed6c808583961b6c446d8ae0895",
+   "jsonl": "HBReplay-2026-09-21-22h31m/replay_HBReplay-2026-09-21-22h31m.jsonl.gz",
+   "room": "🔵⚪ UC3 vs ??? I HAXARG 🏆🧉",
+   "session": "fecha:2026-09-21",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "entrenamiento",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "HBReplay-2026-09-21-23h28m.hbr2": {
+   "sha256": "7e3f3fef8f1047136b70ecc7e99589556508cb2490e3f3bd821ad6b3f92ca867",
+   "jsonl": "HBReplay-2026-09-21-23h28m/replay_HBReplay-2026-09-21-23h28m.jsonl.gz",
+   "room": "🔵⚪ PAJAPITA vs ??? I HAXARG 🏆🧉",
+   "session": "fecha:2026-09-21",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "entrenamiento",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "HBReplay-2026-09-21-23h30m.hbr2": {
+   "sha256": "d8f0bb6b7a7829cc976264105f3a5c7df01ac2f565c71803bdbf97069ff305d2",
+   "jsonl": "HBReplay-2026-09-21-23h30m/replay_HBReplay-2026-09-21-23h30m.jsonl.gz",
+   "room": "🔵⚪ SFX vs ??? I HAXARG 🏆🧉",
+   "session": "fecha:2026-09-21",
+   "bc": "validacion_bc",
+   "only_rs_one": true,
+   "split": "entrenamiento",
+   "contaminacion": "usada para validar/elegir BC"
+  },
+  "HBReplay-2026-09-21-23h36m.hbr2": {
+   "sha256": "5d25553caf745efca074b229290f72b4dd7d93aecd83f7c60484061ac31c52cd",
+   "jsonl": "HBReplay-2026-09-21-23h36m/replay_HBReplay-2026-09-21-23h36m.jsonl.gz",
+   "room": "🔵⚪ Taberna de QDV I HAXARG 🏆🧉",
+   "session": "fecha:2026-09-21",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "entrenamiento",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "HBReplay-2026-09-21-23h42m.hbr2": {
+   "sha256": "b9aae677a844938787b0d9a61226564811e19ea2c819cca31dc129788b685ec8",
+   "jsonl": "HBReplay-2026-09-21-23h42m/replay_HBReplay-2026-09-21-23h42m.jsonl.gz",
+   "room": "🔵⚪🔵 MrHOST - 3 - Buenos Aires 🔵⚪🔵",
+   "session": "fecha:2026-09-21",
+   "bc": "validacion_bc",
+   "only_rs_one": true,
+   "split": "entrenamiento",
+   "contaminacion": "usada para validar/elegir BC"
+  },
+  "HBReplay-2026-09-23-23h27m.hbr2": {
+   "sha256": "7d33237f182483b2cd56252a952d7cd2d46cacfee54ec902731db681b5755c85",
+   "jsonl": "HBReplay-2026-09-23-23h27m/replay_HBReplay-2026-09-23-23h27m.jsonl.gz",
+   "room": "🔵⚪ BCH vs ??? I HAXARG 🏆🧉",
+   "session": "fecha:2026-09-23",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "entrenamiento",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "HBReplay-2026-09-23-23h32m.hbr2": {
+   "sha256": "e7fd5451d3bb635df308eb341a2aed3696444a5281f6e747f25c24713a61a6dd",
+   "jsonl": "HBReplay-2026-09-23-23h32m/replay_HBReplay-2026-09-23-23h32m.jsonl.gz",
+   "room": "🔵⚪ BFU vs ??? I HAXARG 🏆🧉",
+   "session": "fecha:2026-09-23",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "entrenamiento",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "HBReplay-2026-09-23-23h33m.hbr2": {
+   "sha256": "123b96e0d6b9172f46bde94643c1ec7c0c7c21d6b84821845534158f13b28350",
+   "jsonl": "HBReplay-2026-09-23-23h33m/replay_HBReplay-2026-09-23-23h33m.jsonl.gz",
+   "room": "🔵⚪ PAJAPITA vs ??? I HAXARG 🏆🧉",
+   "session": "fecha:2026-09-23",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "entrenamiento",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "HBReplay-2026-09-23-23h36m.hbr2": {
+   "sha256": "f6c69d9588b62a5bece4afe36bf0eed3e5595079fa88f7e8242b3b3d73c5ad40",
+   "jsonl": "HBReplay-2026-09-23-23h36m/replay_HBReplay-2026-09-23-23h36m.jsonl.gz",
+   "room": "🔵⚪ UCB vs OFI I HAXARG 🏆🧉",
+   "session": "fecha:2026-09-23",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "entrenamiento",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "HBReplay-2026-09-23-23h37m.hbr2": {
+   "sha256": "53d1b5eeb91226dc2a005da4f5fd044f19f471a4f097e8024ec58a458083ab87",
+   "jsonl": "HBReplay-2026-09-23-23h37m/replay_HBReplay-2026-09-23-23h37m.jsonl.gz",
+   "room": "🔵⚪ NT vs ??? I HAXARG 🏆🧉",
+   "session": "fecha:2026-09-23",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "entrenamiento",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "HBReplay-2026-09-24-23h36m.hbr2": {
+   "sha256": "1960fdbb039cf57f0059cc5b229f8f3da1dff9c8961a5437cb81a0c46a53dba1",
+   "jsonl": "HBReplay-2026-09-24-23h36m/replay_HBReplay-2026-09-24-23h36m.jsonl.gz",
+   "room": "🔵⚪ RN vs ??? I HAXARG 🏆🧉",
+   "session": "fecha:2026-09-24",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "entrenamiento",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "HBReplay-2026-09-25-23h31m.hbr2": {
+   "sha256": "e1d2401cf736dcfe1a098e194ed04fc1c76e15f6005f356ebe1a6e76278958e9",
+   "jsonl": "HBReplay-2026-09-25-23h31m/replay_HBReplay-2026-09-25-23h31m.jsonl.gz",
+   "room": "🔵⚪ SFXB vs ??? I HAXARG 🏆🧉",
+   "session": "fecha:2026-09-25",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "entrenamiento",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "HBReplay-2026-09-27-23h30m.hbr2": {
+   "sha256": "e82d154c70f02606543847c359c7a9b8267045abf18d20d1b8d08038ddf8193c",
+   "jsonl": "HBReplay-2026-09-27-23h30m/replay_HBReplay-2026-09-27-23h30m.jsonl.gz",
+   "room": "🔵⚪ MUT vs ORB I HAXARG 🏆🧉",
+   "session": "fecha:2026-09-27",
+   "bc": "no_usada",
+   "only_rs_one": true,
+   "split": "entrenamiento",
+   "contaminacion": null
+  },
+  "HBReplay-2026-09-27-23h31m.hbr2": {
+   "sha256": "25dd2664722b13aa7edac2d9c37f562d263ed777e705271d45404152c55df5fc",
+   "jsonl": "HBReplay-2026-09-27-23h31m/replay_HBReplay-2026-09-27-23h31m.jsonl.gz",
+   "room": "🔵⚪ PAJAPITA vs ??? I HAXARG 🏆🧉",
+   "session": "fecha:2026-09-27",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "entrenamiento",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "HBReplay-2026-09-27-23h40m.hbr2": {
+   "sha256": "31ce4675e088bf49bd7231708a92d41ad8902287f667f52098fb41892baf19ee",
+   "jsonl": "HBReplay-2026-09-27-23h40m/replay_HBReplay-2026-09-27-23h40m.jsonl.gz",
+   "room": "🔵⚪ VK vs ?? I HAXARG 🏆🧉",
+   "session": "fecha:2026-09-27",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "entrenamiento",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "HBReplay-2026-09-27-23h54m.hbr2": {
+   "sha256": "142258ce31db646f87664c040af86e6633f86b1eba534a9bfde50cc853986562",
+   "jsonl": "HBReplay-2026-09-27-23h54m/replay_HBReplay-2026-09-27-23h54m.jsonl.gz",
+   "room": "🔵⚪ UCB vs OFI I HAXARG 🏆🧉",
+   "session": "fecha:2026-09-27",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "entrenamiento",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "HBReplay-2026-09-28-23h24m.hbr2": {
+   "sha256": "3c80c019af6ab8618cdcff4cdc82425b52f3213d412b620cbe569dbdf6fe83ea",
+   "jsonl": "HBReplay-2026-09-28-23h24m/replay_HBReplay-2026-09-28-23h24m.jsonl.gz",
+   "room": "🔵⚪🔵 MrHOST - 4 - Buenos Aires 🔵⚪🔵",
+   "session": "fecha:2026-09-28",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "desarrollo",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "HBReplay-2026-09-28-23h36m.hbr2": {
+   "sha256": "3536d08819c815d4472dfdda05f46570dffe341f7f835cbb1c8c4b8f3246ecf4",
+   "jsonl": "HBReplay-2026-09-28-23h36m/replay_HBReplay-2026-09-28-23h36m.jsonl.gz",
+   "room": "🔵⚪ QAC vs ??? I HAXARG 🏆🧉",
+   "session": "fecha:2026-09-28",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "desarrollo",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "Ofi_VsEcu_F1CA__818da7640beb.hbr2": {
+   "sha256": "0f041ebd488604a321efd51056a7995b570acb9527ab0cca31af8dbe9ac1420a",
+   "jsonl": "Ofi_VsEcu_F1CA__818da7640beb/replay_Ofi_VsEcu_F1CA__818da7640beb.jsonl.gz",
+   "room": "🔵 X Hosting Services - Miami [9] 🚀",
+   "session": "sala:x hosting services miami",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "desarrollo",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "QDV 4-3 NT Liga Elite T7.hbr2": {
+   "sha256": "33c5cb9bfb0644139a3a5144927a082a369fbd1f4c548edcc02cb9886831f9df",
+   "jsonl": "QDV 4-3 NT Liga Elite T7/replay_QDV_4-3_NT_Liga_Elite_T7.jsonl.gz",
+   "room": "🔵⚪ Taberna de QDV I HAXARG 🏆🧉",
+   "session": "sala:taberna de qdv i haxarg",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "desarrollo",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "QDV 5-0 EHC Eternity.hbr2": {
+   "sha256": "a3d9641829db04a33d337cd45fc0a5a4890da7ec732d0c8292541fd7b4112555",
+   "jsonl": "QDV 5-0 EHC Eternity/replay_QDV_5-0_EHC_Eternity.jsonl.gz",
+   "room": "🔵⚪ EXILED VS QUESO DE VACA I HAXARG 🏆🧉",
+   "session": "sala:exiled vs queso de vaca i haxarg",
+   "bc": "no_usada",
+   "only_rs_one": false,
+   "split": "prueba",
+   "contaminacion": null
+  },
+  "QDV 5-0 QNT Eternity.hbr2": {
+   "sha256": "d0da4dada85663ca91402b93c0d1b98a3f1b0bf339baae1f2a2cf5055245ea61",
+   "jsonl": "QDV 5-0 QNT Eternity/replay_QDV_5-0_QNT_Eternity.jsonl.gz",
+   "room": "🔵⚪ QNT vs ??? I HAXARG 🏆🧉",
+   "session": "sala:qnt vs i haxarg",
+   "bc": "validacion_bc",
+   "only_rs_one": true,
+   "split": "prueba",
+   "contaminacion": "usada para validar/elegir BC"
+  },
+  "QDV 7-3 Elite.hbr2": {
+   "sha256": "6e657fe356c6989b470c9155275004295586f264a3b8947d121f459f3286ee89",
+   "jsonl": "QDV 7-3 Elite/replay_QDV_7-3_Elite.jsonl.gz",
+   "room": "🔵⚪ Taberna de QDV I HAXARG 🏆🧉",
+   "session": "sala:taberna de qdv i haxarg",
+   "bc": "validacion_bc",
+   "only_rs_one": false,
+   "split": "desarrollo",
+   "contaminacion": "usada para validar/elegir BC"
+  },
+  "RSX4REPLAY-13-50-26__64d117b71d39.hbr2": {
+   "sha256": "d66e0ae437d3d3267fbe5cecd21f01ea2aa115412d5615d658c09347a86a7325",
+   "jsonl": "RSX4REPLAY-13-50-26__64d117b71d39/replay_RSX4REPLAY-13-50-26__64d117b71d39.jsonl.gz",
+   "room": "⛳♿ SDH [𝑇5] | REAL SOCCER 4V4 ♿🏆",
+   "session": "sala:sdh t5 real soccer 4v4",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "entrenamiento",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "sutizkcuartodaida__2a3a252cd0ee.hbr2": {
+   "sha256": "f0868cad43dfbc396191e4e5b03a9668edbbccbd918b7517cd9b8a4ab817abb2",
+   "jsonl": "sutizkcuartodaida__2a3a252cd0ee/replay_sutizkcuartodaida__2a3a252cd0ee.jsonl.gz",
+   "room": "🔵⚪ SUT STADIUM I HAXARG 🏆🧉",
+   "session": "sala:sut stadium i haxarg",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "entrenamiento",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "sutizkrsx4__7ec4268f1a67.hbr2": {
+   "sha256": "4718e31e835bf85b73def938f1bd5802770fb875ece12a440d7d5ce81f25d196",
+   "jsonl": "sutizkrsx4__7ec4268f1a67/replay_sutizkrsx4__7ec4268f1a67.jsonl.gz",
+   "room": "🔵⚪ SUT STADIUM I HAXARG 🏆🧉",
+   "session": "sala:sut stadium i haxarg",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "entrenamiento",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "sutizkvuelta__99e844e251a0.hbr2": {
+   "sha256": "25ca3b0fc0f399d92a4db2399c55a8cd28df154e7786425917e21e8c5f8c155d",
+   "jsonl": "sutizkvuelta__99e844e251a0/replay_sutizkvuelta__99e844e251a0.jsonl.gz",
+   "room": "🔵⚪ SUT STADIUM I HAXARG 🏆🧉",
+   "session": "sala:sut stadium i haxarg",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "entrenamiento",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "sutmut.hbr2": {
+   "sha256": "994bd1a6c3a53d6595e31e8787c848ecc0652961526e8bff2c4547cb323df493",
+   "jsonl": "sutmut/replay_sutmut.jsonl.gz",
+   "room": "🔵⚪ SUT STADIUM I HAXARG 🏆🧉",
+   "session": "sala:sut stadium i haxarg",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "entrenamiento",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "sutomrsx4__bcf35eb84508.hbr2": {
+   "sha256": "52186bbe739d1d0c72fd9cf1bf38c9d3af53952150d262b225e3f42199ffdbf1",
+   "jsonl": "sutomrsx4__bcf35eb84508/replay_sutomrsx4__bcf35eb84508.jsonl.gz",
+   "room": "🔵⚪ SUT STADIUM I HAXARG 🏆🧉",
+   "session": "sala:sut stadium i haxarg",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "entrenamiento",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "SUTPEÑAROL.hbr2": {
+   "sha256": "0b102cf6c728eabcccc657cf19716af93e5d7418d4a60ff5a43612ffb7a37d89",
+   "jsonl": "SUTPEÑAROL/replay_SUTPE_AROL.jsonl.gz",
+   "room": "🔵⚪ SUT STADIUM I HAXARG 🏆🧉",
+   "session": "sala:sut stadium i haxarg",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "entrenamiento",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "sutqacrsx4__d41c2b846bb4.hbr2": {
+   "sha256": "6b629735d0c1dc5b1954e235b50211db58ae627a629194c8914beb906f4208c8",
+   "jsonl": "sutqacrsx4__d41c2b846bb4/replay_sutqacrsx4__d41c2b846bb4.jsonl.gz",
+   "room": "🔵⚪ SUT STADIUM I HAXARG 🏆🧉",
+   "session": "sala:sut stadium i haxarg",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "entrenamiento",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "sutqdvofi__c3926139e50b.hbr2": {
+   "sha256": "ed302c1c41a8ed9594e95274ec091727ad1eac5ee56af44d55c3d2f8d4067445",
+   "jsonl": "sutqdvofi__c3926139e50b/replay_sutqdvofi__c3926139e50b.jsonl.gz",
+   "room": "🔵⚪ QDV vs SUT I HAXARG 🏆🧉",
+   "session": "sala:qdv vs sut i haxarg",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "entrenamiento",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "sutsffx__1654b79eae86.hbr2": {
+   "sha256": "ff26dfd3318129869b6338aef3ffb4466eff3a39c63fdc32507ac68a7408db79",
+   "jsonl": "sutsffx__1654b79eae86/replay_sutsffx__1654b79eae86.jsonl.gz",
+   "room": "🔵⚪ SUT STADIUM I HAXARG 🏆🧉",
+   "session": "sala:sut stadium i haxarg",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "entrenamiento",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "SUTSKRSX4__3bfe06569bbc.hbr2": {
+   "sha256": "a4f24bcdbc80a76b5a7214e4322a32132ca43dcfe3ead7be6ea96f8f76487826",
+   "jsonl": "SUTSKRSX4__3bfe06569bbc/replay_SUTSKRSX4__3bfe06569bbc.jsonl.gz",
+   "room": "🔵⚪ SUT STADIU, I HAXARG 🏆🧉",
+   "session": "sala:sut stadiu i haxarg",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "entrenamiento",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "suttvyofi__af5f8ecb53b6.hbr2": {
+   "sha256": "5087566ea4cc57b27475482086f51341f96a3c70ef5203eb621af69864597e8f",
+   "jsonl": "suttvyofi__af5f8ecb53b6/replay_suttvyofi__af5f8ecb53b6.jsonl.gz",
+   "room": "🔵⚪ SUT STADIUM I HAXARG 🏆🧉",
+   "session": "sala:sut stadium i haxarg",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "entrenamiento",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "suttvyrsx4__034d42773413.hbr2": {
+   "sha256": "c2afed619dd3df58d08a08c10d8b9f6ea1666ceb65c021de49ef3db91cafddc3",
+   "jsonl": "suttvyrsx4__034d42773413/replay_suttvyrsx4__034d42773413.jsonl.gz",
+   "room": "🔵⚪ SUT STADIUM I HAXARG 🏆🧉",
+   "session": "sala:sut stadium i haxarg",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "entrenamiento",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "sutucofi__6b658458764f.hbr2": {
+   "sha256": "363043838eb25dfebfaa1ade3128d5dd3c22e1159fb6153c5d5b113ddbadda7b",
+   "jsonl": "sutucofi__6b658458764f/replay_sutucofi__6b658458764f.jsonl.gz",
+   "room": "🔵⚪ SUT STADIUM I HAXARG 🏆🧉",
+   "session": "sala:sut stadium i haxarg",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "entrenamiento",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "sutucrsx4__77927942efd5.hbr2": {
+   "sha256": "e9569a500440b764d224b135753b9ee8e5ab4d7eefb83024fa2d30dab3dfd528",
+   "jsonl": "sutucrsx4__77927942efd5/replay_sutucrsx4__77927942efd5.jsonl.gz",
+   "room": "🔵⚪ SUT STADIUM I HAXARG 🏆🧉",
+   "session": "sala:sut stadium i haxarg",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "entrenamiento",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "SUTV707COPA__d26d6ffd32d5.hbr2": {
+   "sha256": "7340d201c9895d59aac552a5b1cdda7b0ef3312f59a22fdaae9d9bd8f58c286d",
+   "jsonl": "SUTV707COPA__d26d6ffd32d5/replay_SUTV707COPA__d26d6ffd32d5.jsonl.gz",
+   "room": "🔵⚪ SUT STADIUM I HAXARG 🏆🧉",
+   "session": "sala:sut stadium i haxarg",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "entrenamiento",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "sutvkrsx4__b7cf6c4d09d6.hbr2": {
+   "sha256": "d319713b7931b78db2241db4cd198e98691767fc593cac36a415b509fb2c27a4",
+   "jsonl": "sutvkrsx4__b7cf6c4d09d6/replay_sutvkrsx4__b7cf6c4d09d6.jsonl.gz",
+   "room": "🔵⚪ SUT STADIUM I HAXARG 🏆🧉",
+   "session": "sala:sut stadium i haxarg",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "entrenamiento",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "sutvtofi__2a3419903494.hbr2": {
+   "sha256": "11f0805b47863fb7a296b5046b9205b4c0addf695140573a11c885b550a2dfa3",
+   "jsonl": "sutvtofi__2a3419903494/replay_sutvtofi__2a3419903494.jsonl.gz",
+   "room": "🔵⚪ SUT STADIUM I HAXARG 🏆🧉",
+   "session": "sala:sut stadium i haxarg",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "entrenamiento",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "uc3exiled.hbr2": {
+   "sha256": "c89dbff213d615ab530257d8a7e51344a3499b51224b12a8618ec5b793c69cb9",
+   "jsonl": "uc3exiled/replay_uc3exiled.jsonl.gz",
+   "room": "🔵⚪ UC3 vs ??? I HAXARG 🏆🧉",
+   "session": "sala:uc3 vs i haxarg",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "entrenamiento",
+   "contaminacion": "usada para entrenar imitadores BC"
+  },
+  "uc3vk.hbr2": {
+   "sha256": "c5ea9f8df32bc8d0cfd474a07e6864ef18943bbc243ece9ec57c443834e217f5",
+   "jsonl": "uc3vk/replay_uc3vk.jsonl.gz",
+   "room": "🔵⚪ UC3 vs ??? I HAXARG 🏆🧉",
+   "session": "sala:uc3 vs i haxarg",
+   "bc": "entrenamiento_bc",
+   "only_rs_one": true,
+   "split": "entrenamiento",
+   "contaminacion": "usada para entrenar imitadores BC"
+  }
+ }
+}

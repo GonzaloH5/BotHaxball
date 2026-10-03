@@ -8,11 +8,17 @@ from __future__ import annotations
 from collections import Counter
 import numpy as np
 from numba import njit
+from . import rs4_states
 from .rs4_tactics import ASSIGNMENTS
 
 # Keep the original indices stable for saved configurations and legacy callers.
 SCENARIOS = ("corner", "lateral", "goal_kick", "exit", "attack", "defense", "transition",
-             "defensive_transition", "offensive_transition")
+             "defensive_transition", "offensive_transition", "recorded")
+RECORDED = SCENARIOS.index("recorded")  # estados reales de partidos (env/rs4_states.py, PLAN_RS4 3)
+# Distancia a la pelota del 2.º, 3.º y 4.º jugador de un equipo humano (percentil 75 en juego abierto,
+# 19.660 estados de entrenamiento y desarrollo). La guía de apoyo sólo penaliza el exceso sobre esto.
+HUMAN_SUPPORT_P75 = np.array([236.0, 316.0, 442.0])
+RECORDED_POOLS = rs4_states.POOLS
 RESTART_NAMES = {1: "lateral", 2: "corner", 3: "goal_kick", 4: "kickoff"}
 
 
@@ -119,7 +125,8 @@ def configure_rs4_v3(env, settings):
         env.configure(settings)
         return
     base = getattr(env, "base", env)
-    if base.T != 4 or base.rules is not None or base.goal_kick_speed != 10.5:
+    if base.T != 4 or base.rules is not None or (base.goal_kick_speed != 10.5
+                                                  and getattr(base, "referee", "simplified") != "rs_one_v1"):
         raise ValueError("RS4 v3 requires rs_one 4v4 with simplified restarts")
     rc = base.rcfg
     old_coefficients = (rc.rs4_reward_version, rc.rs4_tactical_coef, rc.rs4_restart_approach,
@@ -140,6 +147,23 @@ def configure_rs4_v3(env, settings):
     base.rs4_formation_version = 4
     base.corner_reset_prob = 0.0  # handled by full-match-aware scenario assignment
     base.random_reset_prob = 0.0
+    if getattr(base, "_rs1", None) is not None:
+        # Plazo de entrenamiento para ejecutar saques (env/rs_one_referee.py); 0 = como la sala.
+        base._rs1.deadline = int(settings.get("restart_deadline_ticks", 0))
+    if int(settings.get("reward_version", 3)) == 5:
+        # v5: sin guía de formación hecha a mano (la referencia BC humana cumple ese
+        # papel); potenciales simples de progreso/presión/espaciado, pases con tope
+        # mayor, posesión de suma cero y empate sin goles penalizado.
+        rc.gamma = float(settings.get("gamma", rc.gamma))
+        rc.shaping_coef = 1.0
+        rc.w_ball_progress = float(settings.get("ball_progress", .1))
+        rc.w_near_ball = float(settings.get("near_ball", .02))
+        rc.w_spread = float(settings.get("spread", .05))
+        rc.kick_to_goal = 0.0
+        rc.team_pass_possession_cap = float(settings.get("pass_possession_cap", .05))
+        rc.possession_change = float(settings.get("possession_change", .01))
+        rc.no_goal_penalty = float(settings.get("no_goal_penalty", .3))
+        rc.no_goal_step_penalty = float(settings.get("no_goal_step_penalty", 0.))
     if old_coefficients != (rc.rs4_reward_version, rc.rs4_tactical_coef, rc.rs4_restart_approach,
                             base.rs4_formation_version):
         base._rs4_phi = base._rs4_potential() if rc.rs4_tactical_coef else None
@@ -255,7 +279,8 @@ class RestartCohorts:
 class RS4ScenarioEnv:
     """Delegate vectorized physics while assigning drills only at match boundaries."""
     def __init__(self, base, settings=None):
-        if base.T != 4 or base.rules is not None or base.goal_kick_speed != 10.5:
+        if base.T != 4 or base.rules is not None or (base.goal_kick_speed != 10.5
+                                                      and getattr(base, "referee", "simplified") != "rs_one_v1"):
             raise ValueError("Practice must remain RS4 4v4")
         self.base = base
         self.is_drill = np.zeros(base.N, dtype=bool)
@@ -270,6 +295,11 @@ class RS4ScenarioEnv:
                         ("passes", "progressive_passes", "shots", "goals", "danger_ticks", "safe_ticks",
                          "control_ticks", "exit_ticks", "creation_ticks", "created", "created_shots")}
         self.learner_team = None  # optional trainer setup; never an actor feature
+        self.recorded_from_restart = np.zeros(base.N, dtype=bool)
+        self.recorded_released = np.zeros(base.N, dtype=bool)
+        self.recorded_pool = np.full(base.N, -1, dtype=np.int64)      # índice en RECORDED_POOLS
+        self.recorded_attacker = np.full(base.N, -1, dtype=np.int64)  # último toque al colocar
+        self.recorded_state = np.full(base.N, -1, dtype=np.int64)     # índice en el banco
         self.cohorts = RestartCohorts(base)
         self.settings = {}
         self.configure(settings or {})
@@ -297,7 +327,12 @@ class RS4ScenarioEnv:
         self.restart_bonus = float(self.settings.get("restart_bonus", self.settings.get("restart_execute_bonus", .02)))
         if not 0 <= self.restart_bonus <= .02:
             raise ValueError("Restart bonus must be in [0,.02]")
-        weights = dict(self.settings.get("scenario_weights", self.settings.get("exercise_weights", {name: 1 for name in SCENARIOS})))
+        # Guía de apoyo (potencial, 0 = apagada): ver support_potential.
+        self.support_coef = float(self.settings.get("support_coef", 0.))
+        if not 0 <= self.support_coef <= .5:
+            raise ValueError("support_coef debe estar en [0, 0.5]")
+        default = {name: 1 for name in SCENARIOS if name != "recorded"}
+        weights = dict(self.settings.get("scenario_weights", self.settings.get("exercise_weights", default)))
         for alias, canonical in (("throw_in", "lateral"), ("build_up", "exit")):
             if alias in weights:
                 weights[canonical] = weights.get(canonical, 0) + weights.pop(alias)
@@ -305,11 +340,36 @@ class RS4ScenarioEnv:
         if (self.weights < 0).any() or not np.isfinite(self.weights).all() or self.weights.sum() <= 0:
             raise ValueError("Invalid scenario weights")
         self.weights /= self.weights.sum()
+        # Situaciones técnicas con estados reales: {"path": npz, "ticks": 720, "mix": {...}}.
+        self.recorded = self.settings.get("recorded")
+        if self.weights[RECORDED] > 0 and not self.recorded:
+            raise ValueError("El escenario 'recorded' requiere settings['recorded'] con el banco de estados")
+        if self.recorded and self.__dict__.get("_bank_path") != str(self.recorded["path"]):
+            self._bank = rs4_states.StateBank(self.recorded["path"])
+            self._bank_path = str(self.recorded["path"])
+
+    def support_potential(self, positions=None, ball=None):
+        """Φ de apoyo por jugador (N, P), compartido por su equipo, en [-3, 0].
+
+        Φ = -Σ_k max(0, d_k - humano_k) / ancho, con d_k la distancia a la pelota del 2.º, 3.º y 4.º
+        jugador más cercano del equipo. No premia amontonarse ni perseguir la pelota: sólo cuesta estar
+        más lejos del juego que el 75% de los equipos humanos. Se usa como γΦ' - Φ (Ng et al. 1999),
+        así que no hay ciclos que sumen recompensa."""
+        positions = self.sim.player_pos if positions is None else positions
+        ball = self.sim.ball_pos if ball is None else ball
+        distance = np.linalg.norm(positions - ball[:, None], axis=-1)
+        phi = np.zeros(distance.shape)
+        for team in (0, 1):
+            members = self.sim.player_team == team
+            ranked = np.sort(distance[:, members], axis=1)[:, 1:]
+            phi[:, members] = -(np.maximum(0., ranked - HUMAN_SUPPORT_P75).sum(axis=1) / self.field_w)[:, None]
+        return phi
 
     def reset(self):
         self.base.reset()
         self.cohorts.cut(np.arange(self.N))
         self.assign(np.arange(self.N))
+        self._support_phi = self.support_potential()
         return self.base.observe()
 
     def assign(self, rows, *, scenario=None, team=None):
@@ -368,6 +428,13 @@ class RS4ScenarioEnv:
         self.base.match_ticks[rows] = 0
         self.base.match_score[rows] = 0
         self._place(rows)
+        if self.__dict__.get("_support_phi") is not None:
+            self._support_phi[rows] = self.support_potential()[rows]  # recolocadas fuera de step
+
+    def _place_recorded(self, rows):
+        if self.__dict__.get("_bank") is None:
+            raise ValueError("El escenario 'recorded' requiere settings['recorded'] con el banco de estados")
+        rs4_states.place_recorded(self, rows)
 
     def _place(self, rows):
         for value in self.metrics.values():
@@ -375,6 +442,13 @@ class RS4ScenarioEnv:
         if self.base._public_signals is not None:
             self.base._public_signals.reset(rows)
         env, sim = self.base, self.sim
+        recorded = rows[self.scenario[rows] == RECORDED]
+        if len(recorded):
+            self._place_recorded(recorded)
+            rows = rows[self.scenario[rows] != RECORDED]
+            if not len(rows):
+                env._rs4_phi = env._rs4_potential() if env.rcfg.rs4_tactical_coef else None
+                return
         env._reset_envs(rows)
         W, H = self.field_w, self.field_h
         radius = sim.st.ball["radius"]
@@ -556,14 +630,25 @@ class RS4ScenarioEnv:
         self.scenario_success[attacking] |= (np.where(scenario == 3, exit_success, finish_attack)
                                                | scored_for)[attacking]
         self.scenario_success[defensive] |= (self.metrics["safe_ticks"] >= 60)[defensive]
-        cut = drill & ((self.drill_ticks >= self.drill_limit) | (ongoing & (self.continuation <= 0)))
+        # Situación real: éxito = gol del equipo foco. Termina en gol, en un saque nuevo
+        # (si empezó en un saque, en el siguiente tras liberarlo) o al llegar a drill_limit.
+        recorded = drill & (scenario == RECORDED)
+        self.scenario_success[recorded] |= scored_for[recorded]
+        piece = self.setpiece_team >= 0
+        self.recorded_released |= recorded & self.recorded_from_restart & ~piece
+        new_piece = recorded & piece & (~self.recorded_from_restart | self.recorded_released)
+        cut = drill & ((self.drill_ticks >= self.drill_limit) | (ongoing & (self.continuation <= 0)) | new_piece)
         finish = drill & (done | cut)
+        goal_team = np.where(info["goal"] == 1, 0, np.where(info["goal"] == -1, 1, -1))
         results = [{"row": int(row), "scenario": SCENARIOS[scenario[row]], "team": int(focus[row]),
                     "success": bool(self.scenario_success[row] and not scored_against[row]),
                     "conceded": int(scored_against[row]), "ticks": int(self.drill_ticks[row]),
                     "transition_attacking": bool(self.transition_attacking[row]),
                     "metrics": {name: int(value[row]) for name, value in self.metrics.items()},
-                    "truncated": bool(cut[row] and not done[row])} for row in np.flatnonzero(finish)]
+                    "truncated": bool(cut[row] and not done[row]), "goal_team": int(goal_team[row]),
+                    **({"pool": RECORDED_POOLS[self.recorded_pool[row]], "attacker": int(self.recorded_attacker[row]),
+                        "state": int(self.recorded_state[row])} if scenario[row] == RECORDED else {})}
+                   for row in np.flatnonzero(finish)]
         practice_cut = cut & ~done
         if practice_cut.any():
             done[practice_cut] = True
@@ -584,4 +669,12 @@ class RS4ScenarioEnv:
             # Returning a fresh start is essential; final_obs remains pre-cut.
             obs = obs.copy()  # base may alias obs and final_obs when no real terminal occurred
             obs[rows] = self.base.observe(rows)
+        before = self.__dict__.get("_support_phi")
+        if self.support_coef and before is not None:
+            # Φ' del estado final previo a reinicios; 0 en terminales reales (gol, saque inicial trabado).
+            after = self.support_potential(positions, ball_world)
+            absorbing = done & ~np.asarray(info["truncated"], dtype=bool)
+            reward = reward + self.support_coef * (self.rcfg.gamma * np.where(absorbing[:, None], 0., after) - before)
+        if self.support_coef:
+            self._support_phi = self.support_potential()  # estado actual, ya con los reinicios
         return obs, reward, done, info

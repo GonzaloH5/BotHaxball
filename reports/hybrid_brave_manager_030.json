@@ -1,0 +1,16 @@
+{
+  "passed": true,
+  "browser": "brave",
+  "realRoom": false,
+  "simulatedProcesses": true,
+  "hostAndJoin": true,
+  "multipleProfiles": true,
+  "avatar": true,
+  "teamCommands": true,
+  "pauseResume": true,
+  "stopAll": true,
+  "rejectInvalidToken": true,
+  "secretsNotStored": true,
+  "desktopAndMobile": true,
+  "popupCloseKeepsBots": true
+}

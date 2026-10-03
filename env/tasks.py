@@ -75,6 +75,7 @@ def make_env(
     action_delay_max: int = 0,
     optimize_rollout: bool = True,
     corner_curriculum: bool = True,
+    referee: str = "simplified",
 ) -> HaxballEnv:
     """Crear un entorno; las evaluaciones deben usar corner_curriculum=False."""
 
@@ -100,5 +101,6 @@ def make_env(
         max_entities=max_entities,
         rules=task.rules,
         optimize_rollout=optimize_rollout,
-        corner_reset_prob=task.corner_reset_prob if corner_curriculum else 0.0,
+        corner_reset_prob=task.corner_reset_prob if corner_curriculum and referee == "simplified" else 0.0,
+        referee=referee,
     )

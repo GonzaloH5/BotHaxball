@@ -1,0 +1,102 @@
+{
+ "version": "RS4-b1-c-gate-1",
+ "candidate": "runs/rs4_b1/c_bc/bc.pt",
+ "rival": "scripted:r3:0",
+ "thresholds": {
+  "restarts": 0.8,
+  "shots_per_minute": 1.0,
+  "pass_turnover_fraction_of_human": 0.5
+ },
+ "human_pass_turnover_ratio": 0.9833764314739564,
+ "games": 32,
+ "minutes": 3.0,
+ "seed": 2026,
+ "modes": {
+  "greedy": {
+   "restart_battery": {
+    "lateral": {
+     "n": 721,
+     "success": 0.18723994452149792
+    },
+    "corner": {
+     "n": 73,
+     "success": 0.0
+    },
+    "goal_kick": {
+     "n": 81,
+     "success": 0.0
+    },
+    "kickoff": {
+     "n": 84,
+     "success": 0.0
+    },
+    "all": {
+     "n": 959,
+     "success": 0.14077163712200208
+    }
+   },
+   "games": {
+    "matches": 64,
+    "minutes": 192.0,
+    "shots": 0.0,
+    "passes": 0,
+    "turnovers": 11,
+    "goals_for": 0,
+    "goals_against": 261
+   },
+   "shots_per_minute": 0.0,
+   "pass_turnover_ratio": 0.0,
+   "pass_turnover_fraction_of_human": 0.0,
+   "checks": {
+    "restarts": false,
+    "shots_per_minute": false,
+    "pass_turnover": false
+   },
+   "passed": false
+  },
+  "muestreo": {
+   "restart_battery": {
+    "lateral": {
+     "n": 721,
+     "success": 0.3079056865464632
+    },
+    "corner": {
+     "n": 73,
+     "success": 0.1780821917808219
+    },
+    "goal_kick": {
+     "n": 81,
+     "success": 0.0
+    },
+    "kickoff": {
+     "n": 84,
+     "success": 0.011904761904761904
+    },
+    "all": {
+     "n": 959,
+     "success": 0.24608967674661106
+    }
+   },
+   "games": {
+    "matches": 64,
+    "minutes": 192.0,
+    "shots": 3.0,
+    "passes": 0,
+    "turnovers": 68,
+    "goals_for": 1,
+    "goals_against": 254
+   },
+   "shots_per_minute": 0.015625,
+   "pass_turnover_ratio": 0.0,
+   "pass_turnover_fraction_of_human": 0.0,
+   "checks": {
+    "restarts": false,
+    "shots_per_minute": false,
+    "pass_turnover": false
+   },
+   "passed": false
+  }
+ },
+ "passed": false,
+ "seconds": 142.6
+}

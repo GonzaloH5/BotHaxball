@@ -1,0 +1,71 @@
+{
+ "version": "RS4-b1-alignment-1",
+ "split": "entrenamiento",
+ "recordings": 44,
+ "tolerance": 0.001,
+ "lags": {
+  "-3": {
+   "match": 0.7398140566214747,
+   "match_on_key_changes": 0.5059977843495139,
+   "ticks": 23199643,
+   "key_change_ticks": 10928619
+  },
+  "-2": {
+   "match": 0.7956135359496695,
+   "match_on_key_changes": 0.6244508112141159,
+   "ticks": 23199643,
+   "key_change_ticks": 10928619
+  },
+  "-1": {
+   "match": 0.8590970559331452,
+   "match_on_key_changes": 0.759215780145689,
+   "ticks": 23199643,
+   "key_change_ticks": 10928619
+  },
+  "0": {
+   "match": 0.9303246605993032,
+   "match_on_key_changes": 0.9104201546416798,
+   "ticks": 23199643,
+   "key_change_ticks": 10928619
+  },
+  "1": {
+   "match": 0.8607316931557956,
+   "match_on_key_changes": 0.76268584347208,
+   "ticks": 23199643,
+   "key_change_ticks": 10928619
+  },
+  "2": {
+   "match": 0.7983487073486433,
+   "match_on_key_changes": 0.6302571258088511,
+   "ticks": 23199643,
+   "key_change_ticks": 10928619
+  },
+  "3": {
+   "match": 0.7432788513168069,
+   "match_on_key_changes": 0.5133529680191066,
+   "ticks": 23199643,
+   "key_change_ticks": 10928619
+  },
+  "4": {
+   "match": 0.6954487187583016,
+   "match_on_key_changes": 0.4118175407158032,
+   "ticks": 23199643,
+   "key_change_ticks": 10928619
+  },
+  "5": {
+   "match": 0.6548805513946917,
+   "match_on_key_changes": 0.3256980593796892,
+   "ticks": 23199643,
+   "key_change_ticks": 10928619
+  },
+  "6": {
+   "match": 0.6211484374996632,
+   "match_on_key_changes": 0.2540903841555827,
+   "ticks": 23199643,
+   "key_change_ticks": 10928619
+  }
+ },
+ "causal_lag": 0,
+ "seconds": 80.4,
+ "meaning": "la tecla registrada en el tick t+0 es la que mueve al jugador de t a t+1"
+}

@@ -1,0 +1,121 @@
+{
+ "reference": "reports/rs4_b1/eval/v3_2568M_final.json",
+ "cell_level": "pair",
+ "seeds": {
+  "reports/rs4_b1/eval/A_s1_final.json": {
+   "valid": true,
+   "restarts": {
+    "success": 0.9259645464025026,
+    "passed": false
+   },
+   "no_regression": {
+    "passed": true,
+    "regressions": [],
+    "undecided_cells": 0,
+    "note": null
+   },
+   "improvement": {
+    "difference": 0.045355902777777776,
+    "ci95": [
+     0.027555338541666665,
+     0.06488715277777778
+    ],
+    "passed": false
+   },
+   "shortcuts": {
+    "passed": true,
+    "detail": {
+     "own_goals_per_game": {
+      "candidate": 0.1579861111111111,
+      "reference": 0.24869791666666666,
+      "passed": true
+     },
+     "kickoff_stalls_per_game": {
+      "candidate": 0.0,
+      "reference": 0.0,
+      "passed": true
+     },
+     "parked_fraction": {
+      "candidate": 0.09445360725308642,
+      "reference": 0.06576352719907408,
+      "passed": true
+     },
+     "two_keepers_fraction": {
+      "candidate": 0.07363076292438271,
+      "reference": 0.0535522762345679,
+      "passed": true
+     },
+     "unique_trajectories": {
+      "candidate": 1.0,
+      "passed": true
+     }
+    }
+   },
+   "passed": false
+  },
+  "reports/rs4_b1/eval/A_s2_final.json": {
+   "valid": true,
+   "restarts": {
+    "success": 0.9854014598540146,
+    "passed": true
+   },
+   "no_regression": {
+    "passed": false,
+    "regressions": [
+     {
+      "cell": "C:\\Users\\gonza\\Documents\\HaxballRL\\runs\\bc_rs4_v2_20261001\\bc.pt|C:\\Users\\gonza\\Documents\\HaxballRL\\runs\\pod_archive_20261003\\runs\\rs4_v3_public\\champion.pt",
+      "difference": -0.09765625,
+      "ci90_upper": -0.060546875
+     },
+     {
+      "cell": "C:\\Users\\gonza\\Documents\\HaxballRL\\runs\\bc_rs4_v2_20261001\\bc.pt|scripted:r3:1",
+      "difference": -0.064453125,
+      "ci90_upper": -0.015625
+     }
+    ],
+    "undecided_cells": 0,
+    "note": null
+   },
+   "improvement": {
+    "difference": -0.009765625,
+    "ci95": [
+     -0.026481119791666667,
+     0.007161458333333333
+    ],
+    "passed": false
+   },
+   "shortcuts": {
+    "passed": false,
+    "detail": {
+     "own_goals_per_game": {
+      "candidate": 0.1488715277777778,
+      "reference": 0.24869791666666666,
+      "passed": true
+     },
+     "kickoff_stalls_per_game": {
+      "candidate": 0.0,
+      "reference": 0.0,
+      "passed": true
+     },
+     "parked_fraction": {
+      "candidate": 0.18533817997685184,
+      "reference": 0.06576352719907408,
+      "passed": false
+     },
+     "two_keepers_fraction": {
+      "candidate": 0.050853226273148144,
+      "reference": 0.0535522762345679,
+      "passed": true
+     },
+     "unique_trajectories": {
+      "candidate": 1.0,
+      "passed": true
+     }
+    }
+   },
+   "passed": false
+  }
+ },
+ "reproducible": false,
+ "passed": false
+}

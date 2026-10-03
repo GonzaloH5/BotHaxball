@@ -72,7 +72,7 @@ class HaxballEnv:
                  kickoff_timeout: int = 0, powershot: bool | dict = False,
                  out_of_bounds: bool = False, obs_layout: str = "flat", max_entities: int = 0,
                  rules: str | None = None, optimize_rollout: bool = True,
-                 corner_reset_prob: float = 0.0):
+                 corner_reset_prob: float = 0.0, referee: str = "simplified"):
         self.sim = BatchSim(n_envs, n_per_team, n_per_team, stadium, seed=seed, powershot=powershot)
         self.N = n_envs
         self.T = n_per_team
@@ -203,6 +203,22 @@ class HaxballEnv:
         self._out_pressure_open = None
         if self.rcfg.rs4_tactical_coef and (stadium != "rs_one" or self.T != 4):
             raise ValueError("rs4_tactical_coef sólo se admite en rs_one 4v4")
+        # Árbitro: "simplified" (histórico) o "rs_one_v1" (reconstruido de grabaciones reales,
+        # env/rs_one_referee.py). El simplificado se conserva para reproducir experimentos viejos.
+        self.referee = referee
+        self._rs1 = None
+        if referee == "rs_one_v1":
+            if stadium != "rs_one" or self.T != 4 or self.rules is not None or not self.out_of_bounds:
+                raise ValueError("referee=rs_one_v1 requiere rs_one 4v4 con salidas y sin script Pegeche")
+            if self.corner_reset_prob > 0:
+                raise ValueError("referee=rs_one_v1 no usa el currículo de córners simplificado")
+            from .rs_one_referee import RSOneReferee
+            self._rs1 = RSOneReferee(self)
+            self.restart_timeout_terminal = False  # la sala no vence saques
+            self.stuck_limit = 10 ** 9              # tampoco cobra pelotas trabadas
+            self.goal_kick_speed = 0.0              # el impulso real lo aplica el árbitro
+        elif referee != "simplified":
+            raise ValueError(f"árbitro desconocido: {referee}")
 
     # ----------------------------------------------------------------- reset
     def _reset_envs(self, idx, kickoff_team=None, *, corner_eligible=None):
@@ -335,6 +351,8 @@ class HaxballEnv:
                 len(idx),
             )
 
+        if getattr(self, "_rs1", None) is not None:
+            self._rs1.reset_rows(idx)
         if len(corner_idx):
             self._reset_corner_curriculum(corner_idx)
 
@@ -419,6 +437,9 @@ class HaxballEnv:
     def _set_piece(self, idx) -> None:
         """Pelota parada simplificada (lateral / córner / saque de arco).
         Protección hasta la patada del equipo que saca o el timeout; no expone estado privado."""
+        if getattr(self, "_rs1", None) is not None:
+            self._rs1.set_piece(idx)
+            return
         sim = self.sim
         r = sim.st.ball["radius"]
         W, H, GH = self.field_w, self.field_h, sim.st.goal_half_height
@@ -477,6 +498,29 @@ class HaxballEnv:
             self.stuck_ticks[n] = 0
         self._protect_setpieces()
 
+    def _begin_set_piece(self, n, taker, kind, spot, limit):
+        """Contabilidad común de un saque nuevo (sin observación privada)."""
+        self.setpiece_team[n] = taker
+        self.setpiece_kind[n] = kind
+        self._corner_reported[n] = False
+        self._corner_from_curriculum[n] = False
+        self.setpiece_ticks[n] = 0
+        self.setpiece_pos[n] = spot
+        self.setpiece_limit[n] = limit
+        self.last_touch[n] = -1
+        self.last_touch_player[n] = -1
+        self.last_touch_pos[n] = spot
+        self.last_pass_sender[n] = -1
+        self.last_pass_receiver[n] = -1
+        self.pending_pass_sender[n] = -1
+        self.pending_pass_receiver[n] = -1
+        self.pending_pass_team[n] = -1
+        self.pending_pass_age[n] = 0
+        self.coop_reward_spent[n] = 0.0
+        self.pending_corner_team[n] = -1
+        self.pending_corner_age[n] = 0
+        self.stuck_ticks[n] = 0
+
     def _restart_travel_ticks(self, n, team):
         st = self.sim.st
         eligible = self.sim.player_team == team
@@ -492,6 +536,9 @@ class HaxballEnv:
         Área rectangular aproximada para el perfil real (no se conoce su script):
         proporciones 840/1150 y 320/600, como la geometría RS de referencia.
         """
+        if getattr(self, "_rs1", None) is not None:
+            self._rs1.protect()
+            return
         sim = self.sim
         if self.optimize_callbacks:
             from .rollout_callbacks import protect_pieces
@@ -526,6 +573,8 @@ class HaxballEnv:
         pv[near] = 0.0
 
     def _setpiece_pre_tick(self, actions):
+        if self._rs1 is not None:
+            return self._rs1.pre_tick(actions)
         if self.optimize_callbacks:
             from .rollout_callbacks import piece_pre
             sim = self.sim
@@ -538,6 +587,8 @@ class HaxballEnv:
         return np.where(blocked, actions % 9, actions)
 
     def _setpiece_post_tick(self, goal):
+        if self._rs1 is not None:
+            return self._rs1.post_tick(goal)
         if self.optimize_callbacks:
             from .rollout_callbacks import piece_post
             sim = self.sim
@@ -617,8 +668,9 @@ class HaxballEnv:
     # ----------------------------------------------------------------- obs
     def enable_public_signals(self):
         """Opt-in observation contract; legacy environments remain unchanged."""
-        if self.goal_kick_speed != 10.5 or self.T != 4 or self.rules is not None or self.obs_layout != "universal":
-            raise ValueError("Public-v1 observations support simplified RS4 4v4 only")
+        rs4 = self.goal_kick_speed == 10.5 or getattr(self, "referee", "simplified") == "rs_one_v1"
+        if not rs4 or self.T != 4 or self.rules is not None or self.obs_layout != "universal":
+            raise ValueError("Public-v1 observations support RS4 4v4 only")
         if self._public_signals is None:
             from .public_signals import PublicSignalTracker
             self._public_signals = PublicSignalTracker(self.N)
@@ -955,6 +1007,34 @@ class HaxballEnv:
             out[:, sel] = m.mean(axis=1, keepdims=True)
         return out
 
+    CRITIC_FEATURES = 12
+
+    def critic_features(self) -> np.ndarray:
+        """Estado privilegiado SÓLO para el crítico de entrenamiento (nunca para el actor).
+
+        Por jugador, en el marco de su equipo: reloj del partido, marcador, saques
+        (dueño y tiempo transcurrido) y último toque. El actor desplegado no recibe
+        nada de esto; sólo mejora la estimación de valor que guía a PPO.
+        """
+        team = self.sim.player_team[None, :]
+        own = np.take_along_axis(self.match_score, np.broadcast_to(team, (self.N, self.P)), axis=1)
+        opp = np.take_along_axis(self.match_score, np.broadcast_to(1 - team, (self.N, self.P)), axis=1)
+        ones = np.ones((1, self.P))
+        kickoff = self.sim.kickoff[:, None]
+        setpiece = self.setpiece_team[:, None]
+        columns = [
+            np.clip(self.match_ticks / self.max_ticks, 0, 1)[:, None] * ones,
+            np.clip(own / 5, 0, 2), np.clip(opp / 5, 0, 2), np.clip((own - opp) / 3, -1, 1),
+            (self.match_score.sum(axis=1) == 0)[:, None] * ones,
+            kickoff & (self.sim.kickoff_team[:, None] == team), kickoff & (self.sim.kickoff_team[:, None] != team),
+            np.clip(self.kickoff_ticks / np.maximum(self.kickoff_limit, 1), 0, 1)[:, None] * kickoff,
+            setpiece == team, (setpiece >= 0) & (setpiece != team),
+            np.clip(self.setpiece_ticks / np.maximum(self.setpiece_limit, 1), 0, 1)[:, None] * (setpiece >= 0),
+            self.last_touch[:, None] == team,
+        ]
+        shape = (self.N, self.P)
+        return np.stack([np.broadcast_to(c, shape) for c in columns], axis=-1).astype(np.float32)
+
     def _team_ball_dist(self):
         """Distancia a la pelota por agente; con compañeros, la del más cercano de su equipo
         (así el premio de acercarse lo cobra el equipo y no corren todos detrás de la pelota)."""
@@ -1255,6 +1335,7 @@ class HaxballEnv:
                 simplified
                 and (self.setpiece_team >= 0).any()
             )
+            and not (self._rs1 is not None and self._rs1.busy)
         )
         
 
@@ -1279,6 +1360,12 @@ class HaxballEnv:
                     self.frame_skip,
                     self.last_touch,
                 )
+            if self._rs1 is not None:
+                touched = kicked.any(axis=1)
+                if fused_touches is not None:
+                    touched |= fused_touches.any(axis=(1, 2))
+                touched |= goal != 0
+                self._rs1.after_fused(self.frame_skip, touched)
 
         cooperation_reward = np.zeros(
             (self.N, self.P),
@@ -1424,13 +1511,14 @@ class HaxballEnv:
                     cooperation_reward += touch_reward
                     self._merge_events(cooperation_events, touch_events)
 
-                for t in (0, 1):
-                    self.last_touch[
-                        tch[
-                            :,
-                            self.sim.player_team == t,
-                        ].any(axis=1)
-                    ] = t
+                if self._rs1 is None:  # rs_one_v1 ya fijó el último toque con contacto exacto
+                    for t in (0, 1):
+                        self.last_touch[
+                            tch[
+                                :,
+                                self.sim.player_team == t,
+                            ].any(axis=1)
+                        ] = t
 
         # Un córner sólo cuenta cuando realmente entró en juego y el equipo que
         # sacó retuvo la continuidad durante una ventana breve.
@@ -1460,6 +1548,15 @@ class HaxballEnv:
         if rc.rs4_restart_stall:
             rew -= rc.rs4_restart_stall * (
                 restart_failed[:, None] & (restart_failed_team[:, None] == self.sim.player_team[None, :]))
+        possession_reward = None
+        if rc.possession_change:
+            # turnovers[n, t] = pérdidas confirmadas del equipo t (intercepción rival).
+            lost = cooperation_events["turnovers"].astype(np.float64)
+            own_half = np.column_stack((self.sim.ball_pos[:, 0] < 0, self.sim.ball_pos[:, 0] > 0))
+            weighted = lost * (1.0 + own_half)
+            team_delta = rc.possession_change * (weighted[:, ::-1] - weighted)
+            possession_reward = team_delta[:, self.sim.player_team]
+            rew += possession_reward
 
         if rc.corner_execute > 0:
 
@@ -1540,6 +1637,11 @@ class HaxballEnv:
             # misma regla que ref.js: la pelota cruzó ENTERA la línea (centro + radio)
             side = (np.abs(b[:, 1]) > H + r) & (np.abs(b[:, 0]) < W)
             end = (np.abs(b[:, 0]) > W + r) & (np.abs(b[:, 1]) > GH)
+            if self._rs1 is not None:
+                # rs_one_v1 cobra las salidas tick a tick dentro del árbitro.
+                side = np.zeros(self.N, dtype=bool)
+                end = self._rs1.out_tick.copy()
+                self._rs1.out_tick[:] = False
             # anti-traba: casi quieta y pegada a una línea (esquinas, banderín) => se cobra salida
             near = (np.abs(b[:, 1]) > H - r - 12) | ((np.abs(b[:, 0]) > W - r - 12) & (np.abs(b[:, 1]) > GH))
             slow = np.linalg.norm(self.sim.ball_vel, axis=1) < 0.3
@@ -1547,10 +1649,16 @@ class HaxballEnv:
                                         self.stuck_ticks + self.frame_skip, 0)
             stuck = self.stuck_ticks >= self.stuck_limit
             out = ~scored & (side | end | stuck)
-            loser = (self.last_touch[:, None] == self.sim.player_team[None, :]) & out[:, None]
+            if self._rs1 is None:
+                loser = (self.last_touch[:, None] == self.sim.player_team[None, :]) & out[:, None]
+            else:
+                # El saque ya está cobrado: pierde la posesión el equipo que no saca.
+                loser = out[:, None] & (self.setpiece_team[:, None] >= 0) & (
+                    self.sim.player_team[None, :] != self.setpiece_team[:, None])
             rew = rew - rc.out_penalty * self._out_penalty_scale(side, stuck)[:, None] * loser
             if out.any():
-                self._set_piece(np.where(out)[0])
+                if self._rs1 is None:
+                    self._set_piece(np.where(out)[0])
                 self._defensive_out_team[out] = -1
 
         self.match_ticks += self.frame_skip
@@ -1563,6 +1671,17 @@ class HaxballEnv:
         restart_terminal = restart_failed & self.restart_timeout_terminal
         done = scored | timeout | stall | match_done | restart_terminal
         truncated = (timeout | match_done) & ~scored & ~stall & ~restart_terminal
+        no_goal_end = np.zeros(self.N, dtype=bool)
+        if rc.no_goal_penalty:
+            # Final real (sin bootstrap) de un partido que terminó sin ningún gol.
+            no_goal_end = truncated & (self.match_score.sum(axis=1) == 0)
+            rew -= rc.no_goal_penalty * no_goal_end[:, None]
+            truncated &= ~no_goal_end
+        step_pressure = None
+        if rc.no_goal_step_penalty:
+            # Sin cobrar mientras se espera el saque inicial (esperar ahí es legal).
+            step_pressure = -rc.no_goal_step_penalty * (~self.sim.kickoff & ~scored)[:, None] * np.ones((1, self.P))
+            rew += step_pressure
         if rc.rs4_restart_approach:
             # Después de crear nuevos saques; incluir ambos extremos de la transición.
             after = self._rs4_restart_potential()
@@ -1582,6 +1701,7 @@ class HaxballEnv:
 
         self.sample_public_signals(self.frame_skip)
         final_obs = self.observe()
+        final_critic = self.critic_features() if getattr(self, "emit_critic_features", False) else None
         idx = np.where(done)[0]
         if len(idx):
             # recibe el saque el equipo que recibió el gol (como en HaxBall)
@@ -1628,6 +1748,17 @@ class HaxballEnv:
         info["executed_actions"] = np.where(self.sign[None, :] < 0, MIRROR_ACTION[applied], applied)
         if tactical_reward is not None:
             info["rs4_tactical_reward"] = tactical_reward.copy()
+        if final_critic is not None:
+            info["final_critic"] = final_critic
+        if rc.no_goal_penalty or rc.possession_change or rc.no_goal_step_penalty:
+            info["reward_terms"] = {
+                "goal": rc.goal * goal[:, None] * team_sign,
+                "shaping": rc.shaping_coef * sh,
+                "pass": cooperation_reward,
+                "possession": possession_reward if possession_reward is not None else np.zeros((self.N, self.P)),
+                "no_goal": -rc.no_goal_penalty * no_goal_end[:, None] * np.ones((1, self.P)),
+                "pressure": step_pressure if step_pressure is not None else np.zeros((self.N, self.P)),
+            }
         if self.restart_timeout_terminal:
             info["rs4_restart_failed"] = restart_terminal.copy()
         if rules is not None:

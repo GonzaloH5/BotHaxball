@@ -52,6 +52,7 @@ chrome.runtime.onConnect.addListener(port=>{
   if(authenticated){if(owner===null)send({type:'claim',tabId:tab});else reply(tab,{type:'error',message:'Otra pestaña activa'});}
   else if(!socket||socket.readyState>1)connect();
   port.onMessage.addListener(m=>{
+    if(m?.type==='openManager'){chrome.tabs.create({url:chrome.runtime.getURL('manager.html')}).catch(()=>reply(tab,{type:'error',message:'Abrí el gestor desde la configuración de la extensión.'}));return;}
     if(m?.type==='openOptions'){chrome.runtime.openOptionsPage().catch(()=>reply(tab,{type:'error',message:'No se pudo abrir opciones; abrí el popup de la extensión'}));return;}
     if(m?.type==='claim'){if(owner!==tab)send({type:'claim',tabId:tab});return;}
     if(ports.get(tab)!==port||owner!==tab)return;

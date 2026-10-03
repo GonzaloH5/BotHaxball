@@ -1,0 +1,13 @@
+# RS4 v5d: como v5c, más presión densa contra el 0-0.
+# v5c volvió al equilibrio sin goles: la multa de fin de partido llega 2400
+# decisiones después y con γ=0,995 es invisible. Aquí cada decisión con juego
+# en curso cuesta 0,0005 a ambos equipos (valor acumulado ~0,1 < 0,25 de trabar
+# un saque; recibir un gol, -1, sigue siendo mucho peor).
+#   python -u -m train.multitask --config train/config_rs4_v5d.yaml --run rs4_v5d \
+#       --init-from runs/rs4_v5c/eval_300M.pt
+extends: config_rs4_v5c.yaml
+run_name: rs4_v5d
+rs4_program:
+  critic_warmup_steps: 5_000_000
+  reward:
+    no_goal_step_penalty: 0.0005

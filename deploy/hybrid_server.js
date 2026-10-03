@@ -1,21 +1,49 @@
-// Local inference only. This file never imports Room, joins rooms, or trains.
+// Local inference and privileged bot management. Room connections run in child processes.
 const http=require('http'),fs=require('fs'),path=require('path'),crypto=require('crypto');
 const {WebSocketServer}=require('ws'),ort=require('onnxruntime-node');
 const {Engine,validateMeta}=require('./hybrid/engine');
 const {geometryFromText}=require('./runtime');
+const {BotManager}=require('./bot_manager');
 async function loadModel(filename){
   const meta=validateMeta(JSON.parse(fs.readFileSync(filename.replace(/\.onnx$/,'.json'),'utf8')));
   const session=await ort.InferenceSession.create(filename,{intraOpNumThreads:2,interOpNumThreads:1});
   if(!session.inputNames.includes('obs')||!session.outputNames.includes('logits')||!!meta.recurrent!==session.inputNames.includes('memory'))throw Error('ONNX/JSON contract mismatch');
   return {meta,session,hash:crypto.createHash('sha256').update(fs.readFileSync(filename)).digest('hex'),name:path.basename(filename)};
 }
-async function startServer({model,port=17841,token=crypto.randomBytes(32).toString('base64url'),loader=loadModel,geometry=geometryFromText}={}){
+async function startServer({model,port=17841,token=crypto.randomBytes(32).toString('base64url'),loader=loadModel,geometry=geometryFromText,manager=new BotManager({model})}={}){
   let current=await loader(model),owner=null;const clients=new Set(),maps=new Map();
   const server=http.createServer((req,res)=>{res.writeHead(404,{'Content-Type':'text/plain','Cache-Control':'no-store'});res.end('Local RS4 inference service');});
   const wss=new WebSocketServer({noServer:true,maxPayload:2<<20,perMessageDeflate:false});
+  const fleetWss=new WebSocketServer({noServer:true,maxPayload:16384,perMessageDeflate:false});
+  fleetWss.on('connection',socket=>{
+    let authenticated=false;
+    const send=m=>{if(socket.readyState===1)socket.send(JSON.stringify(m));};
+    const timer=setTimeout(()=>{if(!authenticated)socket.close(1008,'Authentication required');},5000);
+    socket.on('close',()=>clearTimeout(timer));socket.on('error',()=>{});
+    socket.on('message',raw=>{
+      let m;try{m=JSON.parse(raw.toString());}catch{socket.close(1008,'Invalid JSON');return;}
+      if(!m||typeof m!=='object')return socket.close(1008,'Invalid message');
+      if(!authenticated){
+        const supplied=Buffer.from(typeof m.token==='string'?m.token:''),expected=Buffer.from(token);
+        if(m.type!=='auth'||supplied.length!==expected.length||!crypto.timingSafeEqual(supplied,expected))return socket.close(1008,'Invalid token');
+        authenticated=true;clearTimeout(timer);send({type:'authenticated'});return;
+      }
+      if(!Number.isSafeInteger(m.id)||m.id<0)return;
+      try{
+        let result;
+        if(m.type==='list')result=manager.snapshot();
+        else if(m.type==='start')result=manager.start(m.config);
+        else if(m.type==='command')result=manager.command(m.command||{});
+        else if(m.type==='stopAll')result=manager.stopAll();
+        else throw Error('Comando de gestor no admitido.');
+        send({id:m.id,ok:true,result});
+      }catch(e){send({id:m.id,ok:false,error:e.message});}
+    });
+  });
   server.on('upgrade',(request,socket,head)=>{
-    if(request.url!=='/rs4'||!/^chrome-extension:\/\/[a-p]{32}$/.test(request.headers.origin||''))return socket.destroy();
-    wss.handleUpgrade(request,socket,head,ws=>wss.emit('connection',ws,request));
+    if(!['/rs4','/fleet'].includes(request.url)||!/^chrome-extension:\/\/[a-p]{32}$/.test(request.headers.origin||''))return socket.destroy();
+    const target=request.url==='/fleet'?fleetWss:wss;
+    target.handleUpgrade(request,socket,head,ws=>target.emit('connection',ws,request));
   });
   wss.on('connection',socket=>{
     let authenticated=false,engine=null,tab=null,pollTimer=null;clients.add(socket);
@@ -68,7 +96,7 @@ async function startServer({model,port=17841,token=crypto.randomBytes(32).toStri
     }).catch(e=>{if(engine){engine.mode='SUSPENDIDO';engine.resetPolicy();}send({type:'error',message:e.message});});});
   });
   await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(port,'127.0.0.1',resolve);});
-  return {server,wss,token,port:server.address().port,close:()=>new Promise(resolve=>{for(const socket of clients)socket.terminate();wss.close();server.close(resolve);})};
+  return {server,wss,manager,token,port:server.address().port,close:async()=>{await manager.close();return new Promise(resolve=>{for(const socket of fleetWss.clients)socket.terminate();fleetWss.close();for(const socket of clients)socket.terminate();wss.close();server.close(resolve);});}};
 }
 module.exports={startServer,loadModel};
 if(require.main===module){
@@ -78,7 +106,7 @@ if(require.main===module){
     const model=arg('--model',null),port=Number(arg('--port','17841'));
     if(!model||!model.endsWith('.onnx')||!Number.isInteger(port)||port<1||port>65535){console.error('Requires --model *.onnx and a valid port');process.exitCode=1;}
     else startServer({model:path.resolve(model),port}).then(service=>{
-      console.log(`RS4 local: ws://127.0.0.1:${service.port}/rs4\nToken para emparejar: ${service.token}\nNo conecta a salas ni modifica checkpoints.`);
+      console.log(`RS4 local: ws://127.0.0.1:${service.port}/rs4\nToken para emparejar: ${service.token}\nGestor de bots disponible desde la extensión. No inicia bots hasta que lo solicites.`);
       const stop=()=>service.close().then(()=>process.exit(0));process.once('SIGINT',stop);process.once('SIGTERM',stop);
     }).catch(e=>{console.error(e.message);process.exitCode=1;});
   }

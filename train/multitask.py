@@ -174,6 +174,8 @@ class MultiTrainer:
                          rule_observation=mc.get("rule_observation", "masked"))
         if mc.get("public_signals_version"):
             model_cfg["public_signals_version"] = mc["public_signals_version"]
+        if mc.get("critic_features"):
+            model_cfg["critic_features"] = int(mc["critic_features"])
         if model_cfg["type"] == "recurrent_set":
             model_cfg["memory_size"] = mc.get("memory_size", 64)
         self.model = build_model(model_cfg)
@@ -184,7 +186,10 @@ class MultiTrainer:
                              recent_weight=lg.get("recent_weight", 0.25))
         # Imitación (train/bc.py): arrancar desde el modelo que imita a jugadores reales y/o regularizar
         # con KL(pi_bc || pi) para no alejarse del estilo humano (posiciones, esperar el saque...).
-        if init_from:
+        # runtime.separate_bc_reference: arrancar desde un PPO pero anclar el KL a
+        # otro imitador humano (bc_reference del config), sin confundirlos.
+        separate_reference = bool(cfg.get("runtime", {}).get("separate_bc_reference", False))
+        if init_from and not separate_reference:
             cfg["bc_reference"] = str(init_from)
         self.bc_model = None
         ref = cfg.get("bc_reference")
@@ -206,6 +211,10 @@ class MultiTrainer:
         if resume and (self.run_dir / "latest.pt").exists():
             self.load(self.run_dir / "latest.pt")
         elif init_from:
+            if separate_reference:
+                init_path = Path(str(init_from).replace("\\", "/"))
+                ck = torch.load(init_path if init_path.is_absolute() else ROOT / init_path,
+                                map_location="cpu", weights_only=False)
             if hasattr(self.model, "initialize_from"):
                 self.model.initialize_from(ck)
             else:
@@ -213,6 +222,7 @@ class MultiTrainer:
             if cfg.get("seed_league_from_init", False):
                 self._restore_league(ck, include_learner=True)
             print(f"modelo inicial: {init_from} (migración compatible)" +
+                  (f", referencia KL {cfg.get('bc_reference')}" if separate_reference else "") +
                   (f", regularizado con KL x{p['bc_kl_coef']}" if self.bc_model is not None else ""))
         if phase is not None and self.steps < phase["start_steps"]:
             raise ValueError("El checkpoint es anterior al ancla LR; usar el checkpoint preparado para esta fase")
@@ -332,7 +342,8 @@ class MultiTrainer:
                            frame_skip=e["frame_skip"], max_ticks=e["max_ticks"],
                            random_reset_prob=e["random_reset_prob"], kickoff_timeout=e.get("kickoff_timeout", 180),
                            action_delay_max=e.get("action_delay_max", 0),
-                           optimize_rollout=getattr(self, "optimize_rollout", True))
+                           optimize_rollout=getattr(self, "optimize_rollout", True),
+                           referee=e.get("referee", "simplified") if t.name == "rs4_4v4" else "simplified")
             env.optimize_reward_geometry = bool(
                 getattr(self, "optimize_rollout", True)
                 and self.cfg.get("runtime", {}).get("optimize_reward_geometry", True))

@@ -157,6 +157,11 @@ def main():
     ap.add_argument("--stadium", default=None, help="clave exacta de estadio; RS4: rs_one")
     ap.add_argument("--team-size", type=int, default=None, help="filtrar filas NvN, no sólo el nombre del replay")
     ap.add_argument("--init-from", default=None, help="afinar un imitador existente; no carga ni modifica PPO")
+    ap.add_argument("--pooling", default=None, help="sobrescribe model.pooling (p. ej. attentive_meanmax)")
+    ap.add_argument("--ent-hidden", type=int, default=None, help="sobrescribe model.ent_hidden")
+    ap.add_argument("--ent-layers", type=int, default=None, help="sobrescribe model.ent_layers")
+    ap.add_argument("--rule-observation", choices=("full", "masked"), default=None,
+                    help="masked: el modelo ignora el estado privado de reglas, igual que el PPO")
     ap.add_argument("--label", default="act_lag6",
                     help="tecla a imitar: act (la del instante), act_lag6 / act_lag12 (100/200 ms después: tiempo de "
                          "reacción, evita que el modelo copie su propio movimiento)")
@@ -169,7 +174,11 @@ def main():
     torch.set_num_threads(a.threads)
     torch.manual_seed(0)
     cfg = load_config(a.config)
-    mc = cfg["model"]
+    mc = dict(cfg["model"])
+    for key, value in (("pooling", a.pooling), ("ent_hidden", a.ent_hidden), ("ent_layers", a.ent_layers),
+                       ("rule_observation", a.rule_observation)):
+        if value is not None:
+            mc[key] = value
     if a.team_size is not None and a.team_size < 1:
         ap.error("--team-size debe ser >=1")
     if a.init_from and (ROOT / "runs" / a.run / "bc.pt").exists():
@@ -193,12 +202,18 @@ def main():
         source = torch.load(a.init_from, map_location="cpu", weights_only=False)
         if "bc" not in source:
             raise SystemExit("--init-from requiere un checkpoint BC; no afinar el PPO por imitación aquí")
-        model.load_state_dict(source["model"], strict=True)
-        model.rule_observation = source["model_config"].get("rule_observation", "full")
+        if source["model_config"].get("pooling", "meanmax") == model.pooling:
+            model.load_state_dict(source["model"], strict=True)
+        else:
+            # Agrega la rama de atención (gate en cero) conservando la política fuente.
+            model.initialize_from(source)
+        model.rule_observation = a.rule_observation or source["model_config"].get("rule_observation", "full")
     else:
         rng = np.random.default_rng(0)
         sample = rng.choice(len(tr["act"]), size=min(400_000, len(tr["act"])), replace=False)
         model.update_norm(torch.from_numpy(tr["obs"][np.sort(sample)].astype(np.float32)))
+    if a.rule_observation:
+        model.rule_observation = a.rule_observation
     rng = np.random.default_rng(0)
     opt = torch.optim.Adam(model.parameters(), lr=a.lr)
     n = len(tr["act"])
