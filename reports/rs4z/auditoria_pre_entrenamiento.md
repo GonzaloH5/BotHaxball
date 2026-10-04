@@ -63,29 +63,29 @@ Desviaciones aceptadas (sin efecto relevante en el aprendizaje): la sala cobra l
 - **Cinemática exacta**: tiempo de llegada con la física real (verificado ±1 tick), predicción de la pelota (error <1e-9 antes del contacto), intercepción cortada en la línea de gol.
 - **Cerebro de equipo**: fases con histéresis; roles (portador/presionante, apoyo corto, amplio, profundo, seguridad, cobertura, marca, último hombre) por asignación de costo mínimo con costo de cambio; los compañeros no controlados (aprendices o humanos) ocupan el rol más cercano y los bots completan el resto; nunca arquero fijo por slot.
 - **Portador**: valor esperado (éxito × valor de posesión − fracaso × valor para el rival) entre tiro (puntos del arco válidos para su error angular), pase al pie/adelantado/en profundidad, autopase, conducción, despeje; costo de preparación (acomodarse detrás de la pelota mientras llega la presión); compromiso hasta ejecutar salvo opción claramente mejor; compensación de la velocidad previa de la pelota en la patada; ninguna trayectoria hacia el arco propio.
-- **Defensa**: presión pegada del lado del arco con quite seguro, atajada en la línea de gol, seguridad que cubre el arco con la pelota cerca, despejes que nunca apuntan al arco propio.
+- **Defensa**: presión pegada del lado del arco con quite seguro cuando hay cobertura detrás; **último hombre que contiene** (L1+: sobre la línea pelota→arco a 70–110 px, retrocede con el poseedor y sólo cierra en zona de tiro o con la pelota suelta); **relevo** (si el presionante quedó pasado, presiona el mejor ubicado del lado del arco); atajada en la línea de gol, seguridad que cubre el arco con la pelota cerca, despejes que nunca apuntan al arco propio.
 - **Ejecución**: navegación de órbita alrededor de la pelota (no la toca al rodearla) y frenado por velocidad deseada.
 - **Saques**: ejecutor por costo, espera de apoyos, impulsos reales del córner (×1,98) y del saque de arco (×2,71).
 
-Validación (`reports/rs4z/rspro_ladder.json`, 256 partidos de 3 min por par, ambos colores, estilos al azar):
+Validación (`reports/rs4z/rspro_ladder.json`, 256 partidos de 3 min por par, ambos colores, estilos al azar; versión con contención y relevo, §9.2, entre paréntesis la anterior):
 
-| Par | Puntos del nivel superior (IC95) |
+| Par | Puntos del nivel superior |
 |---|---|
-| L1–L0 | 0,54 (0,50–0,58) |
-| L2–L1 | 0,67 (0,64–0,71) |
-| L3–L2 | 0,65 (0,61–0,69) |
-| L4–L3 | 0,57 (0,53–0,61) |
-| L5–L4 | 0,58 (0,55–0,62) |
-| L5–L3 / L2 / L1 / L0 | 0,65 / 0,77 / 0,90 / 0,92 |
+| L1–L0 | 0,58 (0,54) |
+| L2–L1 | 0,69 (0,67) |
+| L3–L2 | 0,63 (0,65) |
+| L4–L3 | 0,58 (0,57) |
+| L5–L4 | 0,59 (0,58) |
+| L5–L3 / L2 / L1 / L0 | 0,63 / 0,75 / 0,87 / 0,93 (0,65 / 0,77 / 0,90 / 0,92) |
 
-Estructura L5 contra L5 frente a humanos (69 grabaciones, mismas definiciones): dispersión 149 (humano 166), profundidad 324 (362), anchura 254 (260), distancias a la pelota 109/221/299/414 (96/203/283/392), colgado 0,7% (0,6%), aglomeración 6% (4%), flotación junto al arco 0%. Saques: laterales 117 ticks (117), córners 159 (153), saques de arco 192 (249).
+Estructura L5 contra L5 frente a humanos (69 grabaciones, mismas definiciones): dispersión 148 (humano 166), profundidad 319 (362), anchura 255 (260), distancias a la pelota 111/221/300/415 (96/203/283/392), colgado 0,6% (0,6%), aglomeración 6,7% (4%), flotación junto al arco 0%; pases por pérdida 0,47 (1,15), tiros 0,18 por minuto (0,47). Prácticamente igual que la versión anterior.
 
-Baterías de referencia (L5 en los lugares del aprendiz, 512 episodios): control 0,92/0,67/0,83/0,91 (tocar, arco vacío, conducir y definir, recibir y definir); defensa 2v2/4v4/saques 0,83/0,82/0,85; 2v1 0,53; pared 0,41.
+Baterías de referencia (L5 en los lugares del aprendiz, 512 episodios): control 0,92/0,67/0,83/0,91 (tocar, arco vacío, conducir y definir, recibir y definir); duelos: tiro contra el último hombre 0,23, defender 1v1 0,92, pelota dividida 0,37; 2v1 0,44 y pared 0,36, con pase en 98–99% de los goles; defensa 2v2/4v4/saques 0,88/0,86/0,90.
 
 **Límites conocidos de RS-Pro** (no invalidan el aprendizaje, porque el RL debe superarlo y luego lo reemplaza el self-play):
 - pasa menos y pierde más la pelota que los humanos (pases/pérdidas 0,47 contra 1,15);
 - tira menos (0,18 contra 0,47 por minuto), aunque convierte igual que ellos;
-- su ataque 1v1 contra un defensor pegado es débil (0,2%); el pase en profundidad y los centros también (≤7%);
+- su ataque 1v1 es débil (0% contra el último hombre que contiene); el pase en profundidad, los centros y el 2v2 ofensivo también (≤6%), así que esas tareas no se juzgan en las compuertas (sí se entrenan);
 - la separación entre L3, L4 y L5 es moderada (57–65%).
 
 Las compuertas sólo juzgan tareas donde la referencia resuelve ≥15%.
@@ -96,7 +96,7 @@ Las compuertas sólo juzgan tareas donde la referencia resuelve ≥15%.
 |---|---|---|---|---|
 | S1 control | 1v0: tocar, arco vacío, conducir y definir, recibir y definir | 0,3B | gol/ejercicio + Φ_ball (se retira) + Φ_threat | control ≥ 0,90×L5 (cada tarea ≥ 0,75×) |
 | S2 pelota y 1v1 | tiro contra último hombre, 1v1 ataque/defensa, pelota dividida, 1v1 completo | 0,5B | + Φ_access | duelos ≥ 0,85×L5; 1v1 contra L5 ≥ 55% (IC90 > 50%) |
-| S3 tiro, pase, rebotes | 2v1, pared, profundidad, desvío, 2v2 ofensivo (2 aprendices) | 0,7B | idem | pases ≥ 0,80×L5 |
+| S3 tiro, pase, rebotes | 2v1, pared, profundidad, desvío, 2v2 ofensivo (2 aprendices) | 0,7B | idem | pases ≥ 0,80×L5 y, en 2v1 y pared, ≥50% de los goles con un pase entre aprendices |
 | S4 defensa | 2v2, 4v4 y saques en contra; 2v2 completo | 0,8B | Φ_access → 0 | defensa ≥ 0,80×L5, goles recibidos ≤ 1,1×L5; detectores 2v2 |
 | S5 cooperación 4v4 | 4v4 contra la escalera, 4v3, 4v2, 3v4, estados humanos, saques, transiciones; 30% espejo | 2,5B | + resultado ±0,3; Φ_threat → 0 | ≥60% contra L5 (IC90 >50%), ≥50% contra el estilo reservado; saques propios: ≤2% tardan ≥600 ticks y la mediana de cada tipo ≤2× la humana; detectores 4v4 |
 | S6 liga | espejo 45%, PFSP 25%, RS-Pro 20%, exploiters 10%; 15% compañeros scripted | 7,5B | sólo goles y resultado | ≥75% contra L5, ≥65% contra el reservado, brecha visto−reservado ≤10 pp, detectores 4v4 en banda |
@@ -145,9 +145,9 @@ Las compuertas sólo juzgan tareas donde la referencia resuelve ≥15%.
   - estructura y perfil de distancias;
   - detectores de aglomeración, colgado, flotación junto al arco, quietud y oscilación;
   - duración de saques.
-- **Baterías reproducibles** (`eval/rs4z/batteries.py`): mismas semillas para el candidato y la referencia. Las compuertas viven en `eval/rs4z/gates.py` y la calibración congelada en `reports/rs4z/gates.json` (huella de código `d7b610936c5cf1de`).
-- **Tests**: suite completa 876 aprobados, 44 omitidos (793 anteriores + 83 RS4-Z en `tests/rs4z`: paridad del árbitro, reglas v2, obs y simetría, ejercicios, rewards y tramposos, RS-Pro, entrenador, liga, mezcla del curriculum y compuertas).
-- **Tramposos contra RS-Pro L5** (128 partidos cada uno): quieto 1,00; oscilar 1,00; todos persiguen 0,95; pelotazos 0,99; sacarla afuera 0,81; bloque en el arco 0,98; delantero colgado 0,98; trabar saques 0,95; azar 0,99 (puntos de L5).
+- **Baterías reproducibles** (`eval/rs4z/batteries.py`): mismas semillas para el candidato y la referencia. Las compuertas viven en `eval/rs4z/gates.py` y la calibración congelada en `reports/rs4z/gates.json` (huella de código `33df687f4cceb340`).
+- **Tests**: suite completa 876 aprobados, 44 omitidos al 2026-10-04 antes de §9.2; RS4-Z hoy 86 (793 anteriores + 83 RS4-Z en `tests/rs4z`: paridad del árbitro, reglas v2, obs y simetría, ejercicios, rewards y tramposos, RS-Pro, entrenador, liga, mezcla del curriculum y compuertas).
+- **Tramposos contra RS-Pro L5** (128 partidos cada uno): quieto 1,00; oscilar 1,00; todos persiguen 0,97; pelotazos 1,00; sacarla afuera 0,80; bloque en el arco 0,97; delantero colgado 1,00; trabar saques 0,98; azar 0,99 (puntos de L5).
 - **Humo en Pod** (RTX 3090, 1024 partidos, pesos aleatorios, `runs/rs4z/smoke_s1_gpu`):
   - **Corrección previa**: con minilotes de 32k (6 pasos por iteración) y Φ_ball = 0,05 la política no se movía (KL ~3e-4 a los 8,5M). Con minilotes de 8192 × 4 épocas y Φ_ball = 0,5 (PBRS, no cambia el óptimo) aprende.
   - Prueba aislada "tocar la pelota": éxito de 7% a 82–84% en 6M muestras; entropía de 2,89 a 0,66; KL 0,002–0,01.
@@ -182,6 +182,20 @@ Resultados después de corregir:
 - **Exploiters**: el supervisor lanzó tres, cada uno se evaluó contra su principal y se descartó (0,500: con redes al azar nadie saca el inicial y todos los partidos quedan 0-0 trabados). El circuito completo (copia del principal, entrenamiento, evaluación, `exploiters.json`, incorporación) funciona.
 - **Compuertas nuevas sobre el checkpoint de humo S1/S2**: S2 no aprobada (duelos 0,542; 1v1 contra L5 0,891, así que el 1v1 de RS-Pro es débil incluso en L5 y la batería de duelos es la que decide); S5 no aprobada (0,328 contra L5; saques propios tarde 8,2% de 110, medianas dentro de la banda humana; detectores fuera de banda); S6 y S7 no aprobadas (0,328, piso 0,70). Antes de las correcciones, S7 y la compuerta de saques lo aprobaban.
 - **Calibración** recalculada con la huella nueva: las referencias de RS-Pro son idénticas a las anteriores (los cambios no tocaron las baterías).
+
+### 9.2 Hallazgo durante el entrenamiento largo: S3 aprobado sin pases (2026-10-04)
+
+El entrenamiento largo arrancó con la auditoría aprobada y avanzó rápido: S1 y S2 aprobaron en la primera evaluación posible (control 0,90 contra 0,83 de L5; duelos 0,87 contra 0,43) y S3 a los 375M (0,92 contra 0,47). Al revisar repeticiones de cada etapa:
+
+- **S2**: el 100% de ataque 1v1 venía de desbordar al defensor y definir al arco vacío. El defensor RS-Pro, siendo el último hombre, salía a presionar al contacto y un regate en diagonal lo dejaba pasado (en el momento del tiro nunca estaba entre la pelota y el arco).
+- **S3**: en 40 episodios contra L5, sólo 1 gol vino de un pase entre los dos aprendices. En 2v1, pared, pase en profundidad y 2v2, el poseedor gambeteaba solo. Con dos defensores, el presionante pasado seguía siendo "el que llega antes" y el segundo se quedaba cubriendo sin salir nunca.
+- **La compuerta no lo detectó** porque medía el éxito y no cómo se lograba. La etapa existía para enseñar el pase, y pasar poco fue uno de los fallos de v3.
+
+Corrección (el entrenamiento se pausó a los 415M, en S4):
+
+- **RS-Pro**: último hombre que contiene y relevo defensivo (§5). Con los mismos checkpoints, el desborde individual cayó de 100% a 42–48% en 1v1, de 8/8 a 1/8 en 2v1 y de 7/8 a 0/8 en 2v2; los ejercicios siguen siendo resolubles pasando (RS-Pro L5 atacando: 2v1 0,44, pared 0,36, 98–99% con pase). Escalera, estructura y tramposos revalidados (arriba). Tests de regresión: el último hombre no va al contacto, el presionante con cobertura sí, y el relevo.
+- **Compuerta de S3**: además del éxito, en 2v1 y pared ≥50% de los goles deben incluir un pase entre aprendices. El checkpoint de S3 viejo la reprueba (30–33%).
+- **Reanudación**: desde el checkpoint de S1 (ejercicios 1v0, sin defensores), rehaciendo S2–S4 (~1,5 h de GPU). Calibración nueva con huella `33df687f4cceb340`.
 
 ## 10. Riesgos e incertidumbres abiertas
 

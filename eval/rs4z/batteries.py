@@ -50,6 +50,9 @@ def _run_task(candidate, task, level, episodes, n_envs, seed, bank, latency):
     next_ep = 0
     ep_of_row = np.full(n_envs, -1, dtype=np.int64)
     results = np.full(episodes, np.nan)
+    passed_ball = np.zeros(episodes, dtype=bool)      # el episodio tuvo un pase entre aprendices
+    last_touch = np.full(n_envs, -1, dtype=np.int64)   # último jugador que tocó la pelota en la fila
+    had_pass = np.zeros(n_envs, dtype=bool)
 
     def start(rows):
         nonlocal next_ep
@@ -66,6 +69,8 @@ def _run_task(candidate, task, level, episodes, n_envs, seed, bank, latency):
             candidate.sync(env, [n])
             env.delay[n] = latency
             ep_of_row[n] = next_ep
+            last_touch[n] = -1
+            had_pass[n] = False
             next_ep += 1
 
     start(np.arange(n_envs))
@@ -82,10 +87,17 @@ def _run_task(candidate, task, level, episodes, n_envs, seed, bank, latency):
         ev = env.step(out)
         bot.push(env)
         candidate.push(env)
+        # pase: toques consecutivos de dos aprendices distintos sin un toque rival en el medio
+        for n in np.flatnonzero(ev["touched"].any(axis=1) & live):
+            for q in np.flatnonzero(ev["touched"][n]):
+                if learner[n, q] and last_touch[n] >= 0 and last_touch[n] != q and learner[n, last_touch[n]]:
+                    had_pass[n] = True
+                last_touch[n] = q
         done, outcome, truncated = drills.check(ev)
         fin = np.flatnonzero(done & live)
         for n in fin:
             results[ep_of_row[n]] = np.nan if truncated[n] else outcome[n]
+            passed_ball[ep_of_row[n]] = had_pass[n]
         goal_rows = np.flatnonzero((ev["goal"] != 0) & ~done)
         if len(goal_rows):
             bot.sync(env, goal_rows)
@@ -94,10 +106,13 @@ def _run_task(candidate, task, level, episodes, n_envs, seed, bank, latency):
         guard += 1
         if guard > 200000:
             raise RuntimeError("batería sin terminar")
-    valid = results[~np.isnan(results)]
+    ok = ~np.isnan(results)
+    valid = results[ok]
+    wins = ok & (results > 0.5)
     return dict(success=float((valid > 0.5).mean()) if len(valid) else float("nan"),
                 conceded=float((valid < -0.5).mean()) if len(valid) else float("nan"),
-                episodes=int(len(valid)))
+                episodes=int(len(valid)), successes=int(wins.sum()),
+                pass_share=float(passed_ball[wins].mean()) if wins.any() else float("nan"))
 
 
 class RSProCandidate:

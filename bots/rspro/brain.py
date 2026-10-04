@@ -440,6 +440,21 @@ def decide(n, team, seed, table, pos, vel, active, kick_cancel, ctrl, ri_team, r
             lead = -1
         else:
             lead = win
+            if phase == PH_OPP and opts >= 3 and lead >= 0 and px[lead] > bx + 10.0:
+                # relevo (L1+): el que llega antes quedó pasado (del lado equivocado de la pelota) y sólo
+                # puede perseguir; presiona el mejor ubicado del lado del arco y el pasado se recupera
+                best_t = 1e9
+                alt = -1
+                for i in range(n_own):
+                    q = own_idx[i]
+                    if q == lead or px[q] > bx - 20.0:
+                        continue
+                    tt = ttr(table, px[q], py[q], pvx[q], pvy[q], bx, by, REACH)
+                    if tt < best_t:
+                        best_t = tt
+                        alt = q
+                if alt >= 0:
+                    lead = alt
     # conjunto de roles para el resto según fase y cantidad
     m = n_own - (1 if lead >= 0 else 0)
     roles = np.zeros(4, dtype=np.int64)
@@ -624,8 +639,19 @@ def decide(n, team, seed, table, pos, vel, active, kick_cancel, ctrl, ri_team, r
                                        own_idx, n_own, opp_x, opp_y, opp_vx, opp_vy, n_opp, ri_kind, ri_ticks,
                                        ko, kick_cancel, lvl, sty, mem_i, mem_f)
         elif phase == PH_OPP and t_own > t_opp + 4.0 and opp_win >= 0:
+            # ¿queda alguien detrás? Sin cobertura, el presionante es el último hombre y contiene (L1+)
+            contain = False
+            if opts >= 3:
+                d_bg = math.hypot(bx - own_gx, by)
+                contain = True
+                for i in range(n_own):
+                    q = own_idx[i]
+                    if q != lead and px[q] < bx - 30.0 and math.hypot(px[q] - own_gx, py[q]) < d_bg - 80.0:
+                        contain = False
+                        break
+            gap = math.hypot(px[opp_win] - bx, py[opp_win] - by)
             out[lead] = _press(n, seed, dec, lead, px, py, pvx, pvy, bx, by, bvx, bvy, own_gx, kick_cancel, lvl,
-                               sty, mem_i, traj)
+                               sty, mem_i, traj, contain, gap)
         else:
             out[lead] = _carrier(n, team, seed, dec, table, lead, px, py, pvx, pvy, bx, by, bvx, bvy, ix[lead],
                                  iy[lead], t_int[lead], own_idx, n_own, opp_x, opp_y, opp_vx, opp_vy, n_opp,
@@ -697,9 +723,16 @@ def safe_clear(px, py, bx, by, own_gx):
 
 
 @njit(cache=True)
-def _press(n, seed, dec, me, px, py, pvx, pvy, bx, by, bvx, bvy, own_gx, kick_cancel, lvl, sty, mem_i, traj):
+def _press(n, seed, dec, me, px, py, pvx, pvy, bx, by, bvx, bvy, own_gx, kick_cancel, lvl, sty, mem_i, traj,
+           contain, gap):
     """Presionante sin la pelota: ir a la pelota por el lado del arco propio (bloquear la conducción) y
-    disputarla con una patada de quite cuando no la manda hacia el arco propio."""
+    disputarla con una patada de quite cuando no la manda hacia el arco propio.
+
+    contain (último hombre, sin nadie detrás): no ir al contacto lejos del arco. Pararse sobre la línea
+    pelota→arco a 70–110 px (a esa distancia tapa todo el ángulo de tiro) y retroceder con el poseedor;
+    cerrar y disputar sólo en zona de tiro (< 430 px del arco) o si la pelota quedó suelta (`gap`: distancia
+    del poseedor a la pelota). Así un regate en diagonal no lo deja pasado y el 2v1 se resuelve pasando.
+    """
     spd = lvl[L_SPEED]
     # pelota un poco adelantada (el poseedor la empuja)
     t = 4
@@ -708,12 +741,20 @@ def _press(n, seed, dec, me, px, py, pvx, pvy, bx, by, bvx, bvy, own_gx, kick_ca
     gdx = own_gx - cbx
     gdy = -cby
     gd = math.sqrt(gdx * gdx + gdy * gdy) + 1e-9
-    # cerca: contra la pelota del lado del arco; lejos: a una distancia que deje cerrar el ángulo
     d_me = math.hypot(px[me] - cbx, py[me] - cby)
-    off = R_P + R_B - 2.0 if d_me < 140.0 else min(60.0, 0.15 * d_me)
+    arrive = 1.2
+    if contain and gd > 430.0 and gap < R_P + R_B + 30.0:
+        off = 70.0 + _clip((gd - 430.0) / 320.0, 0.0, 1.0) * 40.0
+        arrive = 0.0
+    elif d_me < 140.0:
+        # cerca: contra la pelota del lado del arco
+        off = R_P + R_B - 2.0
+    else:
+        # lejos: a una distancia que deje cerrar el ángulo
+        off = min(60.0, 0.15 * d_me)
     tx = cbx + gdx / gd * off
     ty = cby + gdy / gd * off
-    mv = move_action(px[me], py[me], pvx[me], pvy[me], tx, ty, 1.2, spd, False)
+    mv = move_action(px[me], py[me], pvx[me], pvy[me], tx, ty, arrive, spd, False)
     if not kick_cancel[me]:
         dx = bx - px[me]
         dy = by - py[me]

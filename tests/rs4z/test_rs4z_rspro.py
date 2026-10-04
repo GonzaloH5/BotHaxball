@@ -75,3 +75,54 @@ def test_orbit_approach_never_crosses_the_ball():
         px, py = 60 * math.cos(ang), 60 * math.sin(ang)
         wx, wy, _ = B.approach_point(px, py, 0.0, 0.0, 1.0, 0.0)
         assert math.hypot(wx, wy) >= 15.0 + 8.325 - 1.0 - 1e-6
+
+
+def _defend_scene(defenders, attacker=(-200.0, 0.0), ball=(-170.0, 0.0), decisions=150, level=5):
+    """Rojo (aprendiz) quieto con la pelota; azul RS-Pro defiende su arco (x = +1162). Devuelve (env, bot)."""
+    from bots.rspro.policy import RSPro, STYLE_BALANCED
+    env = RS4ZEnv(1, seed=0, deadline=0)
+    active = np.zeros(8, dtype=bool)
+    active[0] = True
+    pos = np.tile([[0.0, 0.0]], (8, 1))
+    pos[0] = attacker
+    for i, d in enumerate(defenders):
+        active[4 + i] = True
+        pos[4 + i] = d
+    env.start_match([0], active=active[None], kickoff_team=0, match_ticks=10 ** 9)
+    env.place(0, ball_pos=ball, ball_vel=(0.0, 0.0), player_pos=pos, player_vel=np.zeros((8, 2)), last_touch=0)
+    bot = RSPro(env, seed=1)
+    bot.configure([0], 1, level, STYLE_BALANCED)
+    bot.sync(env, [0])
+    out = np.zeros((1, 8), dtype=np.int64)
+    ctrl = np.zeros((1, 8), dtype=bool)
+    ctrl[0, 4:4 + len(defenders)] = True
+    for _ in range(decisions):
+        out[:] = 0
+        bot.act(env, ctrl, out)
+        env.step(out)
+        bot.push(env)
+    return env, bot
+
+
+def test_last_man_contains_instead_of_rushing_the_carrier():
+    """Último hombre lejos de su arco: se para entre la pelota y el arco a distancia, sin ir al contacto
+    (regresión del 2026-10-04: salía a presionar y un regate en diagonal lo dejaba pasado)."""
+    env, _ = _defend_scene([(700.0, 0.0)])
+    d = env.player_pos[0, 4] - env.ball_pos[0]
+    assert d[0] > 0, "debe quedar del lado del arco"
+    assert 55.0 < np.hypot(*d) < 130.0, np.hypot(*d)
+
+
+def test_presser_goes_to_contact_when_there_is_cover():
+    env, _ = _defend_scene([(500.0, 0.0), (900.0, 0.0)])
+    near = min(np.hypot(*(env.player_pos[0, 4 + i] - env.ball_pos[0])) for i in range(2))
+    assert near < 45.0, near
+
+
+def test_beaten_presser_is_relieved_by_the_goal_side_defender():
+    """Presionante pasado (detrás de la pelota, más cerca de ella) y compañero del lado del arco: el que
+    presiona es el compañero (relevo) y el pasado toma otro rol."""
+    _, bot = _defend_scene([(240.0, 40.0), (800.0, 0.0)], attacker=(270.0, 0.0), ball=(300.0, 0.0), decisions=3)
+    roles = bot.mem_i[0, 1, B.M_ROLE:B.M_ROLE + 8]
+    assert roles[5] == B.R_PRESS, roles
+    assert roles[4] != B.R_PRESS, roles

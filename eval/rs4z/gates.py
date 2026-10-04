@@ -42,7 +42,10 @@ HUMAN_RESTART_P50 = dict(lateral=117.0, corner=153.0, goal_kick=249.0)
 RULES = {
     "control_battery": dict(mean_frac=0.90, task_frac=0.75),
     "duel_battery": dict(mean_frac=0.85, task_frac=0.65, conceded_slack=1.3),
-    "passing_battery": dict(mean_frac=0.80, task_frac=0.60),
+    # además, en las tareas pensadas para el pase, la mayoría de los goles debe venir de un pase entre
+    # aprendices (la etapa existe para eso: en el humo del 2026-10-04 S3 se aprobó gambeteando solo)
+    "passing_battery": dict(mean_frac=0.80, task_frac=0.60, pass_tasks=("attack_2v1", "one_two"),
+                            min_pass_share=0.5),
     "defense_battery": dict(mean_frac=0.80, task_frac=0.60, conceded_slack=1.1),
     # RS-Pro ataca mal en 1v1 (auditoría §5): contra L3 la compuerta no informa, se exige contra L5
     "match_1v1_vs_l5": dict(points=0.55, level=5, active=(1, 1)),
@@ -146,7 +149,15 @@ def evaluate_gate(name, cand, calib, episodes=256, seed=0):
                 ok &= per_task[t]
             if "conceded_slack" in rule and not np.isnan(ref[t]["conceded"]):
                 ok &= v["conceded"] <= rule["conceded_slack"] * ref[t]["conceded"] + 0.02
-        return dict(passed=bool(ok), value=mean, reference=ref_mean, tasks=res, per_task=per_task)
+        pass_share = None
+        if "pass_tasks" in rule:
+            wins = sum(res[t]["successes"] for t in rule["pass_tasks"])
+            with_pass = sum(res[t]["successes"] * res[t]["pass_share"] for t in rule["pass_tasks"]
+                            if res[t]["successes"])
+            pass_share = with_pass / wins if wins else 0.0
+            ok &= pass_share >= rule["min_pass_share"]
+        return dict(passed=bool(ok), value=mean, reference=ref_mean, tasks=res, per_task=per_task,
+                    pass_share=pass_share)
     if name == "match_1v1_vs_l5":
         r = _vs_rspro(cand, rule["level"], episodes // 2, seed, active=_active(*rule["active"]))
         return dict(passed=r["points"] >= rule["points"] and r["ci90"][0] > 0.5, **r)
