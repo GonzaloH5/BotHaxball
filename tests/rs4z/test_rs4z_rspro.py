@@ -126,3 +126,4 @@ def test_beaten_presser_is_relieved_by_the_goal_side_defender():
     roles = bot.mem_i[0, 1, B.M_ROLE:B.M_ROLE + 8]
     assert roles[5] == B.R_PRESS, roles
     assert roles[4] != B.R_PRESS, roles
+

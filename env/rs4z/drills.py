@@ -21,6 +21,7 @@ from . import kernel as K
 GOAL_X = 1162.0
 REGAIN_TICKS = 60          # posesión recuperada: toque propio sin toque rival durante 1 s
 LOSS_TICKS = 30            # posesión perdida: toque rival sin respuesta propia durante 0,5 s
+CLEAN_LOSS_PX = 60.0      # en ataque: el rival toca la pelota sin ningún aprendiz a menos de esto → la ganó limpio
 MATCH_STALL_FACTOR = 2     # un partido que dura más de 2× su reloj + 1 min real se corta (truncación)
 MATCH_STALL_EXTRA = 3600
 
@@ -255,6 +256,12 @@ class Drills:
         resolve(P["success_touch"][task] & own_touch, 1.0)
         resolve(P["success_regain"][task] & (st.regain_since >= REGAIN_TICKS), 1.0)
         resolve(P["rival_end"][task] & (st.lost_since >= LOSS_TICKS), 0.0)
+        # pérdida limpia: el rival llega a la pelota sin disputa (ningún aprendiz cerca). El ataque terminó,
+        # aunque después la recupere: el RL aprendía a soltarla para que el defensor saliera y robársela (2026-10-04)
+        if (rival_touch & ~own_touch).any():
+            d = np.hypot(env.player_pos[..., 0] - env.ball_pos[:, None, 0], env.player_pos[..., 1] - env.ball_pos[:, None, 1])
+            d = np.where(own_mask & env.active, d, np.inf).min(axis=1)
+            resolve(P["rival_end"][task] & only_rival & (d > CLEAN_LOSS_PX), 0.0)
         started = ev["restart_start"] > 0
         owner = env.ri[:, K.RI_TEAM]
         resolve(started & (owner == lt) & P["success_regain"][task], 1.0)

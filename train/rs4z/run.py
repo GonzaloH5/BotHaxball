@@ -66,6 +66,8 @@ class Config:
     smoke: bool = False
     gate_episodes: int = 256
     target_success: float = 0.6    # dificultad adaptativa: éxito buscado por tarea
+    difficulty_step: float = 0.05  # paso máximo de dificultad por actualización (de 0 a 1 en ≥ 20 iteraciones)
+    difficulty_batch: int = 16     # episodios terminados por tarea antes de actualizar su dificultad
     only_tasks: str = ""           # pruebas de humo: restringir la mezcla (lista separada por comas)
     exploiter_of: str = ""         # ruta del checkpoint principal: entrenar un exploiter contra él (S6)
     exploiter_accept: float = 0.60  # un exploiter entra a la liga del principal si le saca ≥ 60% de los puntos
@@ -112,6 +114,7 @@ class Trainer:
         self.iter = 0
         self.difficulty = {t: 0.0 for t in TASK_NAMES}
         self.success = {t: 0.5 for t in TASK_NAMES}
+        self._pending = {t: [0, 0.0] for t in TASK_NAMES}   # episodios terminados aún no usados por el control
         self.ret_mean, self.ret_var, self.ret_count = 0.0, 1.0, 1e-4
         self.ctrl = np.zeros((N, 8), dtype=np.int64)        # LEARNER / RSPRO / FROZEN
         self.frozen_id = np.full(N, -1, dtype=np.int64)     # miembro de la liga en filas con FROZEN
@@ -170,6 +173,24 @@ class Trainer:
         names, w = self._task_weights()
         p = w / np.array([self.ep_len[t] for t in names])
         return names, p / p.sum()
+
+    def _update_difficulty(self):
+        """Dificultad adaptativa (éxito buscado `target_success`), una vez por rollout y por tarea con al menos
+        `difficulty_batch` episodios terminados: el éxito es un promedio por lotes y el paso está acotado.
+
+        Antes era ±0,01 por episodio con un promedio de ~50 episodios: con 1024 partidos terminan cientos por
+        iteración y la dificultad saltaba de 0 a 1 y de vuelta en dos iteraciones (2026-10-04), alternando
+        rivales triviales e imposibles en vez de mantener al aprendiz cerca del objetivo.
+        """
+        cfg = self.cfg
+        for name, (n, ok) in self._pending.items():
+            if n < cfg.difficulty_batch:
+                continue
+            self.success[name] = 0.7 * self.success[name] + 0.3 * (ok / n)
+            err = (self.success[name] - cfg.target_success) / 0.2
+            step = cfg.difficulty_step * float(np.clip(err, -1.0, 1.0))
+            self.difficulty[name] = float(np.clip(self.difficulty[name] + step, 0.0, 1.0))
+            self._pending[name] = [0, 0.0]
 
     def _refresh_len_priors(self):
         """Al cambiar de etapa: partidos con la duración de reloj de la etapa nueva; ejercicios nunca
@@ -351,18 +372,17 @@ class Trainer:
                 if self.is_match[n] and self.frozen_id[n] >= 0:
                     mine, theirs = env.score[n, lt[n]], env.score[n, 1 - lt[n]]
                     self.league.record(int(self.frozen_id[n]), 1.0 if mine > theirs else 0.5 if mine == theirs else 0.0)
-                self.success[name] = 0.98 * self.success[name] + 0.02 * float(ok)
+                self._pending[name][0] += 1
+                self._pending[name][1] += float(ok)
                 self.task_log[name][0] += 1
                 self.task_log[name][1] += float(ok)
-                d = self.difficulty[name]
-                self.difficulty[name] = float(np.clip(d + (0.01 if self.success[name] > cfg.target_success + 0.1 else
-                                                           -0.01 if self.success[name] < cfg.target_success - 0.1 else 0.0), 0, 1))
                 stats["matches" if self.is_match[n] else "drill_done"] += 1
             goal_rows = np.flatnonzero((g != 0) & ~done)
             if len(goal_rows):
                 self.bot.sync(env, goal_rows)
             if len(ended):
                 self.assign(ended)
+        self._update_difficulty()
         observe(env, obs)
         build_critic(env, crit)
         last_v = np.zeros((N, 8), np.float32)

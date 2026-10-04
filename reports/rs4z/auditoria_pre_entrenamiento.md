@@ -67,18 +67,20 @@ Desviaciones aceptadas (sin efecto relevante en el aprendizaje): la sala cobra l
 - **Ejecución**: navegación de órbita alrededor de la pelota (no la toca al rodearla) y frenado por velocidad deseada.
 - **Saques**: ejecutor por costo, espera de apoyos, impulsos reales del córner (×1,98) y del saque de arco (×2,71).
 
-Validación (`reports/rs4z/rspro_ladder.json`, 256 partidos de 3 min por par, ambos colores, estilos al azar; versión con contención y relevo, §9.2, entre paréntesis la anterior):
+Validación (`reports/rs4z/rspro_ladder.json`, 256 partidos de 3 min por par, ambos colores, estilos al azar; versión final con contención, relevo y salida sólo con ventaja clara, §9.2; entre paréntesis la versión original):
 
-| Par | Puntos del nivel superior |
+| Par | Puntos del nivel superior (IC95) |
 |---|---|
-| L1–L0 | 0,58 (0,54) |
-| L2–L1 | 0,69 (0,67) |
-| L3–L2 | 0,63 (0,65) |
-| L4–L3 | 0,58 (0,57) |
-| L5–L4 | 0,59 (0,58) |
-| L5–L3 / L2 / L1 / L0 | 0,63 / 0,75 / 0,87 / 0,93 (0,65 / 0,77 / 0,90 / 0,92) |
+| L1–L0 | 0,57 (0,54) |
+| L2–L1 | 0,67 (0,67) |
+| L3–L2 | 0,59 (0,65) |
+| L4–L3 | 0,55, IC 0,51–0,58 (0,57) |
+| L5–L4 | 0,53, IC 0,50–0,57 (0,58) |
+| L5–L3 / L2 / L1 / L0 | 0,58 / 0,72 / 0,84 / 0,90 (0,65 / 0,77 / 0,90 / 0,92) |
 
-Estructura L5 contra L5 frente a humanos (69 grabaciones, mismas definiciones): dispersión 148 (humano 166), profundidad 319 (362), anchura 255 (260), distancias a la pelota 111/221/300/415 (96/203/283/392), colgado 0,6% (0,6%), aglomeración 6,7% (4%), flotación junto al arco 0%; pases por pérdida 0,47 (1,15), tiros 0,18 por minuto (0,47). Prácticamente igual que la versión anterior.
+La parte alta se comprimió: con la defensa que contiene hay menos goles y más empates, así que los puntos se acercan a 0,5 aunque haya diferencia de nivel. El ritmo de goles de L5 contra L5 es 0,072 por minuto, igual al humano (0,071): el RS4 real también se juega con muy pocos goles.
+
+Estructura L5 contra L5 frente a humanos (69 grabaciones, mismas definiciones): dispersión 149 (humano 166), profundidad 322 (362), anchura 256 (260), distancias a la pelota 112/223/301/416 (96/203/283/392), aglomeración ~7% (4%), flotación junto al arco 0%; pases por pérdida 0,46 (1,15), tiros 0,16 por minuto (0,47), goles 0,072 por minuto (0,071).
 
 Baterías de referencia (L5 en los lugares del aprendiz, 512 episodios): control 0,92/0,67/0,83/0,91 (tocar, arco vacío, conducir y definir, recibir y definir); duelos: tiro contra el último hombre 0,23, defender 1v1 0,92, pelota dividida 0,37; 2v1 0,44 y pared 0,36, con pase en 98–99% de los goles; defensa 2v2/4v4/saques 0,88/0,86/0,90.
 
@@ -86,7 +88,7 @@ Baterías de referencia (L5 en los lugares del aprendiz, 512 episodios): control
 - pasa menos y pierde más la pelota que los humanos (pases/pérdidas 0,47 contra 1,15);
 - tira menos (0,18 contra 0,47 por minuto), aunque convierte igual que ellos;
 - su ataque 1v1 es débil (0% contra el último hombre que contiene); el pase en profundidad, los centros y el 2v2 ofensivo también (≤6%), así que esas tareas no se juzgan en las compuertas (sí se entrenan);
-- la separación entre L3, L4 y L5 es moderada (57–65%).
+- la separación entre L3, L4 y L5 es chica en puntos (0,53–0,58) porque hay muchos empates: los niveles altos se distinguen más en las baterías que en los partidos.
 
 Las compuertas sólo juzgan tareas donde la referencia resuelve ≥15%.
 
@@ -145,9 +147,9 @@ Las compuertas sólo juzgan tareas donde la referencia resuelve ≥15%.
   - estructura y perfil de distancias;
   - detectores de aglomeración, colgado, flotación junto al arco, quietud y oscilación;
   - duración de saques.
-- **Baterías reproducibles** (`eval/rs4z/batteries.py`): mismas semillas para el candidato y la referencia. Las compuertas viven en `eval/rs4z/gates.py` y la calibración congelada en `reports/rs4z/gates.json` (huella de código `33df687f4cceb340`).
+- **Baterías reproducibles** (`eval/rs4z/batteries.py`): mismas semillas para el candidato y la referencia. Las compuertas viven en `eval/rs4z/gates.py` y la calibración congelada en `reports/rs4z/gates.json` (huella de código `c31a5318ce90e236`).
 - **Tests**: suite completa 876 aprobados, 44 omitidos al 2026-10-04 antes de §9.2; RS4-Z hoy 86 (793 anteriores + 83 RS4-Z en `tests/rs4z`: paridad del árbitro, reglas v2, obs y simetría, ejercicios, rewards y tramposos, RS-Pro, entrenador, liga, mezcla del curriculum y compuertas).
-- **Tramposos contra RS-Pro L5** (128 partidos cada uno): quieto 1,00; oscilar 1,00; todos persiguen 0,97; pelotazos 1,00; sacarla afuera 0,80; bloque en el arco 0,97; delantero colgado 1,00; trabar saques 0,98; azar 0,99 (puntos de L5).
+- **Tramposos contra RS-Pro L5** (128 partidos cada uno, versión final): quieto 1,00; oscilar 1,00; todos persiguen 0,97; pelotazos 1,00; sacarla afuera 0,79; bloque en el arco 0,97; delantero colgado 1,00; trabar saques 0,99; azar 0,99 (puntos de L5).
 - **Humo en Pod** (RTX 3090, 1024 partidos, pesos aleatorios, `runs/rs4z/smoke_s1_gpu`):
   - **Corrección previa**: con minilotes de 32k (6 pasos por iteración) y Φ_ball = 0,05 la política no se movía (KL ~3e-4 a los 8,5M). Con minilotes de 8192 × 4 épocas y Φ_ball = 0,5 (PBRS, no cambia el óptimo) aprende.
   - Prueba aislada "tocar la pelota": éxito de 7% a 82–84% en 6M muestras; entropía de 2,89 a 0,66; KL 0,002–0,01.
@@ -195,7 +197,21 @@ Corrección (el entrenamiento se pausó a los 415M, en S4):
 
 - **RS-Pro**: último hombre que contiene y relevo defensivo (§5). Con los mismos checkpoints, el desborde individual cayó de 100% a 42–48% en 1v1, de 8/8 a 1/8 en 2v1 y de 7/8 a 0/8 en 2v2; los ejercicios siguen siendo resolubles pasando (RS-Pro L5 atacando: 2v1 0,44, pared 0,36, 98–99% con pase). Escalera, estructura y tramposos revalidados (arriba). Tests de regresión: el último hombre no va al contacto, el presionante con cobertura sí, y el relevo.
 - **Compuerta de S3**: además del éxito, en 2v1 y pared ≥50% de los goles deben incluir un pase entre aprendices. El checkpoint de S3 viejo la reprueba (30–33%).
-- **Reanudación**: desde el checkpoint de S1 (ejercicios 1v0, sin defensores), rehaciendo S2–S4 (~1,5 h de GPU). Calibración nueva con huella `33df687f4cceb340`.
+- **Reanudación**: desde el checkpoint de S1 (ejercicios 1v0, sin defensores), rehaciendo S2–S4 (~1,5 h de GPU).
+
+Segunda revisión (S2 retomado, a los ~25M de la etapa), dos fallos más:
+
+- **Control de dificultad oscilante**: la dificultad se movía ±0,01 por episodio con un promedio de ~50 episodios. Con 1024 partidos terminan cientos por iteración, así que saltaba de 0 a 1 y de vuelta en dos iteraciones, alternando rivales L0 (que no contienen) y L4. El "éxito 0,85" del log venía de los L0. Ahora se actualiza una vez por rollout con el éxito del lote y un paso de ±0,05 como máximo (test: converge al 60% sin oscilar).
+- **Engaño de soltar la pelota**: el atacante se alejaba de la pelota para que el último hombre saliera a buscarla y después se la robaba y lo desbordaba. Funcionaba en dos capas:
+  - la regla "pelota suelta" de la contención: se quitó;
+  - el último hombre salía a ganar cualquier pelota a la que llegara primero, aunque fuera por un tick, y RS-Pro protege mal la pelota recién ganada.
+- **Correcciones**:
+  - el último hombre sale a ganar la pelota sólo con 20 ticks de ventaja; si no, contiene;
+  - en los ejercicios de ataque, si el rival toca la pelota sin ningún aprendiz a menos de 60 px, la ganó limpio y el ataque terminó (las disputas siguen la regla de control sostenido).
+  - Con el mismo checkpoint, el ataque 1v1 contra L5 cayó de 0,29 a 0,04, y no quedan goles por engaño.
+- **1v1 completo**: RS-Pro contra RS-Pro termina 0-0 en 94–98% de los partidos (su ataque 1v1 es muy débil). La red gana el 1v1 contra L5 (0,79) recuperando la pelota cuando RS-Pro ataca, así que la compuerta de S2 es alcanzable; en 4v4 RS-Pro tiene pases y apoyos y su estructura está validada.
+- **Calibración** nueva con huella `c31a5318ce90e236`: 2v1 0,31 y pared 0,31, 100% con pase; defender 1v1 0,98.
+- **Lección**: el RL encuentra en minutos cualquier regla rígida del scripted. Revisar repeticiones y la geometría de los éxitos en cada etapa (no sólo la tasa) es parte del procedimiento, no un extra.
 
 ## 10. Riesgos e incertidumbres abiertas
 

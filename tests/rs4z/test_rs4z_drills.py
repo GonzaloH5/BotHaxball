@@ -79,3 +79,21 @@ def test_timeout_outcomes():
         if done[0]:
             break
     assert done[0] and out[0] == 1.0 and not tr[0], "defensa: aguantar sin gol es éxito"
+
+
+def test_clean_rival_win_ends_the_attack():
+    """En ataque, si el rival toca la pelota sin ningún aprendiz cerca, el ataque terminó (aunque después la
+    recupere); una disputa cuerpo a cuerpo sigue la regla de control sostenido."""
+    env = RS4ZEnv(2, seed=0)
+    d = Drills(env, np.random.default_rng(0))
+    d.start([0, 1], "attack_1v1", 0.0, learner_team=0)
+    pp = env.player_pos.copy()
+    pp[0, 0] = env.ball_pos[0] + np.array([-200.0, 0.0])     # fila 0: aprendiz lejos de la pelota
+    pp[1, 0] = env.ball_pos[1] + np.array([-30.0, 0.0])      # fila 1: aprendiz pegado a la pelota
+    for n in (0, 1):
+        env.place(n, ball_pos=env.ball_pos[n], ball_vel=(0.0, 0.0), player_pos=pp[n], player_vel=np.zeros((8, 2)))
+    touched = np.zeros((2, 8), bool)
+    touched[:, 4] = True
+    done, out, tr = d.check(_ev(2, touched=touched))
+    assert done[0] and out[0] == 0.0
+    assert not done[1]

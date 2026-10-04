@@ -638,24 +638,29 @@ def decide(n, team, seed, table, pos, vel, active, kick_cancel, ctrl, ri_team, r
             out[lead] = _restart_taker(n, team, seed, dec, table, lead, px, py, pvx, pvy, bx, by, bvx, bvy,
                                        own_idx, n_own, opp_x, opp_y, opp_vx, opp_vy, n_opp, ri_kind, ri_ticks,
                                        ko, kick_cancel, lvl, sty, mem_i, mem_f)
-        elif phase == PH_OPP and t_own > t_opp + 4.0 and opp_win >= 0:
-            # ¿queda alguien detrás? Sin cobertura, el presionante es el último hombre y contiene (L1+)
+        else:
+            # ¿queda alguien detrás? Sin cobertura, el que va a la pelota es el último hombre (L1+)
+            d_bg = math.hypot(bx - own_gx, by)
             contain = False
-            if opts >= 3:
-                d_bg = math.hypot(bx - own_gx, by)
+            if opts >= 3 and opp_win >= 0:
                 contain = True
                 for i in range(n_own):
                     q = own_idx[i]
                     if q != lead and px[q] < bx - 30.0 and math.hypot(px[q] - own_gx, py[q]) < d_bg - 80.0:
                         contain = False
                         break
-            gap = math.hypot(px[opp_win] - bx, py[opp_win] - by)
-            out[lead] = _press(n, seed, dec, lead, px, py, pvx, pvy, bx, by, bvx, bvy, own_gx, kick_cancel, lvl,
-                               sty, mem_i, traj, contain, gap)
-        else:
-            out[lead] = _carrier(n, team, seed, dec, table, lead, px, py, pvx, pvy, bx, by, bvx, bvy, ix[lead],
-                                 iy[lead], t_int[lead], own_idx, n_own, opp_x, opp_y, opp_vx, opp_vy, n_opp,
-                                 kick_cancel, lvl, sty, mem_i, mem_f, traj)
+            pressing = phase == PH_OPP and t_own > t_opp + 4.0 and opp_win >= 0
+            # el último hombre lejos de su arco no sale a una pelota que el rival todavía disputa: sólo con una
+            # ventaja clara (20 ticks: llega con el rival a > 60 px). Si no, contiene. El RL aprendía a alejarse
+            # un poco de la pelota para hacerlo salir y desbordarlo (2026-10-04).
+            hold = contain and d_bg > 430.0 and t_own > 3.0 and t_opp - t_own < 20.0
+            if pressing or hold:
+                out[lead] = _press(n, seed, dec, lead, px, py, pvx, pvy, bx, by, bvx, bvy, own_gx, kick_cancel,
+                                   lvl, sty, mem_i, traj, contain)
+            else:
+                out[lead] = _carrier(n, team, seed, dec, table, lead, px, py, pvx, pvy, bx, by, bvx, bvy, ix[lead],
+                                     iy[lead], t_int[lead], own_idx, n_own, opp_x, opp_y, opp_vx, opp_vy, n_opp,
+                                     kick_cancel, lvl, sty, mem_i, mem_f, traj)
     # atajada: si la pelota va a cruzar nuestra línea de gol, el propio que mejor llega al punto de cruce
     # se interpone (cuerpo entre la pelota y el arco) y la despeja si la patada es segura
     if save_t >= 0 and not restart_opp and not ko:
@@ -724,14 +729,16 @@ def safe_clear(px, py, bx, by, own_gx):
 
 @njit(cache=True)
 def _press(n, seed, dec, me, px, py, pvx, pvy, bx, by, bvx, bvy, own_gx, kick_cancel, lvl, sty, mem_i, traj,
-           contain, gap):
+           contain):
     """Presionante sin la pelota: ir a la pelota por el lado del arco propio (bloquear la conducción) y
     disputarla con una patada de quite cuando no la manda hacia el arco propio.
 
     contain (último hombre, sin nadie detrás): no ir al contacto lejos del arco. Pararse sobre la línea
     pelota→arco a 70–110 px (a esa distancia tapa todo el ángulo de tiro) y retroceder con el poseedor;
-    cerrar y disputar sólo en zona de tiro (< 430 px del arco) o si la pelota quedó suelta (`gap`: distancia
-    del poseedor a la pelota). Así un regate en diagonal no lo deja pasado y el 2v1 se resuelve pasando.
+    cerrar y disputar sólo en zona de tiro (< 430 px del arco). Así un regate en diagonal no lo deja pasado
+    y el 2v1 se resuelve pasando. Una pelota suelta que el defensor gana no llega acá (la fase deja de ser
+    de posesión rival y va a disputarla); una que el poseedor sigue ganando no es motivo para salir: el RL
+    aprendió a alejarse de la pelota para hacerlo salir y desbordarlo (2026-10-04).
     """
     spd = lvl[L_SPEED]
     # pelota un poco adelantada (el poseedor la empuja)
@@ -743,7 +750,7 @@ def _press(n, seed, dec, me, px, py, pvx, pvy, bx, by, bvx, bvy, own_gx, kick_ca
     gd = math.sqrt(gdx * gdx + gdy * gdy) + 1e-9
     d_me = math.hypot(px[me] - cbx, py[me] - cby)
     arrive = 1.2
-    if contain and gd > 430.0 and gap < R_P + R_B + 30.0:
+    if contain and gd > 430.0:
         off = 70.0 + _clip((gd - 430.0) / 320.0, 0.0, 1.0) * 40.0
         arrive = 0.0
     elif d_me < 140.0:

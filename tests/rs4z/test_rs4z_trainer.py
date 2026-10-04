@@ -94,3 +94,23 @@ def test_gate_confirmation_uses_a_fresh_seed(trainer, monkeypatch):
     a = trainer.check_gates()
     b = trainer.check_gates(confirm=True)
     assert not a["confirmation"] and b["confirmation"] and seeds[0] != seeds[1]
+
+
+def test_difficulty_controller_settles_instead_of_oscillating(trainer):
+    """Con cientos de episodios por iteración la dificultad converge al punto de éxito buscado (regresión del
+    2026-10-04: saltaba de 0 a 1 y de vuelta en dos iteraciones)."""
+    rng = np.random.default_rng(0)
+    name = "touch"
+    trainer.difficulty[name], trainer.success[name] = 0.0, 0.5
+    path = []
+    for _ in range(120):
+        d = trainer.difficulty[name]
+        p = 1.0 - d                                  # éxito real decreciente con la dificultad: objetivo en 0,4
+        n = 300
+        trainer._pending[name] = [n, float(rng.binomial(n, p))]
+        trainer._update_difficulty()
+        path.append(trainer.difficulty[name])
+    tail = np.array(path[-40:])
+    assert abs(tail.mean() - 0.4) < 0.08, tail.mean()
+    assert tail.max() - tail.min() < 0.2, (tail.min(), tail.max())
+    assert max(abs(np.diff(path))) <= trainer.cfg.difficulty_step + 1e-9
