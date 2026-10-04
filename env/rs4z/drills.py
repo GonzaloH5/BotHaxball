@@ -127,6 +127,16 @@ class DrillState:
 
 TASK_NAMES = list(TASKS)
 TASK_INDEX = {name: i for i, name in enumerate(TASK_NAMES)}
+_TASK_PARAMS = dict(
+    timeout=np.array([TASKS[t].timeout for t in TASK_NAMES], dtype=np.int64),
+    success_goal=np.array([TASKS[t].success == "goal" for t in TASK_NAMES]),
+    success_touch=np.array([TASKS[t].success == "touch" for t in TASK_NAMES]),
+    success_regain=np.array([TASKS[t].success == "regain" for t in TASK_NAMES]),
+    rival_end=np.array([TASKS[t].end_on_rival_touch for t in TASK_NAMES]),
+    own_out_end=np.array([TASKS[t].end_on_own_out for t in TASK_NAMES]),
+    concede=np.array([TASKS[t].concede_outcome for t in TASK_NAMES], dtype=np.float64),
+    timeout_code=np.array([{"fail": 0, "success": 1, "truncate": 2}[TASKS[t].timeout_outcome] for t in TASK_NAMES]),
+)
 
 
 class Drills:
@@ -194,73 +204,62 @@ class Drills:
         """Después de cada `env.step`: devuelve (done, outcome, truncated) por fila (sólo ejercicios).
 
         done: el episodio de ejercicio terminó; outcome: +1/0/-1; truncated: corte por tiempo con bootstrap.
-        Para partidos, done=False siempre (el fin lo marca ev['match_end']).
+        Para partidos, done=False siempre (el fin lo marca ev['match_end']). Vectorizado.
         """
         env, st = self.env, self.st
         N = env.N
+        P = _TASK_PARAMS
+        task = st.task
+        st.ticks += ev["ticks"]
+        team = np.where(np.arange(8) < 4, 0, 1)
+        lt = st.learner_team
+        own_mask = team[None, :] == lt[:, None]
+        own_touch = (ev["touched"] & own_mask).any(axis=1)
+        rival_touch = (ev["touched"] & ~own_mask).any(axis=1)
+        g = ev["goal"]
+        scored = ((g == 1) & (lt == 0)) | ((g == -1) & (lt == 1))
+        conceded = (g != 0) & ~scored
+        drill = P["timeout"][task] > 0
+        dt = ev["ticks"]
+        # posesión recuperada / perdida (toque de un equipo sin respuesta del otro)
+        only_own = own_touch & ~rival_touch
+        only_rival = rival_touch & ~own_touch
+        both = own_touch & rival_touch
+        neither = ~own_touch & ~rival_touch
+        st.regain_since = np.where(only_own, np.where(st.regain_since < 0, 0, st.regain_since + dt),
+                                   np.where(only_rival | both, -1,
+                                            np.where(st.regain_since >= 0, st.regain_since + dt, -1)))
+        st.lost_since = np.where(only_rival, np.where(st.lost_since < 0, 0, st.lost_since + dt),
+                                 np.where(only_own | both, -1,
+                                          np.where(st.lost_since >= 0, st.lost_since + dt, -1)))
         done = np.zeros(N, dtype=bool)
         outcome = np.zeros(N)
         truncated = np.zeros(N, dtype=bool)
-        st.ticks += ev["ticks"]
-        team = np.where(np.arange(8) < 4, 0, 1)
-        for n in range(N):
-            task = TASKS[TASK_NAMES[st.task[n]]]
-            if task.timeout == 0:
-                continue
-            lt = st.learner_team[n]
-            own_touch = bool((ev["touched"][n] & (team == lt)).any())
-            rival_touch = bool((ev["touched"][n] & (team != lt)).any())
-            g = int(ev["goal"][n])
-            scored = (g == 1 and lt == 0) or (g == -1 and lt == 1)
-            conceded = g != 0 and not scored
-            if scored:
-                done[n], outcome[n] = True, (1.0 if task.success == "goal" else 0.0)
-                continue
-            if conceded:
-                done[n], outcome[n] = True, task.concede_outcome
-                continue
-            # posesión recuperada / perdida (toque de un equipo sin respuesta del otro)
-            if own_touch and not rival_touch:
-                st.regain_since[n] = 0 if st.regain_since[n] < 0 else st.regain_since[n] + ev["ticks"][n]
-                st.lost_since[n] = -1
-            elif rival_touch and not own_touch:
-                st.lost_since[n] = 0 if st.lost_since[n] < 0 else st.lost_since[n] + ev["ticks"][n]
-                st.regain_since[n] = -1
-            elif rival_touch and own_touch:
-                st.regain_since[n] = -1
-                st.lost_since[n] = -1
-            else:
-                if st.regain_since[n] >= 0:
-                    st.regain_since[n] += ev["ticks"][n]
-                if st.lost_since[n] >= 0:
-                    st.lost_since[n] += ev["ticks"][n]
-            if task.success == "touch" and own_touch:
-                done[n], outcome[n] = True, 1.0
-                continue
-            if task.success == "regain" and st.regain_since[n] >= REGAIN_TICKS:
-                done[n], outcome[n] = True, 1.0
-                continue
-            if task.end_on_rival_touch and st.lost_since[n] >= LOSS_TICKS:
-                done[n], outcome[n] = True, 0.0
-                continue
-            started = ev["restart_start"][n] > 0
-            if started:
-                owner = env.ri[n, K.RI_TEAM]
-                if owner == lt and task.success == "regain":
-                    # el rival la sacó: el saque es nuestro → recuperación
-                    done[n], outcome[n] = True, 1.0
-                    continue
-                if owner != lt and task.end_on_own_out:
-                    done[n], outcome[n] = True, 0.0
-                    continue
-            if st.ticks[n] >= task.timeout:
-                done[n] = True
-                if task.timeout_outcome == "success":
-                    outcome[n] = 1.0
-                elif task.timeout_outcome == "truncate":
-                    truncated[n] = True
-                else:
-                    outcome[n] = 0.0
+        open_ = drill.copy()
+
+        def resolve(mask, value):
+            nonlocal open_
+            m = mask & open_
+            done[m] = True
+            outcome[m] = value[m] if np.ndim(value) else value
+            open_ &= ~m
+
+        resolve(scored, np.where(P["success_goal"][task], 1.0, 0.0))
+        resolve(conceded, P["concede"][task])
+        resolve(P["success_touch"][task] & own_touch, 1.0)
+        resolve(P["success_regain"][task] & (st.regain_since >= REGAIN_TICKS), 1.0)
+        resolve(P["rival_end"][task] & (st.lost_since >= LOSS_TICKS), 0.0)
+        started = ev["restart_start"] > 0
+        owner = env.ri[:, K.RI_TEAM]
+        resolve(started & (owner == lt) & P["success_regain"][task], 1.0)
+        resolve(started & (owner != lt) & P["own_out_end"][task], 0.0)
+        timeout = st.ticks >= P["timeout"][task]
+        code = P["timeout_code"][task]
+        resolve(timeout & (code == 1), 1.0)
+        resolve(timeout & (code == 0), 0.0)
+        tr = timeout & (code == 2) & open_
+        done[tr] = True
+        truncated[tr] = True
         return done, outcome, truncated
 
     def controllers(self, rows=None):

@@ -129,7 +129,7 @@ Las compuertas sólo juzgan tareas donde la referencia resuelve ≥15%.
 - Las filas congeladas o scripted nunca entran a la pérdida (test).
 - **Liga** (`train/rs4z/league.py`):
   - instantáneas cada 250M muestras desde S5, con PFSP (1−p)²;
-  - exploiters marcados en su propia fracción;
+  - exploiters marcados en su propia fracción: `train.rs4z.run --exploiter-of <checkpoint principal>` parte del principal, juega sólo contra él congelado y se suma a su liga en el siguiente guardado;
   - RS-Pro L3–L5 con estilos de entrenamiento;
   - la región de estilos reservada (presión alta + directo + estrecho) nunca se muestrea al entrenar.
 - Compañeros ad-hoc (15–20% en S6–S7): RS-Pro competente que infiere los roles de los compañeros que no controla.
@@ -142,7 +142,8 @@ Las compuertas sólo juzgan tareas donde la referencia resuelve ≥15%.
   - detectores de aglomeración, colgado, flotación junto al arco, quietud y oscilación;
   - duración de saques.
 - **Baterías reproducibles** (`eval/rs4z/batteries.py`): mismas semillas para el candidato y la referencia. Las compuertas viven en `eval/rs4z/gates.py` y la calibración congelada en `reports/rs4z/gates.json` (huella de código `d7b610936c5cf1de`).
-- **Tests**: 66 tests RS4-Z en `tests/rs4z` (simulador, reglas, obs, ejercicios, rewards, RS-Pro, entrenador) más la suite anterior. El conteo final está en la sección 10.
+- **Tests**: suite completa 859 aprobados, 44 omitidos (793 anteriores + 66 RS4-Z en `tests/rs4z`: paridad del árbitro, reglas v2, obs y simetría, ejercicios, rewards y tramposos, RS-Pro, entrenador).
+- **Tramposos contra RS-Pro L5** (128 partidos cada uno): quieto 1,00; oscilar 1,00; todos persiguen 0,95; pelotazos 0,99; sacarla afuera 0,81; bloque en el arco 0,98; delantero colgado 0,98; trabar saques 0,95; azar 0,99 (puntos de L5).
 - **Humo en Pod** (RTX 3090, S1, 1024 partidos): ver el bloque de resultados al final.
 
 ## 10. Riesgos e incertidumbres abiertas
