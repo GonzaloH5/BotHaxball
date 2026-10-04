@@ -76,6 +76,7 @@ class Config:
     overlap: bool = False          # aprender (device) mientras se juega la iteración siguiente (rollout_device)
     rollout_device: str = ""       # dispositivo de la copia que juega (vacío: el mismo que aprende)
     tf32: bool = True              # matemática TF32 en GPU Ampere+ (actualización ~17% más rápida)
+    compile: bool = True           # torch.compile del paso de aprendizaje en GPU (actualización ~35% más rápida)
     max_kl_start: float = 0.2      # KL entre la política que jugó y la que aprende antes de aprender: si lo supera,
                                    # las dos no coinciden (error de sincronización) y se detiene sin guardar
     match_min_minutes: float = 3.0  # duración de reloj de los partidos desde S5 (uniforme; la sala juega ~10 min)
@@ -111,7 +112,8 @@ class Trainer:
         self.stage_i = STAGE_INDEX[cfg.start_stage]
         self.rewards = Rewards(self.env, STAGES[self.stage_i].gamma, self.xt)
         self.model = ActorCritic().to(self.device)
-        self.opt = torch.optim.Adam(self.model.parameters(), lr=cfg.lr, eps=1e-5)
+        self.opt = torch.optim.Adam(self.model.parameters(), lr=cfg.lr, eps=1e-5, fused=self.device.type == "cuda")
+        self._fwd = None                    # forward del aprendizaje (compilado en GPU)
         self.league = League(self.dir / "league", device=self.rollout_device)
         if cfg.exploiter_of:
             # exploiter (AlphaStar): parte del principal y juega sólo contra el principal congelado
@@ -224,6 +226,13 @@ class Trainer:
             step = cfg.difficulty_step * float(np.clip(err, -1.0, 1.0))
             self.difficulty[name] = float(np.clip(self.difficulty[name] + step, 0.0, 1.0))
             self._pending[name] = [0, 0.0]
+
+    def _train_forward(self):
+        if self._fwd is None:
+            # forma dinámica: el último minilote cambia de tamaño en cada iteración (sin recompilar)
+            use = self.cfg.compile and self.device.type == "cuda"
+            self._fwd = torch.compile(self.model, dynamic=True) if use else self.model
+        return self._fwd
 
     def _refresh_len_priors(self):
         """Al cambiar de etapa: partidos con la duración de reloj de la etapa nueva; ejercicios nunca
@@ -470,14 +479,17 @@ class Trainer:
             g["lr"] = lr
         logs = dict(kl=0.0, clip=0.0, entropy=0.0, vloss=0.0, ploss=0.0, epochs=0)
         mb = min(cfg.minibatch, n)
+        fwd = self._train_forward()
         for epoch in range(cfg.epochs):
             perm = torch.randperm(n, device=self.device)
-            kls = []
+            # estadísticas acumuladas en la GPU: una sola sincronización por época (no 6 por minilote)
+            acc = torch.zeros(6, device=self.device)   # kl, clip, entropía, vloss, ploss, pérdidas no finitas
+            nb = 0
             for i in range(0, n, mb):
                 idx = perm[i:i + mb]
-                logits, value = self.model(obs[idx], crit[idx])
-                dist = torch.distributions.Categorical(logits=logits)
-                logp = dist.log_prob(act[idx])
+                logits, value = fwd(obs[idx], crit[idx])
+                lsm = torch.log_softmax(logits.float(), dim=-1)
+                logp = lsm.gather(1, act[idx][:, None]).squeeze(1)
                 a = adv_t[idx]
                 a = (a - a.mean()) / (a.std() + 1e-8)
                 ratio = torch.exp(logp - old_logp[idx])
@@ -489,23 +501,24 @@ class Trainer:
                                            f"(KL inicial {logs['kl_start']:.3f}): no se actualiza ni se guarda")
                 pl = -torch.min(ratio * a, torch.clamp(ratio, 1 - cfg.clip, 1 + cfg.clip) * a).mean()
                 vl = 0.5 * ((value - ret_t[idx]) ** 2).mean()
-                ent = dist.entropy().mean()
+                ent = -(lsm.exp() * lsm).sum(-1).mean()
                 loss = pl + cfg.vf_coef * vl - ent_coef * ent
-                if not torch.isfinite(loss):
-                    raise RuntimeError("pérdida no finita en la actualización PPO: no se guarda")
                 self.opt.zero_grad(set_to_none=True)
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), cfg.max_grad)
                 self.opt.step()
                 with torch.no_grad():
-                    kl = ((ratio - 1) - torch.log(ratio)).mean().item()
-                    kls.append(kl)
-                    logs["clip"] += ((ratio - 1).abs() > cfg.clip).float().mean().item()
-                logs["entropy"] += ent.item()
-                logs["vloss"] += vl.item()
-                logs["ploss"] += pl.item()
+                    acc += torch.stack([((ratio - 1) - torch.log(ratio)).mean(),
+                                        ((ratio - 1).abs() > cfg.clip).float().mean(), ent.detach(), vl.detach(),
+                                        pl.detach(), (~torch.isfinite(loss)).float()])
+                nb += 1
+            tot = acc.tolist()
+            if tot[5] > 0 or not all(math.isfinite(v) for v in tot[:5]):
+                raise RuntimeError("pérdida no finita en la actualización PPO: no se guarda")
             logs["epochs"] += 1
-            logs["kl"] = float(np.mean(kls))
+            logs["kl"] = tot[0] / max(nb, 1)
+            for k, j in (("clip", 1), ("entropy", 2), ("vloss", 3), ("ploss", 4)):
+                logs[k] += tot[j]
             if logs["kl"] > cfg.target_kl:
                 break
         steps = max(1, logs["epochs"] * math.ceil(n / mb))
