@@ -31,8 +31,10 @@ def _status(run_dir):
         return None
 
 
-def _launch(args, log, threads):
+def _launch(args, log, threads, gpu=None):
     env = dict(os.environ, OMP_NUM_THREADS="1", NUMBA_NUM_THREADS=str(threads))
+    if gpu is not None:
+        env["CUDA_VISIBLE_DEVICES"] = str(gpu)
     fh = open(log, "a", encoding="utf-8")
     return subprocess.Popen([PY, "-u", "-m", "train.rs4z.run", *args], cwd=ROOT, env=env, stdout=fh,
                             stderr=subprocess.STDOUT), fh
@@ -45,6 +47,8 @@ def main():
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--main-threads", type=int, default=8)
     ap.add_argument("--exploiter-threads", type=int, default=4)
+    ap.add_argument("--main-gpu", type=int, default=None, help="GPU del principal (por defecto, la que vea)")
+    ap.add_argument("--exploiter-gpu", type=int, default=None, help="GPU de los exploiters (otra libera al principal)")
     ap.add_argument("--exploiter-envs", type=int, default=256)
     ap.add_argument("--exploiter-every", type=float, default=1e9)
     ap.add_argument("--exploiter-samples", type=float, default=2e8)
@@ -59,7 +63,7 @@ def main():
     state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.exists() else dict(next_at=None, k=0)
 
     main_args = ["--run", args.run, "--envs", str(args.envs), "--device", args.device, "--resume", *args.extra.split()]
-    main, main_fh = _launch(main_args, logs / f"{args.run}.log", args.main_threads)
+    main, main_fh = _launch(main_args, logs / f"{args.run}.log", args.main_threads, args.main_gpu)
     print(f"principal pid {main.pid}", flush=True)
     exploiter = None
     try:
@@ -85,7 +89,8 @@ def main():
             shutil.copyfile(run_dir / "latest.pt", base)
             ex_args = ["--run", f"{args.run}_exploiter_{k:02d}", "--exploiter-of", str(base), "--envs",
                        str(args.exploiter_envs), "--device", args.device, "--samples", str(args.exploiter_samples)]
-            exploiter = _launch(ex_args, logs / f"{args.run}_exploiter_{k:02d}.log", args.exploiter_threads)
+            exploiter = _launch(ex_args, logs / f"{args.run}_exploiter_{k:02d}.log", args.exploiter_threads,
+                                args.exploiter_gpu)
             state["next_at"] = st["samples"] + args.exploiter_every
             state_path.write_text(json.dumps(state), encoding="utf-8")
             print(f"exploiter {k} contra {st['samples'] / 1e9:.2f}B (pid {exploiter[0].pid})", flush=True)
