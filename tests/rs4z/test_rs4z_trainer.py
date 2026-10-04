@@ -114,3 +114,17 @@ def test_difficulty_controller_settles_instead_of_oscillating(trainer):
     assert abs(tail.mean() - 0.4) < 0.08, tail.mean()
     assert tail.max() - tail.min() < 0.2, (tail.min(), tail.max())
     assert max(abs(np.diff(path))) <= trainer.cfg.difficulty_step + 1e-9
+
+
+def test_resume_from_a_checkpoint_without_newer_tasks(trainer, tmp_path):
+    """Un checkpoint de antes de agregar una tarea se puede reanudar (la tarea nueva arranca con sus valores)."""
+    import torch as T
+    trainer.save("pytest_old.pt")
+    path = trainer.dir / "pytest_old.pt"
+    s = T.load(path, map_location="cpu", weights_only=False)
+    for key in ("difficulty", "success", "ep_len"):
+        s[key].pop("restart_take", None)
+    T.save(s, path)
+    other = Trainer(Config(run="pytest_rs4z_c", envs=8, rollout=16, device="cpu", minibatch=512, samples=1e12))
+    other.load(path)
+    assert "restart_take" in other.difficulty and "restart_take" in other.success

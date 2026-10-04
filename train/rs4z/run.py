@@ -516,7 +516,9 @@ class Trainer:
         self.opt.load_state_dict(s["opt"])
         self.samples, self.stage_samples, self.iter = s["samples"], s["stage_samples"], s["iter"]
         self.stage_i = STAGE_INDEX[s["stage"]]
-        self.difficulty, self.success = s["difficulty"], s["success"]
+        # completar (no reemplazar): un checkpoint de antes de agregar una tarea no la conoce
+        self.difficulty.update(s["difficulty"])
+        self.success.update(s["success"])
         self.ret_mean, self.ret_var, self.ret_count = s["ret"]
         self.rng.bit_generator.state = s["rng"]
         self.league.load_state(s["league"])
