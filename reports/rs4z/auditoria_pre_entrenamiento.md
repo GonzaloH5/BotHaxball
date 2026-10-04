@@ -99,7 +99,7 @@ Las compuertas sólo juzgan tareas donde la referencia resuelve ≥15%.
 | S1 control | 1v0: tocar, arco vacío, conducir y definir, recibir y definir | 0,3B | gol/ejercicio + Φ_ball (se retira) + Φ_threat | control ≥ 0,90×L5 (cada tarea ≥ 0,75×) |
 | S2 pelota y 1v1 | tiro contra último hombre, 1v1 ataque/defensa, pelota dividida, 1v1 completo | 0,5B | + Φ_access | duelos ≥ 0,85×L5; 1v1 contra L5 ≥ 55% (IC90 > 50%) |
 | S3 tiro, pase, rebotes | 2v1, pared, profundidad, desvío, 2v2 ofensivo (2 aprendices); pared y profundidad exigen el pase | 0,7B | idem | batería de pases contra defensores L5 ≥ 0,80×L5 y, en 2v1, ≥50% de los goles con un pase entre aprendices |
-| S4 defensa | 2v2, 4v4 y saques en contra; 2v2 completo | 0,8B | Φ_access → 0 | defensa ≥ 0,80×L5, goles recibidos ≤ 1,1×L5; detectores 2v2 |
+| S4 defensa | 2v2, 4v4 y saques en contra; saques propios; 2v2 completo | 0,8B | Φ_access → 0 | defensa ≥ 0,80×L5, goles recibidos ≤ 1,1×L5; detectores 2v2 |
 | S5 cooperación 4v4 | 4v4 contra la escalera, 4v3, 4v2, 3v4, estados humanos, saques, transiciones; 30% espejo | 2,5B | + resultado ±0,3; Φ_threat → 0 | ≥60% contra L5 (IC90 >50%), ≥50% contra el estilo reservado; saques propios: ≤2% tardan ≥600 ticks y la mediana de cada tipo ≤2× la humana; detectores 4v4 |
 | S6 liga | espejo 45%, PFSP 25%, RS-Pro 20%, exploiters 10%; 15% compañeros scripted | 7,5B | sólo goles y resultado | ≥75% contra L5, ≥65% contra el reservado, brecha visto−reservado ≤10 pp, detectores 4v4 en banda |
 | S7 robustez | latencia de cliente 70%, compañeros ad-hoc, variantes | 1,0B | idem | ≥70% contra L5; pérdida ≤10 pp con 8 ticks de latencia (sólo el candidato) y ≤10 pp con la variante del mapa |
@@ -147,7 +147,7 @@ Las compuertas sólo juzgan tareas donde la referencia resuelve ≥15%.
   - estructura y perfil de distancias;
   - detectores de aglomeración, colgado, flotación junto al arco, quietud y oscilación;
   - duración de saques.
-- **Baterías reproducibles** (`eval/rs4z/batteries.py`): mismas semillas para el candidato y la referencia. Las compuertas viven en `eval/rs4z/gates.py` y la calibración congelada en `reports/rs4z/gates.json` (huella de código `08ec29997c680485`).
+- **Baterías reproducibles** (`eval/rs4z/batteries.py`): mismas semillas para el candidato y la referencia. Las compuertas viven en `eval/rs4z/gates.py` y la calibración congelada en `reports/rs4z/gates.json` (huella de código `df066e62d1a4df68`).
 - **Tests**: suite completa 876 aprobados, 44 omitidos al 2026-10-04 antes de §9.2; RS4-Z hoy 86 (793 anteriores + 83 RS4-Z en `tests/rs4z`: paridad del árbitro, reglas v2, obs y simetría, ejercicios, rewards y tramposos, RS-Pro, entrenador, liga, mezcla del curriculum y compuertas).
 - **Tramposos contra RS-Pro L5** (128 partidos cada uno, versión final): quieto 1,00; oscilar 1,00; todos persiguen 0,96; pelotazos 1,00; sacarla afuera 0,78; bloque en el arco 0,97; delantero colgado 1,00; trabar saques 0,97; azar 0,99 (puntos de L5).
 - **Humo en Pod** (RTX 3090, 1024 partidos, pesos aleatorios, `runs/rs4z/smoke_s1_gpu`):
@@ -226,6 +226,18 @@ Tercera revisión (corrida nocturna, 2026-10-04): S2 aprobó (duelos 0,855; 1v1 
   - el 2v1 exige ≥50% de goles con pase;
   - referencia: 2v1 0,30 y pared 0,27, 100% con pase;
   - calibración `08ec29997c680485`.
+- **Resultado**: con esto S3 aprobó a los 375M con pases reales: 2v1 1,00 con 99,6–100% de goles con pase, pared 1,00, profundidad 0,85. Pases de ~460 px (profundidad ~620), ninguno "pegado" (< 40 px).
+
+Cuarta revisión (S4, 2026-10-04): la batería de defensa superaba a L5, pero S4 no aprobaba.
+
+- **Pelota parada en contra**: 6–10% de goles en contra, contra 1,8% de la referencia.
+- **Detector de 2v2**: un aprendiz "colgado" el 39–49% del juego abierto (RS-Pro: 0–1%). Perdía el 2v2 contra L3 (0,22), cuando el checkpoint de S3 sacaba 0,59.
+- **Qué hacía**: se escondía detrás de su propia línea de gol, contra la pared del fondo (x = −1285), casi siempre fuera de los postes, sin tapar nada.
+- **Disparador**: sus propios saques. La red nunca había aprendido a sacar (16–22% de saques ejecutados a tiempo, contra 98% de RS-Pro). Con un lateral a favor, los dos jugadores se replegaban anticipando que el saque vencería y pasaría al rival, y el hábito se filtraba al juego abierto.
+- **Descartado**: los ejercicios de defensa no premian la pasividad (92% de los éxitos son recuperaciones; la excepción son las pelotas paradas en contra, 30% por tiempo).
+- **Corrección**:
+  - S4 suma el ejercicio `restart_take`: saque propio (lateral 45%, córner 15%, saque de arco 20%, inicial 20%) en 2v2, con los aprendices a 100–700 px del punto; éxito si se ejecuta antes del plazo (RS-Pro L5 0,98).
+  - Se retoma desde el checkpoint de S3; calibración `df066e62d1a4df68` (referencias idénticas).
 
 ## 10. Riesgos e incertidumbres abiertas
 

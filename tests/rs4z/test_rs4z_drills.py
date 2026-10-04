@@ -113,3 +113,20 @@ def test_pass_drills_need_a_pass_before_the_goal():
     assert done.all()
     assert out[0] == 0.0 and out[1] == 1.0
     assert d.st.passed[1] and not d.st.passed[0]
+
+
+def test_restart_take_succeeds_when_the_own_restart_is_executed():
+    """Saque propio: éxito al ejecutarlo (o al sacar el inicial); el saque arranca del equipo aprendiz."""
+    env = RS4ZEnv(16, seed=0)
+    d = Drills(env, np.random.default_rng(1))
+    d.start(np.arange(16), "restart_take", 0.5, learner_team=0)
+    own_restart = (env.ri[:, K.RI_TEAM] == 0) | ((env.ri[:, K.RI_KO] != 0) & (env.ri[:, K.RI_KO_TEAM] == 0))
+    assert own_restart.all()
+    ev = _ev(16)
+    ev["restart_exec"] = np.zeros(16, dtype=np.int64)
+    ev["kickoff_taken"] = np.zeros(16, dtype=bool)
+    ev["restart_exec"][3] = 1
+    ev["kickoff_taken"][5] = True
+    done, out, tr = d.check(ev)
+    assert done[3] and out[3] == 1.0 and done[5] and out[5] == 1.0
+    assert done.sum() == 2

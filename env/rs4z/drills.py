@@ -35,7 +35,7 @@ class Task:
     start: str                     # colocador (ver PLACERS)
     timeout: int = 0               # ticks; 0 = partido (termina con el reloj)
     timeout_outcome: str = "fail"  # fail | success | truncate
-    success: str = "goal"          # goal | touch | regain
+    success: str = "goal"          # goal | touch | regain | exec (saque propio ejecutado)
     end_on_rival_touch: bool = False   # termina cuando el rival CONTROLA la pelota (no ante un roce)
     end_on_own_out: bool = True    # salida por el equipo aprendiz = fracaso
     concede_outcome: float = 0.0   # resultado si el rival anota (defensa: -1)
@@ -81,6 +81,9 @@ TASKS = {t.name: t for t in [
     Task("defend_restart", "S4", 4, 4, "defend_restart", timeout=720, timeout_outcome="success", success="regain",
          concede_outcome=-1.0, opp_levels=(3, 5), notes="córner/lateral/saque rival en campo propio"),
     Task("match_2v2", "S4", 2, 2, "kickoff", match_ticks=3600 * 3, opp_levels=(1, 4), notes="2v2 a cancha completa"),
+    Task("restart_take", "S4", 2, 2, "restart_take", timeout=480, success="exec", end_on_own_out=False,
+         opp_levels=(1, 4), notes="ejecutar un saque propio (lateral, córner, saque de arco, inicial) antes del plazo; "
+                                  "sin esto, en partido los saques vencían y el equipo se replegaba detrás de su arco"),
     # ------------------------------------------------------------- S5 cooperación 4v4 y situaciones
     Task("match_4v4", "S5", 4, 4, "kickoff", match_ticks=3600 * 3, opp_levels=(1, 5)),
     Task("match_4v3", "S5", 4, 3, "kickoff", match_ticks=3600 * 3, opp_levels=(2, 5), notes="superioridad"),
@@ -141,6 +144,7 @@ _TASK_PARAMS = dict(
     require_pass=np.array([TASKS[t].require_pass for t in TASK_NAMES]),
     success_touch=np.array([TASKS[t].success == "touch" for t in TASK_NAMES]),
     success_regain=np.array([TASKS[t].success == "regain" for t in TASK_NAMES]),
+    success_exec=np.array([TASKS[t].success == "exec" for t in TASK_NAMES]),
     rival_end=np.array([TASKS[t].end_on_rival_touch for t in TASK_NAMES]),
     own_out_end=np.array([TASKS[t].end_on_own_out for t in TASK_NAMES]),
     concede=np.array([TASKS[t].concede_outcome for t in TASK_NAMES], dtype=np.float64),
@@ -268,6 +272,8 @@ class Drills:
         resolve(scored, np.where(P["success_goal"][task] & (~P["require_pass"][task] | st.passed), 1.0, 0.0))
         resolve(conceded, P["concede"][task])
         resolve(P["success_touch"][task] & own_touch, 1.0)
+        executed = (np.asarray(ev.get("restart_exec", 0)) > 0) | np.asarray(ev.get("kickoff_taken", False))
+        resolve(P["success_exec"][task] & executed, 1.0)
         resolve(P["success_regain"][task] & (st.regain_since >= REGAIN_TICKS), 1.0)
         resolve(P["rival_end"][task] & (st.lost_since >= LOSS_TICKS), 0.0)
         # pérdida limpia: el rival llega a la pelota sin disputa (ningún aprendiz cerca). El ataque terminó,
@@ -456,6 +462,30 @@ def _defend_restart(d, n, lt, diff):
         env.start_restart(n, C.GOAL_KICK, 1 - lt, (1030.0 * s, sy * 180.0))
 
 
+def _restart_take(d, n, lt, diff):
+    """Saque propio con los aprendices a 100–700 px del punto (alcanzable antes del plazo) y dos rivales."""
+    env, rng = d.env, d.rng
+    kind = int(rng.choice([C.LATERAL, C.CORNER, C.GOAL_KICK, 0], p=[0.45, 0.15, 0.2, 0.2]))
+    s = 1.0 if lt == 0 else -1.0
+    sy = float(np.sign(d._u(-1, 1)))
+    if kind == C.LATERAL:
+        spot = (d._u(-1000, 1000), sy * 688.0)
+    elif kind == C.CORNER:
+        spot = (1140.0, sy * 660.0)
+    else:
+        spot = (-1030.0, sy * 180.0) if kind == C.GOAL_KICK else (0.0, 0.0)
+    own = []
+    for _ in range(2):
+        a, r = d._u(0, 2 * np.pi), d._u(100, 700)
+        own.append((float(np.clip(spot[0] + r * np.cos(a), -1100, 1100)), float(np.clip(spot[1] + r * np.sin(a), -620, 620))))
+    opp = [(d._u(-900, 900), d._u(-500, 500)) for _ in range(2)]
+    d._place(n, lt, (0.0, 0.0), own, opp)
+    if kind == 0:
+        env.reset_kickoff([n], lt)
+    else:
+        env.start_restart(n, kind, lt, (spot[0] * s, spot[1]))
+
+
 def _restart_attack(d, n, lt, diff):
     env, rng = d.env, d.rng
     kind = int(rng.choice([C.LATERAL, C.CORNER], p=[0.55, 0.45]))
@@ -531,4 +561,5 @@ PLACERS = dict(touch=_touch, empty_goal=_empty_goal, carry_goal=_carry_goal, rec
                attack_2v1=_attack_2v1, one_two=_one_two, through_ball=_through_ball, redirect=_redirect,
                attack_2v2=_attack_2v2, defend_2v2=_defend_2v2, defend_4v4=_defend_4v4,
                defend_restart=_defend_restart, restart_attack=_restart_attack, transition=_transition,
+               restart_take=_restart_take,
                recorded_open=_recorded_open, recorded_attack=_recorded_attack)
