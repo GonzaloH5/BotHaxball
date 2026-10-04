@@ -79,6 +79,8 @@ class Config:
     compile: bool = True           # torch.compile del paso de aprendizaje en GPU (actualización ~35% más rápida)
     max_kl_start: float = 0.2      # KL entre la política que jugó y la que aprende antes de aprender: si lo supera,
                                    # las dos no coinciden (error de sincronización) y se detiene sin guardar
+    force_stage: str = ""          # avanzar a mano a esta etapa al reanudar (sólo hacia adelante; queda registrado)
+    force_reason: str = ""         # motivo del avance manual (obligatorio con force_stage)
     match_min_minutes: float = 3.0  # duración de reloj de los partidos desde S5 (uniforme; la sala juega ~10 min)
     match_max_minutes: float = 10.0
 
@@ -585,6 +587,28 @@ class Trainer:
         self._sync_actor()
         self.assign(np.arange(self.env.N))
 
+    def force_stage(self, name, reason):
+        """Avance manual de etapa sin aprobar sus compuertas (decisión del usuario). Sólo hacia adelante; queda en
+        gates.jsonl con el motivo y se guarda el checkpoint de la etapa que se deja."""
+        if not reason:
+            raise ValueError("force_stage exige un motivo (--force-reason)")
+        target = STAGE_INDEX[name]
+        if target <= self.stage_i:
+            return False
+        record = dict(stage=self.stage.name, override_to=name, manual=True, passed=False, reason=reason,
+                      samples=self.samples, time=time.time())
+        with (self.dir / "gates.jsonl").open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record) + "\n")
+        self.save(f"stage_{self.stage.name}_manual.pt")
+        self.stage_i = target
+        self.stage_samples = 0
+        self.stop_reason = None
+        self._apply_stage()
+        self._refresh_len_priors()
+        self.assign(np.arange(self.env.N))
+        print(f"avance manual a {name}: {reason}", flush=True)
+        return True
+
     # ------------------------------------------------------------------ bucle
     def train(self):
         cfg = self.cfg
@@ -725,6 +749,8 @@ def main():
     trainer = Trainer(cfg)
     if args.resume and (trainer.dir / "latest.pt").exists():
         trainer.load(trainer.dir / "latest.pt")
+    if cfg.force_stage:
+        trainer.force_stage(cfg.force_stage, cfg.force_reason)
     trainer.train()
 
 

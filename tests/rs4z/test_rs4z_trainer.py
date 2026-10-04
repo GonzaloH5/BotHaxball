@@ -166,3 +166,16 @@ def test_cli_booleans_keep_dataclass_defaults(monkeypatch):
     with pytest.raises(Stop):
         R.main()
     assert not captured["cfg"].compile and captured["cfg"].tf32
+
+
+def test_manual_stage_override_only_moves_forward_and_is_recorded(tmp_path):
+    import json as J
+    tr = Trainer(Config(run="pytest_rs4z_force", envs=4, rollout=8, device="cpu", minibatch=256, samples=1e12,
+                        start_stage="S4"))
+    with pytest.raises(ValueError):
+        tr.force_stage("S5", "")
+    assert not tr.force_stage("S3", "atrás no")
+    assert tr.force_stage("S5", "prueba") and tr.stage.name == "S5" and tr.stage_samples == 0
+    last = J.loads((tr.dir / "gates.jsonl").read_text(encoding="utf-8").strip().splitlines()[-1])
+    assert last["manual"] and last["override_to"] == "S5" and last["reason"] == "prueba"
+    assert (tr.dir / "stage_S4_manual.pt").exists()
