@@ -239,6 +239,24 @@ Cuarta revisión (S4, 2026-10-04): la batería de defensa superaba a L5, pero S4
   - S4 suma el ejercicio `restart_take`: saque propio (lateral 45%, córner 15%, saque de arco 20%, inicial 20%) en 2v2, con los aprendices a 100–700 px del punto; éxito si se ejecuta antes del plazo (RS-Pro L5 0,98).
   - Se retoma desde el checkpoint de S3; calibración `df066e62d1a4df68` (referencias idénticas).
 
+Quinta revisión: cambio de Pod y avance manual a S5 (2026-10-04).
+
+- **Pod nuevo** (2×RTX A4000, 32 hilos); el anterior agotó su cuota. Se retomó desde el checkpoint de S3 copiado en local.
+- **Superposición**: aprender en `cuda:0` mientras la copia que juega lo hace en `cuda:1`, con una actualización de retraso (KL inicial ~0,03). Se suman `torch.compile`, Adam fusionado, TF32 y una sola sincronización por época. S4 pasó de ~105k a ~195k muestras/s y S5 corre a ~270k.
+- **Dos fallos de infraestructura** encontrados por el freno de seguridad nuevo (KL inicial > 0,2 o pérdida no finita detienen sin guardar):
+  - en esa máquina la copia directa GPU→GPU llega corrupta: la sincronización pasa por la CPU y se verifica;
+  - `tf32`/`compile` quedaban apagados por cómo se leían los booleanos de la línea de comandos.
+- **S4 con saques propios**: aprendió a sacar (0,99) y ganó el 2v2 (0,61–0,87 contra L3), pero no aprobó.
+  - Detector de colgado en 2v2: 31–47%. La red deja un arquero fijo en la línea o adentro del arco, detrás de su línea el 27% del tiempo; los humanos lo hacen el 0,15% (el mapa real lo permite).
+  - Goles en contra en pelota parada: 3–10% contra ~4% permitido.
+  - El hábito viene de los partidos 2v2 contra RS-Pro, no de los ejercicios de defensa (allí 1,5–1,9% del tiempo detrás de la línea y 92% de éxitos por recuperación).
+  - En 4v4, que nunca entrenó, el hábito lo hace perder: 0,06 de los puntos contra L5, 29% del tiempo detrás de la línea.
+- **Decisión del usuario**: pasar a S5 sin aprobar S4 (avance manual registrado en `gates.jsonl`, checkpoint `stage_S4_manual.pt`).
+  - En RS4 el último hombre acompaña y arma el rombo; no es un arquero fijo.
+  - S5 es casi todo 4v4 completo, donde esconder jugadores pierde partidos, y su compuerta exige ≥60% contra L5 y colgado ≤5% en 4v4.
+  - Las pelotas paradas en contra siguen en el repaso.
+- **Vigilar en S5**: entropía alta (2,7 sobre un máximo de 2,89, subiendo al empezar la etapa). Si no baja con el aprendizaje del 4v4, bajar el coeficiente de entropía.
+
 ## 10. Riesgos e incertidumbres abiertas
 
 1. **RS-Pro no es "profesional" en todo** (sección 5): su posesión y su 1v1 ofensivo son débiles. Riesgo: en S5 el agente podría sobreajustarse a explotar esas debilidades.
