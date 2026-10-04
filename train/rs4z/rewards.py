@@ -24,6 +24,7 @@ from env.rs4z import kernel as K
 ROOT = Path(__file__).resolve().parent.parent.parent
 XT_PATH = ROOT / "reports" / "rs4z" / "xt.json"
 TEAM = np.array([0, 0, 0, 0, 1, 1, 1, 1])
+K_GOAL_X = 1162.0
 
 TERMS = {
     "goal": dict(kind="sparse", scale=1.0, why="objetivo: diferencia de gol", exploit="ninguno (suma cero)",
@@ -45,6 +46,12 @@ TERMS = {
     "crowd": dict(kind="pbrs", scale=0.02, why="contingencia contra la aglomeración",
                   exploit="sólo penaliza estar a <120 px de un compañero: no premia colgarse",
                   retire="apagado salvo que el detector falle en S4/S5"),
+    "behind_goal": dict(kind="cost", scale=0.0005,
+                        why="zona muerta: detrás de la propia línea de gol no se defiende nada (el gol cuenta al "
+                            "cruzar la línea); la red se replegaba hasta la pared del fondo y dejaba 1 contra 4 "
+                            "(S4–S5, 2026-10-04); los humanos están ahí el 0,15% del tiempo",
+                        exploit="pararse justo sobre la línea (legal; lo vigila el detector de colgado de S5)",
+                        retire="nunca (costo tipo regla, igual para ambos equipos; sólo en juego abierto)"),
 }
 
 
@@ -138,6 +145,7 @@ class Coefs:
     access: float = 0.0
     ball: float = 0.0
     crowd: float = 0.0
+    behind_goal: float = 0.0
 
 
 class Rewards:
@@ -181,6 +189,15 @@ class Rewards:
         """F por partido y equipo: γ·Φ(s') − Φ(s), con Φ(s') = 0 en terminales reales."""
         nxt = np.where(terminal[:, None], 0.0, phi_after)
         return self.gamma * nxt - phi_before
+
+
+def behind_own_goal(env):
+    """(N, 2): jugadores de cada equipo detrás de su propia línea de gol en juego abierto (sin saque ni inicial)."""
+    x = env.player_pos[..., 0]                       # (N, 8) mundo: rojo defiende x = −1162, azul x = +1162
+    behind = np.where(TEAM[None, :] == 0, x < -K_GOAL_X, x > K_GOAL_X) & env.active
+    open_play = (env.ri[:, K.RI_TEAM] < 0) & (env.ri[:, K.RI_KO] == 0)
+    out = np.stack([behind[:, TEAM == 0].sum(axis=1), behind[:, TEAM == 1].sum(axis=1)], axis=1).astype(np.float64)
+    return out * open_play[:, None]
 
 
 def per_player(team_values):

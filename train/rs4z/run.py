@@ -31,7 +31,7 @@ from env.rs4z.obs_v2 import CRITIC_DIM, OBS_DIM, critic as build_critic, observe
 
 from .league import League
 from .model import ActorCritic
-from .rewards import XT, XT_PATH, Rewards, per_player
+from .rewards import XT, XT_PATH, Rewards, behind_own_goal, per_player
 from .stages import STAGE_INDEX, STAGES
 
 ROOT = Path(__file__).resolve().parent.parent.parent
@@ -183,7 +183,7 @@ class Trainer:
         c = dict(st.coefs)
         for k, end in st.coefs_end.items():
             c[k] = c.get(k, 0.0) * (1.0 - progress) + end * progress
-        for k in ("goal", "result", "drill", "threat", "access", "ball", "crowd"):
+        for k in ("goal", "result", "drill", "threat", "access", "ball", "crowd", "behind_goal"):
             setattr(self.rewards.coefs, k, float(c.get(k, 0.0)))
         self.rewards.gamma = st.gamma
 
@@ -380,6 +380,10 @@ class Trainer:
             drill_r = np.zeros((N, 2))
             drill_r[np.arange(N), lt] = outcome * (done & ~self.is_match)
             team_r += c.drill * drill_r
+            if c.behind_goal:
+                cost = behind_own_goal(env)
+                team_r -= c.behind_goal * cost
+                stats["behind_goal"] = stats.get("behind_goal", 0.0) + float(cost.sum())
             buf["obs"][t], buf["crit"][t], buf["act"][t] = obs, crit, a
             buf["logp"][t], buf["val"][t], buf["learn"][t] = logp, v, learn
             buf["rew"][t] = per_player(team_r)
@@ -655,7 +659,7 @@ class Trainer:
             row = dict(iter=self.iter, samples=self.samples, stage=self.stage.name, stage_progress=progress,
                        sps=rows / (t2 - t0), rollout_s=t1 - t0, update_s=t2 - t1, goals=stats["goals"],
                        matches=stats["matches"], drills=stats["drill_done"], forfeits=stats["forfeits"],
-                       stalled=stats["stalled"],
+                       stalled=stats["stalled"], behind_goal=stats.get("behind_goal", 0.0),
                        share={TASK_NAMES[i]: round(float(v) / max(1, stats["task_steps"].sum()), 4)
                               for i, v in enumerate(stats["task_steps"]) if v},
                        coefs=asdict(self.rewards.coefs),

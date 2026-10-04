@@ -68,3 +68,22 @@ def test_cheaters_earn_no_net_shaping(kind):
     assert np.allclose(total, -start, atol=1e-6)
     # y por paso no hay un premio sostenido: el promedio por paso tiende a 0
     assert np.abs(total + start).max() < 1e-6
+
+
+def test_behind_own_goal_cost_counts_only_open_play_dead_zone():
+    """Costo por estar detrás de la propia línea de gol: sólo en juego abierto y sólo del lado propio."""
+    from env.rs4z import kernel as K
+    from env.rs4z.core import RS4ZEnv
+    from train.rs4z.rewards import behind_own_goal
+    env = RS4ZEnv(2, seed=0)
+    pos = np.zeros((8, 2))
+    pos[:, 1] = np.linspace(-300, 300, 8)
+    pos[0, 0] = -1200.0        # rojo detrás de su línea: cuenta
+    pos[1, 0] = +1200.0        # rojo detrás de la línea RIVAL: no cuenta
+    pos[4, 0] = +1250.0        # azul detrás de su línea: cuenta
+    for n in range(2):
+        env.place(n, ball_pos=(0.0, 0.0), ball_vel=(0.0, 0.0), player_pos=pos, player_vel=np.zeros((8, 2)))
+    env.start_restart(1, 1, 0, (300.0, 688.0))      # fila 1: lateral en curso → no hay costo
+    cost = behind_own_goal(env)
+    assert cost[0].tolist() == [1.0, 1.0]
+    assert cost[1].tolist() == [0.0, 0.0]
