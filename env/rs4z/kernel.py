@@ -24,6 +24,9 @@ import numpy as np
 from numba import njit, prange
 
 from sim.physics import KICK_REACH, _collide_env, _cross
+from env.rs4z.numba_cache import guard
+
+guard(__file__, ["sim/physics.py", "sim/stadium.py", "env/rs4z/contract.py"])
 from sim.stadium import BLUEKO, C0, C1, PLAYER_MASK, REDKO
 
 from .contract import CORNER, FIX_CLOCK, FIX_ENGINE, FIX_MASS, FIX_STRIP, GOAL_KICK, LATERAL, PI, SD_BLUE, SD_BOTH, SD_RED

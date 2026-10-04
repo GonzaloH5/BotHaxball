@@ -17,6 +17,9 @@ import numpy as np
 from numba import njit, prange
 
 from . import kernel as K
+from .numba_cache import guard
+
+guard(__file__, ["env/rs4z/kernel.py", "env/rs4z/contract.py"])
 
 SX, SY = 1150.0, 670.0       # escala de posiciones
 SR = 600.0                   # escala de vectores relativos

@@ -1,0 +1,954 @@
+"""Decisión de RS-Pro por partido y equipo (numba). Todo en el marco del equipo: ataca hacia +x.
+
+Flujo por decisión (`decide`):
+  1. percepción: estado con retraso de reacción, ruido y anticipación (propios en tiempo real)
+  2. trayectoria de la pelota e intercepción de cada jugador (cinemática exacta, `geom.py`)
+  3. fase con histéresis: posesión propia / rival / disputa, saques y saque inicial
+  4. roles por fase y asignación de costo mínimo con costo de cambio; los compañeros no controlados
+     (aprendices o humanos) ocupan el rol más cercano y los bots llenan el resto
+  5. objetivo de cada rol: candidatos puntuados (línea de pase, espacio, progreso, separación)
+  6. portador: tiro / pase (al pie, adelantado, en profundidad) / pared / conducción / protección /
+     despeje, por valor esperado con elección estocástica (temperatura del nivel)
+  7. ejecución: llegada detrás de la pelota, frenado por velocidad deseada, patada sólo alineada
+"""
+from __future__ import annotations
+
+import math
+
+import numpy as np
+from numba import njit
+
+from env.rs4z.numba_cache import guard
+
+guard(__file__, ["bots/rspro/geom.py"])
+
+from .geom import (A_KICK, A_P, GOAL_HH, GOAL_X, HORIZON, KICK_SPEED, LINE_H, LINE_W, Q_B, Q_P, R_B, R_P,
+                   REACH, ball_travel_ticks, nrand, predict_ball, seg_dist, ttr, urand)
+
+# ------------------------------------------------------------------ parámetros de nivel (lvl[...])
+L_DELAY = 0        # retraso de reacción en ticks
+L_NOISE = 1        # σ de ruido de posición percibida (px)
+L_AIM_TOL = 2      # tolerancia angular para patear (grados)
+L_AIM_NOISE = 3    # σ de error de dirección (grados)
+L_OPTIONS = 4      # conjunto de decisiones 0..5
+L_TEMP = 5         # temperatura de elección entre opciones
+L_HYST = 6         # costo de cambiar de rol (px)
+L_REACT = 7        # reacción que supone en los rivales al evaluar pases/tiros (ticks)
+L_COMMIT = 8       # decisiones que sostiene un plan de portador
+L_SPEED = 9        # factor de velocidad deseada (<1: jugador lento)
+NLV = 10
+# ------------------------------------------------------------------ estilo (sty[...]) en [0, 1]
+S_PRESS, S_DIRECT, S_WIDTH, S_RISK, S_TEMPO, S_DEPTH = 0, 1, 2, 3, 4, 5
+NST = 6
+# ------------------------------------------------------------------ memoria entera por equipo
+M_PHASE, M_PHASE_AGE = 0, 1
+M_ROLE = 2         # 8 slots
+M_PLAN = 10        # 8 slots: tipo de plan del portador
+M_PLAN_UNTIL = 18  # 8 slots
+M_TAKER = 26
+M_WAIT = 27
+M_TICK = 28
+M_PARTNER = 29     # 8 slots
+MI = 37
+# ------------------------------------------------------------------ memoria real por equipo
+F_PLAN_T = 0       # 8×2 objetivo del plan
+F_PLAN_U = 16      # 8×2 dirección de patada del plan
+F_SUP = 32         # 8×2 último punto de apoyo elegido (histéresis)
+F_AIM = 48         # 8 error de puntería del plan (rad)
+MF = 56
+
+# fases
+PH_CONTEST, PH_OWN, PH_OPP = 0, 1, 2
+# roles
+R_NONE, R_CARRIER, R_SUPPORT, R_WIDE, R_DEPTH, R_SAFETY, R_PRESS, R_COVER, R_MARK, R_LAST, R_TAKER = range(11)
+# planes del portador
+P_NONE, P_SHOT, P_PASS, P_DRIBBLE, P_SHIELD, P_CLEAR, P_ONETWO, P_RETURN = range(8)
+
+MOVE = np.array([[0.0, 0.0], [0.0, -1.0], [1.0, -1.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0], [-1.0, 1.0],
+                 [-1.0, 0.0], [-1.0, -1.0]])
+MOVE_U = MOVE / np.maximum(np.sqrt((MOVE ** 2).sum(axis=1)), 1e-12)[:, None]
+VMAX = 3.0          # desplazamiento por tick a máxima velocidad
+
+
+@njit(cache=True, inline="always")
+def _clip(v, lo, hi):
+    return lo if v < lo else (hi if v > hi else v)
+
+
+@njit(cache=True, inline="always")
+def _sigmoid(x):
+    if x > 30.0:
+        return 1.0
+    if x < -30.0:
+        return 0.0
+    return 1.0 / (1.0 + math.exp(-x))
+
+
+# ================================================================== movimiento y patada
+@njit(cache=True)
+def move_action(px, py, vx, vy, tx, ty, arrive_speed, speed_factor, kicking):
+    """Acción de movimiento 0..8 que mejor lleva la velocidad hacia la deseada (frena al llegar).
+
+    arrive_speed: rapidez deseada al llegar (0 = detenerse en el punto).
+    """
+    dx = tx - px
+    dy = ty - py
+    d = math.sqrt(dx * dx + dy * dy)
+    vmax = VMAX * speed_factor
+    if d < 3.0 and arrive_speed <= 0.0:
+        dvx, dvy = 0.0, 0.0
+    else:
+        # frenado: con la dirección opuesta se pierde ~a + 0,04 v por tick
+        brake = math.sqrt(max(0.0, 2.0 * 0.11 * d)) + arrive_speed
+        sp = min(vmax, brake)
+        dvx = dx / max(d, 1e-9) * sp
+        dvy = dy / max(d, 1e-9) * sp
+    a = A_KICK if kicking else A_P
+    best = 0
+    best_e = 1e18
+    for m in range(9):
+        nvx = (vx + a * MOVE_U[m, 0]) * Q_P
+        nvy = (vy + a * MOVE_U[m, 1]) * Q_P
+        # tres ticks con la misma acción (una decisión)
+        for _ in range(2):
+            nvx = (nvx + a * MOVE_U[m, 0]) * Q_P
+            nvy = (nvy + a * MOVE_U[m, 1]) * Q_P
+        e = (nvx - dvx) ** 2 + (nvy - dvy) ** 2
+        if e < best_e:
+            best_e = e
+            best = m
+    return best
+
+
+@njit(cache=True)
+def kick_ready(px, py, vx, vy, bx, by, bvx, bvy, ux, uy, tol_cos, move_m):
+    """¿Patear ahora? Simula los 3 ticks de la decisión: el primer tick en alcance debe estar alineado."""
+    a = A_KICK
+    qx, qy, wx, wy = px, py, vx, vy
+    cx, cy, cvx, cvy = bx, by, bvx, bvy
+    for _ in range(3):
+        dx = cx - qx
+        dy = cy - qy
+        d = math.sqrt(dx * dx + dy * dy)
+        if d - R_P - R_B < 4.0:
+            if d <= 1e-9:
+                return False
+            return (dx * ux + dy * uy) / d >= tol_cos
+        wx = (wx + a * MOVE_U[move_m, 0])
+        wy = (wy + a * MOVE_U[move_m, 1])
+        qx += wx
+        qy += wy
+        wx *= Q_P
+        wy *= Q_P
+        cx += cvx
+        cy += cvy
+        cvx *= Q_B
+        cvy *= Q_B
+    return False
+
+
+@njit(cache=True)
+def approach_point(px, py, bx, by, ux, uy, vx=0.0, vy=0.0):
+    """Punto de llegada para patear en dirección u: detrás de la pelota; rodea si está delante."""
+    behind = (px - bx) * ux + (py - by) * uy
+    lateral = -(px - bx) * uy + (py - by) * ux
+    contact = R_P + R_B - 1.0
+    if behind < -contact * 0.6 or (behind < 0.0 and abs(lateral) < contact * 0.8):
+        return bx - ux * contact, by - uy * contact, 1.4
+    if abs(lateral) < 12.0:
+        # casi alineado: rodear por el lado hacia el que ya se mueve (evita ir y venir)
+        lateral = -vx * uy + vy * ux
+    side = 1.0 if lateral >= 0.0 else -1.0
+    rad = contact + 22.0
+    # punto al costado y atrás, para no tocar la pelota mientras rodea
+    wx = bx - ux * rad * 0.7 + (-uy) * side * rad
+    wy = by - uy * rad * 0.7 + ux * side * rad
+    return wx, wy, 1.0
+
+
+# ================================================================== evaluación de jugadas
+@njit(cache=True)
+def path_margin(table, bx, by, tx, ty, speed, opp_x, opp_y, opp_vx, opp_vy, opp_n, react):
+    """Margen (ticks) del rival que mejor llega a interceptar la pelota en el trayecto B→T.
+
+    Positivo: la pelota pasa antes de que llegue el rival más rápido. Muestra cada 40 px.
+    """
+    dx = tx - bx
+    dy = ty - by
+    dist = math.sqrt(dx * dx + dy * dy)
+    if dist < 1e-6:
+        return 99.0
+    steps = int(dist / 40.0) + 1
+    best = 99.0
+    for k in range(1, steps + 1):
+        f = k / steps
+        sx = bx + dx * f
+        sy = by + dy * f
+        tb = ball_travel_ticks(dist * f, speed)
+        if tb > 1e8:
+            return -99.0
+        for o in range(opp_n):
+            to = ttr(table, opp_x[o], opp_y[o], opp_vx[o], opp_vy[o], sx, sy, R_P + R_B) + react
+            m = to - tb
+            if m < best:
+                best = m
+    return best
+
+
+@njit(cache=True)
+def threat(x, y):
+    """Valor heurístico de tener la pelota en (x, y) (marco de equipo): cercanía y ángulo al arco rival."""
+    dx = GOAL_X - x
+    d = math.sqrt(dx * dx + y * y)
+    ang = math.atan2(GOAL_HH, max(dx, 1.0))
+    centrality = 1.0 - min(1.0, abs(y) / 700.0) * 0.5
+    return math.exp(-d / 520.0) * (0.6 + 0.4 * ang / 1.2) * centrality
+
+
+# ================================================================== decisión principal
+@njit(cache=True)
+def decide(n, team, seed, table, pos, vel, active, kick_cancel, ctrl, ri_team, ri_kind, ri_ticks, ri_ko,
+           ri_ko_team, spot_x, spot_y, grav_x, grav_y, grav_left, lvl, sty, mem_i, mem_f, delayed_pos,
+           delayed_vel, traj, out):
+    """Acciones (marco propio) de los jugadores `ctrl` del equipo `team` en el partido n.
+
+    pos/vel: estado real (9 entidades: pelota + 8 jugadores, mundo). delayed_*: estado percibido con
+    retraso (mismo layout). traj: arreglo de trabajo (HORIZON+1, 2).
+    """
+    s = 1.0 if team == 0 else -1.0
+    dec = mem_i[M_TICK]
+    mem_i[M_TICK] = dec + 1
+    delay = lvl[L_DELAY]
+    noise = lvl[L_NOISE]
+    opts = int(lvl[L_OPTIONS])
+    react = lvl[L_REACT]
+    spd = lvl[L_SPEED]
+    # ---------------------------------------------------------------- 1. percepción (marco de equipo)
+    px = np.zeros(8)
+    py = np.zeros(8)
+    pvx = np.zeros(8)
+    pvy = np.zeros(8)
+    mine = np.zeros(8, dtype=np.bool_)
+    for p in range(8):
+        mine[p] = (p < 4) == (team == 0)
+        if ctrl[p] and mine[p]:
+            x, y, vx_, vy_ = pos[1 + p, 0], pos[1 + p, 1], vel[1 + p, 0], vel[1 + p, 1]
+        else:
+            x = delayed_pos[1 + p, 0] + delayed_vel[1 + p, 0] * delay
+            y = delayed_pos[1 + p, 1] + delayed_vel[1 + p, 1] * delay
+            vx_, vy_ = delayed_vel[1 + p, 0], delayed_vel[1 + p, 1]
+            if noise > 0.0:
+                x += noise * nrand(seed, n, dec, 10 + p)
+                y += noise * nrand(seed, n, dec, 20 + p)
+        px[p] = x * s
+        py[p] = y
+        pvx[p] = vx_ * s
+        pvy[p] = vy_
+    # pelota percibida: estado retrasado avanzado `delay` ticks con su amortiguamiento
+    bx0 = delayed_pos[0, 0]
+    by0 = delayed_pos[0, 1]
+    bvx0 = delayed_vel[0, 0]
+    bvy0 = delayed_vel[0, 1]
+    for _ in range(int(delay)):
+        bx0 += bvx0
+        by0 += bvy0
+        bvx0 *= Q_B
+        bvy0 *= Q_B
+    if noise > 0.0:
+        bx0 += 0.5 * noise * nrand(seed, n, dec, 30)
+        by0 += 0.5 * noise * nrand(seed, n, dec, 31)
+    bx = bx0 * s
+    by = by0
+    bvx = bvx0 * s
+    bvy = bvy0
+    predict_ball(bx, by, bvx, bvy, grav_x * s, grav_y, grav_left, 0.97, traj)
+    # listas de propios y rivales activos
+    own_idx = np.zeros(4, dtype=np.int64)
+    opp_idx = np.zeros(4, dtype=np.int64)
+    n_own = 0
+    n_opp = 0
+    for p in range(8):
+        if not active[p]:
+            continue
+        if mine[p]:
+            own_idx[n_own] = p
+            n_own += 1
+        else:
+            opp_idx[n_opp] = p
+            n_opp += 1
+    opp_x = np.zeros(4)
+    opp_y = np.zeros(4)
+    opp_vx = np.zeros(4)
+    opp_vy = np.zeros(4)
+    for i in range(n_opp):
+        q = opp_idx[i]
+        opp_x[i] = px[q]
+        opp_y[i] = py[q]
+        opp_vx[i] = pvx[q]
+        opp_vy[i] = pvy[q]
+    # ---------------------------------------------------------------- 2. intercepciones
+    t_int = np.full(8, 1e9)
+    ix = np.zeros(8)
+    iy = np.zeros(8)
+    for p in range(8):
+        if not active[p]:
+            continue
+        found = False
+        for t in range(0, HORIZON, 2):
+            tt = ttr(table, px[p], py[p], pvx[p], pvy[p], traj[t, 0], traj[t, 1], REACH - 6.0)
+            if tt <= t:
+                t_int[p] = t
+                ix[p] = traj[t, 0]
+                iy[p] = traj[t, 1]
+                found = True
+                break
+        if not found:
+            ix[p] = traj[HORIZON, 0]
+            iy[p] = traj[HORIZON, 1]
+            t_int[p] = HORIZON + ttr(table, px[p], py[p], pvx[p], pvy[p], ix[p], iy[p], REACH - 6.0)
+        if not mine[p] or not ctrl[p]:
+            t_int[p] += 0.0
+    t_own = 1e9
+    t_opp = 1e9
+    win = -1
+    opp_win = -1
+    for i in range(n_own):
+        p = own_idx[i]
+        if t_int[p] < t_own:
+            t_own = t_int[p]
+            win = p
+    for i in range(n_opp):
+        p = opp_idx[i]
+        if t_int[p] < t_opp:
+            t_opp = t_int[p]
+            opp_win = p
+    margin = t_opp - t_own
+    # ---------------------------------------------------------------- 3. fase con histéresis
+    phase = mem_i[M_PHASE]
+    if phase == PH_OWN:
+        if margin < -3.0:
+            phase = PH_OPP if margin < -8.0 else PH_CONTEST
+    elif phase == PH_OPP:
+        if margin > 3.0:
+            phase = PH_OWN if margin > 8.0 else PH_CONTEST
+    else:
+        if margin > 6.0:
+            phase = PH_OWN
+        elif margin < -6.0:
+            phase = PH_OPP
+    if phase != mem_i[M_PHASE]:
+        mem_i[M_PHASE_AGE] = 0
+    else:
+        mem_i[M_PHASE_AGE] += 1
+    mem_i[M_PHASE] = phase
+    restart_own = ri_team >= 0 and ri_team == team
+    restart_opp = ri_team >= 0 and ri_team != team
+    ko = ri_ko != 0
+    if restart_own:
+        phase = PH_OWN
+    elif restart_opp:
+        phase = PH_OPP
+    # ---------------------------------------------------------------- 4. roles
+    # rol especial: portador (posesión propia/disputa) o presionante (posesión rival)
+    lead = -1
+    if restart_own or (ko and ri_ko_team == team):
+        # ejecutor: el propio que llega antes al punto (con histéresis)
+        best_t = 1e9
+        prev = mem_i[M_TAKER]
+        for i in range(n_own):
+            p = own_idx[i]
+            tt = ttr(table, px[p], py[p], pvx[p], pvy[p], bx, by, REACH - 4.0)
+            if p == prev:
+                tt -= 25.0
+            if tt < best_t:
+                best_t = tt
+                lead = p
+        mem_i[M_TAKER] = lead
+    else:
+        mem_i[M_TAKER] = -1
+        mem_i[M_WAIT] = 0
+        if restart_opp or (ko and ri_ko_team != team):
+            lead = -1
+        else:
+            lead = win
+    # conjunto de roles para el resto según fase y cantidad
+    m = n_own - (1 if lead >= 0 else 0)
+    roles = np.zeros(4, dtype=np.int64)
+    if phase == PH_OWN:
+        if m == 1:
+            roles[0] = R_SUPPORT
+        elif m == 2:
+            roles[0] = R_SUPPORT
+            roles[1] = R_SAFETY
+        elif m >= 3:
+            roles[0] = R_SUPPORT
+            roles[1] = R_DEPTH if (opts >= 4 and sty[S_RISK] > 0.5) else R_WIDE
+            roles[2] = R_SAFETY
+    else:
+        if m == 1:
+            roles[0] = R_COVER if lead >= 0 else R_LAST
+        elif m == 2:
+            roles[0] = R_COVER if lead >= 0 else R_MARK
+            roles[1] = R_LAST
+        elif m >= 3:
+            roles[0] = R_COVER if lead >= 0 else R_MARK
+            roles[1] = R_MARK
+            roles[2] = R_LAST
+        if opts <= 1 and m >= 1:
+            # L0–L1: forma básica, sin marcas
+            for i in range(m):
+                roles[i] = R_LAST if i == m - 1 else R_COVER
+    # objetivos de cada rol (anclas)
+    own_gx = -GOAL_X
+    tgt_x = np.zeros(4)
+    tgt_y = np.zeros(4)
+    marked = np.zeros(4, dtype=np.bool_)
+    side_y = 1.0 if by < 0.0 else -1.0     # lado con más espacio: el opuesto a la pelota
+    width = 200.0 + 220.0 * sty[S_WIDTH]
+    for r in range(m):
+        role = roles[r]
+        # anclas compactas (bloque de ~400 px de profundidad y ~260 de anchura, como los humanos)
+        if role == R_SUPPORT:
+            tgt_x[r] = bx + 30.0 + 70.0 * sty[S_RISK]
+            tgt_y[r] = by + side_y * (150.0 + 60.0 * sty[S_WIDTH])
+        elif role == R_WIDE:
+            tgt_x[r] = bx + 90.0
+            tgt_y[r] = by * 0.3 + side_y * (200.0 + 120.0 * sty[S_WIDTH])
+        elif role == R_DEPTH:
+            tgt_x[r] = min(GOAL_X - 160.0, bx + 260.0)
+            tgt_y[r] = by * 0.5 + side_y * 90.0
+        elif role == R_SAFETY:
+            # seguridad (defensa en posesión): a una distancia de la pelota que permita llegar al corte
+            tgt_x[r] = max(own_gx + 220.0, bx - (230.0 + 120.0 * sty[S_DEPTH]))
+            tgt_y[r] = by * 0.45
+        elif role == R_COVER:
+            gdx = own_gx - bx
+            gdy = -by
+            gd = math.sqrt(gdx * gdx + gdy * gdy) + 1e-9
+            k = min(170.0, 0.4 * gd)
+            tgt_x[r] = bx + gdx / gd * k
+            tgt_y[r] = by + gdy / gd * k
+        elif role == R_LAST:
+            # último hombre: del lado del arco, sobre la línea pelota-arco, a distancia de la pelota
+            # según la amenaza; sólo entre los postes si el tiro es inminente
+            gdx = own_gx - bx
+            gdy = -by
+            gd = math.sqrt(gdx * gdx + gdy * gdy) + 1e-9
+            if gd < 420.0:
+                depth_goal = _clip(0.4 * gd, 55.0, 160.0)
+                tgt_x[r] = own_gx - gdx / gd * depth_goal
+                tgt_y[r] = -gdy / gd * depth_goal
+            else:
+                dist = _clip(0.4 * gd, 130.0, 240.0 + 130.0 * sty[S_DEPTH])
+                tgt_x[r] = bx + gdx / gd * dist
+                tgt_y[r] = by + gdy / gd * dist
+        elif role == R_MARK:
+            # rival peligroso más cercano a la jugada, sin marca (no el que tiene la pelota)
+            best = -1
+            best_v = -1e9
+            for i in range(n_opp):
+                q = opp_idx[i]
+                if q == opp_win or marked[i]:
+                    continue
+                d_goal = math.hypot(opp_x[i] - own_gx, opp_y[i])
+                v = -0.6 * d_goal - math.hypot(opp_x[i] - bx, opp_y[i] - by)
+                if v > best_v:
+                    best_v = v
+                    best = i
+            if best >= 0:
+                marked[best] = True
+                gdx = own_gx - opp_x[best]
+                gdy = -opp_y[best]
+                gd = math.sqrt(gdx * gdx + gdy * gdy) + 1e-9
+                mx = opp_x[best] + gdx / gd * 45.0
+                my = opp_y[best] + gdy / gd * 45.0
+                tgt_x[r] = 0.75 * mx + 0.25 * bx
+                tgt_y[r] = 0.75 * my + 0.25 * by
+            else:
+                tgt_x[r] = bx + (own_gx - bx) * 0.25
+                tgt_y[r] = by * 0.6
+        tgt_x[r] = _clip(tgt_x[r], -LINE_W + 40.0, LINE_W - 40.0)
+        tgt_y[r] = _clip(tgt_y[r], -LINE_H + 45.0, LINE_H - 45.0)
+    # asignación: propios sin el especial; costo = tiempo de llegada; histéresis sólo para controlados
+    others = np.zeros(4, dtype=np.int64)
+    k_o = 0
+    for i in range(n_own):
+        p = own_idx[i]
+        if p != lead:
+            others[k_o] = p
+            k_o += 1
+    assign = np.full(4, -1, dtype=np.int64)
+    if k_o > 0:
+        best_cost = 1e18
+        perm = np.arange(k_o)
+        best_perm = perm.copy()
+        # permutaciones (k_o ≤ 3 → ≤ 6) por Heap
+        c = np.zeros(k_o, dtype=np.int64)
+        cost = 0.0
+        for r in range(k_o):
+            p = others[perm[r]]
+            cst = math.hypot(px[p] - tgt_x[r], py[p] - tgt_y[r])
+            if ctrl[p] and mem_i[M_ROLE + p] == roles[r]:
+                cst -= lvl[L_HYST]
+            cost += cst
+        best_cost = cost
+        best_perm[:] = perm
+        i = 0
+        while i < k_o:
+            if c[i] < i:
+                if i % 2 == 0:
+                    perm[0], perm[i] = perm[i], perm[0]
+                else:
+                    perm[c[i]], perm[i] = perm[i], perm[c[i]]
+                cost = 0.0
+                for r in range(k_o):
+                    p = others[perm[r]]
+                    cst = math.hypot(px[p] - tgt_x[r], py[p] - tgt_y[r])
+                    if ctrl[p] and mem_i[M_ROLE + p] == roles[r]:
+                        cst -= lvl[L_HYST]
+                    cost += cst
+                if cost < best_cost:
+                    best_cost = cost
+                    best_perm[:] = perm
+                c[i] += 1
+                i = 0
+            else:
+                c[i] = 0
+                i += 1
+        for r in range(k_o):
+            assign[r] = others[best_perm[r]]
+    # ---------------------------------------------------------------- 5–7. acciones de controlados
+    for r in range(k_o):
+        p = assign[r]
+        if p < 0 or not ctrl[p]:
+            continue
+        mem_i[M_ROLE + p] = roles[r]
+        tx = tgt_x[r]
+        ty = tgt_y[r]
+        if roles[r] == R_SUPPORT or roles[r] == R_WIDE or roles[r] == R_DEPTH:
+            tx, ty = _best_support(table, tx, ty, bx, by, px, py, p, own_idx, n_own, opp_x, opp_y, opp_vx,
+                                   opp_vy, n_opp, react, roles[r], sty, mem_f[F_SUP + 2 * p], mem_f[F_SUP + 2 * p + 1])
+            mem_f[F_SUP + 2 * p] = tx
+            mem_f[F_SUP + 2 * p + 1] = ty
+        mv = move_action(px[p], py[p], pvx[p], pvy[p], tx, ty, 0.0, spd, False)
+        # despeje de oportunidad (L≥1): un defensor con la pelota encima y peligro → la saca
+        out[p] = mv
+        dxb = bx - px[p]
+        dyb = by - py[p]
+        if opts >= 1 and not kick_cancel[p] and math.hypot(dxb, dyb) < REACH + 4.0 and bx < -200.0 and lead != p:
+            if dxb > 0.0:
+                out[p] = mv + 9
+    if lead >= 0 and ctrl[lead]:
+        mem_i[M_ROLE + lead] = R_TAKER if (restart_own or ko) else (R_CARRIER if phase != PH_OPP else R_PRESS)
+        if restart_own or (ko and ri_ko_team == team):
+            out[lead] = _restart_taker(n, team, seed, dec, table, lead, px, py, pvx, pvy, bx, by, bvx, bvy,
+                                       own_idx, n_own, opp_x, opp_y, opp_vx, opp_vy, n_opp, ri_kind, ri_ticks,
+                                       ko, kick_cancel, lvl, sty, mem_i, mem_f)
+        elif phase == PH_OPP and t_own > t_opp + 4.0 and opp_win >= 0:
+            # contener: entre el poseedor rival y el arco, sin entregarse
+            gdx = own_gx - px[opp_win]
+            gdy = -py[opp_win]
+            gd = math.sqrt(gdx * gdx + gdy * gdy) + 1e-9
+            press = sty[S_PRESS]
+            dist = 40.0 + 60.0 * (1.0 - press)
+            if bx > 300.0 - 900.0 * press:
+                dist = 30.0     # gatillo de presión en la zona de presión del estilo
+            tx = px[opp_win] + gdx / gd * dist
+            ty = py[opp_win] + gdy / gd * dist
+            out[lead] = move_action(px[lead], py[lead], pvx[lead], pvy[lead], tx, ty, 0.0, spd, False)
+        else:
+            out[lead] = _carrier(n, team, seed, dec, table, lead, px, py, pvx, pvy, bx, by, bvx, bvy, ix[lead],
+                                 iy[lead], t_int[lead], own_idx, n_own, opp_x, opp_y, opp_vx, opp_vy, n_opp,
+                                 kick_cancel, lvl, sty, mem_i, mem_f, traj)
+    # restart rival / saque inicial rival: nadie del equipo patea antes de tiempo
+    for p in range(8):
+        if ctrl[p] and mine[p] and kick_cancel[p] and out[p] >= 9:
+            out[p] -= 9  # soltar la tecla para volver a armar la patada
+
+
+@njit(cache=True)
+def _best_support(table, ax, ay, bx, by, px, py, me, own_idx, n_own, opp_x, opp_y, opp_vx, opp_vy, n_opp,
+                  react, role, sty, prev_x, prev_y):
+    """Mejor punto de apoyo cerca del ancla: línea de pase abierta, progreso, separación, dentro de la cancha."""
+    best_x = ax
+    best_y = ay
+    best_v = -1e18
+    for ring in range(3):
+        rad = 75.0 * ring
+        n_ang = 1 if ring == 0 else 8
+        for a in range(n_ang):
+            ang = 2.0 * math.pi * a / n_ang
+            cx = ax + rad * math.cos(ang)
+            cy = ay + rad * math.sin(ang)
+            if abs(cx) > LINE_W - 50.0 or abs(cy) > LINE_H - 50.0:
+                continue
+            d_ball = math.hypot(cx - bx, cy - by)
+            v = 0.0
+            # línea de pase desde la pelota
+            if d_ball > 1.0:
+                mg = path_margin(table, bx, by, cx, cy, KICK_SPEED, opp_x, opp_y, opp_vx, opp_vy, n_opp, react)
+                v += 1.5 * _sigmoid((mg - 3.0) / 3.0)
+            # distancia útil a la pelota (alcance de pase ~600)
+            if role == 2:   # R_SUPPORT
+                v -= abs(d_ball - 230.0) / 300.0
+            else:
+                v -= max(0.0, d_ball - 560.0) / 200.0
+            v += 1.2 * threat(cx, cy) + 0.15 * (cx - bx) / 400.0
+            # separación de compañeros
+            for i in range(n_own):
+                q = own_idx[i]
+                if q == me:
+                    continue
+                dq = math.hypot(cx - px[q], cy - py[q])
+                if dq < 150.0:
+                    v -= (150.0 - dq) / 60.0
+            # costo de llegar e histéresis: no cambiar de punto por diferencias mínimas
+            v -= math.hypot(cx - px[me], cy - py[me]) / 900.0
+            if math.hypot(cx - prev_x, cy - prev_y) < 60.0:
+                v += 0.25
+            if v > best_v:
+                best_v = v
+                best_x = cx
+                best_y = cy
+    return best_x, best_y
+
+
+@njit(cache=True)
+def possession_value(x, y):
+    """Valor de tener la pelota en (x, y) (marco de equipo): avanzar vale, cerca del arco vale más."""
+    return 0.04 + 0.22 * _sigmoid((x - 250.0) / 260.0) + threat(x, y)
+
+
+@njit(cache=True)
+def loss_cost(x, y):
+    """Costo de perderla en (x, y): el valor de posesión del rival en ese punto."""
+    return possession_value(-x, y)
+
+
+@njit(cache=True)
+def _options(n, team, seed, dec, table, me, px, py, bx, by, bvx, bvy, own_idx, n_own, opp_x, opp_y, opp_vx,
+             opp_vy, n_opp, lvl, sty, speed_mult, vals, ux_o, uy_o, kinds, tgt_x, tgt_y, partner):
+    """Opciones del portador con su valor esperado: éxito × valor de la posesión siguiente − fracaso × valor
+    para el rival donde la pierde. Devuelve la cantidad de opciones."""
+    opts = int(lvl[L_OPTIONS])
+    react = lvl[L_REACT]
+    risk = sty[S_RISK]
+    k = 0
+    v0 = KICK_SPEED * speed_mult
+    lose_here = loss_cost(bx, by)
+    pressure = 99.0
+    for o in range(n_opp):
+        to = ttr(table, opp_x[o], opp_y[o], opp_vx[o], opp_vy[o], bx, by, R_P + R_B)
+        if to < pressure:
+            pressure = to
+    # ---- tiro: puntos a lo largo del arco
+    dgoal = math.hypot(GOAL_X - bx, by)
+    if dgoal < 0.95 * v0 / (1.0 - Q_B):
+        for j in range(7):
+            gy = -GOAL_HH + 18.0 + j * (2.0 * GOAL_HH - 36.0) / 6.0
+            if opts == 0 and j != 3:
+                continue
+            dx = GOAL_X + 5.0 - bx
+            dy = gy - by
+            d = math.hypot(dx, dy)
+            ux = dx / d
+            uy = dy / d
+            sp = v0 + bvx * ux + bvy * uy
+            if sp < 1.0:
+                continue
+            mg = path_margin(table, bx, by, GOAL_X + 5.0, gy, sp, opp_x, opp_y, opp_vx, opp_vy, n_opp, react)
+            p_goal = _sigmoid((mg - 1.0) / 2.0)
+            # un tiro desviado o atajado suele quedar para el rival lejos de nuestro arco (costo bajo)
+            # un tiro al arco también genera rebotes y córners (valor residual 0,1)
+            vals[k] = p_goal * (1.0 + 0.35 * risk) + (1.0 - p_goal) * (0.1 - 0.6 * loss_cost(GOAL_X - 150.0, gy))
+            ux_o[k] = ux
+            uy_o[k] = uy
+            kinds[k] = 1
+            tgt_x[k] = GOAL_X + 5.0
+            tgt_y[k] = gy
+            partner[k] = -1
+            k += 1
+    # ---- pases (L2+): al pie, adelantado (L3+), en profundidad (L4+)
+    if opts >= 2:
+        for i in range(n_own):
+            q = own_idx[i]
+            if q == me:
+                continue
+            for variant in range(3):
+                if variant == 1 and opts < 3:
+                    continue
+                if variant == 2 and opts < 4:
+                    continue
+                if variant == 0:
+                    rx = px[q]
+                    ry = py[q]
+                elif variant == 1:
+                    rx = px[q] + 90.0
+                    ry = py[q] * 0.85
+                else:
+                    rx = min(GOAL_X - 120.0, px[q] + 220.0)
+                    ry = py[q] * 0.7
+                if abs(ry) > LINE_H - 40.0 or abs(rx) > LINE_W - 40.0:
+                    continue
+                dx = rx - bx
+                dy = ry - by
+                d = math.hypot(dx, dy)
+                if d < 60.0:
+                    continue
+                ux = dx / d
+                uy = dy / d
+                sp = v0 + bvx * ux + bvy * uy
+                if sp < 1.0:
+                    continue
+                tb = ball_travel_ticks(d, sp)
+                if tb > 1e8:
+                    continue
+                t_recv = ttr(table, px[q], py[q], 0.0, 0.0, rx, ry, R_P + R_B)
+                late = max(0.0, t_recv - tb - 4.0)
+                mg = path_margin(table, bx, by, rx, ry, sp, opp_x, opp_y, opp_vx, opp_vy, n_opp, react)
+                p = _sigmoid((mg - 1.5 - 2.5 * (1.0 - risk)) / 2.0) * math.exp(-late / 12.0)
+                gain = possession_value(rx, ry) * (1.0 + 0.2 * sty[S_DIRECT] * min(1.0, d / 500.0))
+                vals[k] = p * gain - (1.0 - p) * loss_cost(0.5 * (bx + rx), 0.5 * (by + ry))
+                ux_o[k] = ux
+                uy_o[k] = uy
+                kinds[k] = 2
+                tgt_x[k] = rx - px[q]       # objetivo relativo al receptor
+                tgt_y[k] = ry - py[q]
+                partner[k] = q
+                k += 1
+    # ---- conducción en 8 direcciones (marco de equipo)
+    for j in range(8):
+        ang = (j - 2) * math.pi / 4.0
+        ux = math.cos(ang)
+        uy = math.sin(ang)
+        if opts == 0 and ux < 0.5:
+            continue
+        tx = bx + 130.0 * ux
+        ty = by + 130.0 * uy
+        if abs(tx) > LINE_W - 30.0 or abs(ty) > LINE_H - 30.0:
+            continue
+        t_me = ttr(table, px[me], py[me], 0.0, 0.0, tx, ty, 10.0) * 1.25
+        free = 99.0
+        for o in range(n_opp):
+            to = ttr(table, opp_x[o], opp_y[o], opp_vx[o], opp_vy[o], tx, ty, R_P + R_B) + react
+            if to - t_me < free:
+                free = to - t_me
+        p = _sigmoid((free - 4.0) / 3.0)
+        keep = 0.92 - 0.12 * sty[S_TEMPO]      # conducir es más lento que pasar
+        vals[k] = p * keep * possession_value(tx, ty) - (1.0 - p) * lose_here
+        ux_o[k] = ux
+        uy_o[k] = uy
+        kinds[k] = 3
+        tgt_x[k] = tx
+        tgt_y[k] = ty
+        partner[k] = -1
+        k += 1
+    # ---- despeje (L1+): bajo presión en campo propio, lejos de los rivales
+    if opts >= 1 and bx < -150.0 and pressure < 14.0:
+        for j in range(3):
+            cy = (-1.0 + j) * 480.0
+            tx = bx + 560.0
+            dx = tx - bx
+            dy = cy - by
+            d = math.hypot(dx, dy)
+            ux = dx / d
+            uy = dy / d
+            vals[k] = 0.5 * possession_value(tx, cy) - 0.5 * loss_cost(tx, cy)
+            ux_o[k] = ux
+            uy_o[k] = uy
+            kinds[k] = 5
+            tgt_x[k] = tx
+            tgt_y[k] = cy
+            partner[k] = -1
+            k += 1
+    return k
+
+
+@njit(cache=True)
+def _plan_dir(me, plan, partner, px, py, bx, by, mem_f):
+    """Dirección de patada actual de un plan guardado (el objetivo de un pase sigue al receptor)."""
+    if plan == P_DRIBBLE:
+        return mem_f[F_PLAN_U + 2 * me], mem_f[F_PLAN_U + 2 * me + 1]
+    tx = mem_f[F_PLAN_T + 2 * me]
+    ty = mem_f[F_PLAN_T + 2 * me + 1]
+    if plan == P_PASS and partner >= 0:
+        tx += px[partner]
+        ty += py[partner]
+    dx = tx - bx
+    dy = ty - by
+    d = math.hypot(dx, dy)
+    if d < 1e-6:
+        return mem_f[F_PLAN_U + 2 * me], mem_f[F_PLAN_U + 2 * me + 1]
+    return dx / d, dy / d
+
+
+@njit(cache=True)
+def _carrier(n, team, seed, dec, table, me, px, py, pvx, pvy, bx, by, bvx, bvy, ix, iy, t_me, own_idx, n_own,
+             opp_x, opp_y, opp_vx, opp_vy, n_opp, kick_cancel, lvl, sty, mem_i, mem_f, traj):
+    """Acción del portador: elige jugada por valor esperado, la sostiene hasta ejecutarla (salvo que
+    aparezca otra claramente mejor) y la ejecuta."""
+    spd = lvl[L_SPEED]
+    if t_me > 9.0:
+        mem_i[M_PLAN + me] = P_NONE
+        return move_action(px[me], py[me], pvx[me], pvy[me], ix, iy, 1.0, spd, False)
+    plan = mem_i[M_PLAN + me]
+    until = mem_i[M_PLAN_UNTIL + me]
+    if plan == P_NONE or dec >= until:
+        vals = np.zeros(64)
+        ux_o = np.zeros(64)
+        uy_o = np.zeros(64)
+        kinds = np.zeros(64, dtype=np.int64)
+        tgt_x = np.zeros(64)
+        tgt_y = np.zeros(64)
+        partner = np.full(64, -1, dtype=np.int64)
+        k = _options(n, team, seed, dec, table, me, px, py, bx, by, bvx, bvy, own_idx, n_own, opp_x, opp_y,
+                     opp_vx, opp_vy, n_opp, lvl, sty, 1.0, vals, ux_o, uy_o, kinds, tgt_x, tgt_y, partner)
+        # valor actual del plan guardado (la opción del mismo tipo y destino)
+        cur = -1e18
+        if plan != P_NONE:
+            # el mismo plan reevaluado: mismo tipo y receptor, la dirección más parecida
+            cu_x, cu_y = _plan_dir(me, plan, mem_i[M_PARTNER + me], px, py, bx, by, mem_f)
+            best_cos = -2.0
+            for j in range(k):
+                if kinds[j] == plan and partner[j] == mem_i[M_PARTNER + me]:
+                    cs = ux_o[j] * cu_x + uy_o[j] * cu_y
+                    if cs > best_cos:
+                        best_cos = cs
+                        cur = vals[j]
+            if best_cos < 0.8:
+                cur = -1e18
+        best = -1e18
+        for j in range(k):
+            if vals[j] > best:
+                best = vals[j]
+        # cambiar sólo si otra jugada es claramente mejor (compromiso: no ir y venir)
+        if k > 0 and (plan == P_NONE or best > cur + 0.08 + 0.35 * abs(cur)):
+            # elección estocástica (softmax con la temperatura del nivel)
+            temp = max(lvl[L_TEMP], 1e-3)
+            w = np.zeros(k)
+            tot = 0.0
+            for j in range(k):
+                w[j] = math.exp((vals[j] - best) / temp)
+                tot += w[j]
+            r = urand(np.uint64(seed), n, dec, 1000 + me) * tot
+            choice = k - 1
+            acc = 0.0
+            for j in range(k):
+                acc += w[j]
+                if r <= acc:
+                    choice = j
+                    break
+            plan = kinds[choice]
+            mem_i[M_PLAN + me] = plan
+            mem_i[M_PARTNER + me] = partner[choice]
+            mem_f[F_PLAN_T + 2 * me] = tgt_x[choice]
+            mem_f[F_PLAN_T + 2 * me + 1] = tgt_y[choice]
+            # error de puntería del nivel (fijo durante el plan)
+            noise = lvl[L_AIM_NOISE] * math.pi / 180.0 * nrand(seed, n, dec, 2000 + me)
+            c = math.cos(noise)
+            s_ = math.sin(noise)
+            ux, uy = ux_o[choice], uy_o[choice]
+            mem_f[F_PLAN_U + 2 * me] = ux * c - uy * s_
+            mem_f[F_PLAN_U + 2 * me + 1] = ux * s_ + uy * c
+            mem_f[F_AIM + me] = noise
+        mem_i[M_PLAN_UNTIL + me] = dec + int(lvl[L_COMMIT])
+    if plan == P_NONE:
+        plan = P_DRIBBLE
+        mem_f[F_PLAN_U + 2 * me] = 1.0
+        mem_f[F_PLAN_U + 2 * me + 1] = 0.0
+    ux, uy = _plan_dir(me, plan, mem_i[M_PARTNER + me], px, py, bx, by, mem_f)
+    if plan != P_DRIBBLE:
+        # error de puntería del nivel: la dirección exacta rotada por el ángulo sorteado al planear
+        a = mem_f[F_AIM + me]
+        ux, uy = ux * math.cos(a) - uy * math.sin(a), ux * math.sin(a) + uy * math.cos(a)
+    tb = int(min(max(t_me, 0.0), HORIZON))
+    cbx = traj[tb, 0]
+    cby = traj[tb, 1]
+    if plan == P_DRIBBLE:
+        ax, ay, sp = approach_point(px[me], py[me], cbx, cby, ux, uy, pvx[me], pvy[me])
+        return move_action(px[me], py[me], pvx[me], pvy[me], ax + ux * 20.0, ay + uy * 20.0, 1.4, spd * 0.85, False)
+    ax, ay, sp = approach_point(px[me], py[me], cbx, cby, ux, uy, pvx[me], pvy[me])
+    mv = move_action(px[me], py[me], pvx[me], pvy[me], ax, ay, sp, spd, False)
+    tol = math.cos(lvl[L_AIM_TOL] * math.pi / 180.0)
+    if not kick_cancel[me] and kick_ready(px[me], py[me], pvx[me], pvy[me], bx, by, bvx, bvy, ux, uy, tol, mv):
+        mem_i[M_PLAN + me] = P_NONE
+        return mv + 9
+    return mv
+
+
+@njit(cache=True)
+def _restart_taker(n, team, seed, dec, table, me, px, py, pvx, pvy, bx, by, bvx, bvy, own_idx, n_own, opp_x,
+                   opp_y, opp_vx, opp_vy, n_opp, kind, ticks, ko, kick_cancel, lvl, sty, mem_i, mem_f):
+    """Ejecutor de saque (lateral, córner, saque de arco o saque inicial): espera apoyos y patea."""
+    spd = lvl[L_SPEED]
+    mem_i[M_WAIT] += 1
+    wait = mem_i[M_WAIT]
+    # impulso real de cada saque (contrato): córner ×1,98, saque de arco ×2,71
+    mult = 1.0
+    min_wait = 20
+    if kind == 2:
+        mult = 1.98
+        min_wait = 45
+    elif kind == 3:
+        mult = 2.71
+        min_wait = 62     # el disco del punto bloquea 180 ticks
+    elif kind == 1:
+        min_wait = 25
+    if ko:
+        min_wait = 15
+    plan_ok = mem_i[M_PLAN + me] != P_NONE and dec < mem_i[M_PLAN_UNTIL + me]
+    if not plan_ok:
+        vals = np.zeros(64)
+        ux_o = np.zeros(64)
+        uy_o = np.zeros(64)
+        kinds = np.zeros(64, dtype=np.int64)
+        tgt_x = np.zeros(64)
+        tgt_y = np.zeros(64)
+        partner = np.full(64, -1, dtype=np.int64)
+        k = _options(n, team, seed, dec, table, me, px, py, bx, by, 0.0, 0.0, own_idx, n_own, opp_x, opp_y,
+                     opp_vx, opp_vy, n_opp, lvl, sty, mult, vals, ux_o, uy_o, kinds, tgt_x, tgt_y, partner)
+        best = -1
+        best_v = -1e18
+        for j in range(k):
+            v = vals[j]
+            if kinds[j] == 3:
+                v *= 0.6 if not ko else 1.0   # conducir un saque parado vale menos (salvo saque inicial)
+            if kinds[j] == 5:
+                v *= 0.5
+            v += 0.05 * nrand(seed, n, dec, 3000 + j) * lvl[L_TEMP]
+            if v > best_v:
+                best_v = v
+                best = j
+        if best < 0:
+            ux, uy = 1.0, 0.0
+            plan_kind = P_DRIBBLE
+        else:
+            ux, uy = ux_o[best], uy_o[best]
+            plan_kind = kinds[best]
+        mem_i[M_PLAN + me] = plan_kind
+        mem_i[M_PLAN_UNTIL + me] = dec + 6
+        mem_f[F_PLAN_U + 2 * me] = ux
+        mem_f[F_PLAN_U + 2 * me + 1] = uy
+    ux = mem_f[F_PLAN_U + 2 * me]
+    uy = mem_f[F_PLAN_U + 2 * me + 1]
+    if kind == 1:
+        # lateral: la pelota está afuera (|y| = 688); se patea hacia adentro de la cancha
+        inward = -1.0 if by > 0.0 else 1.0
+        if uy * inward < 0.25:
+            uy = inward * 0.35
+            nrm = math.hypot(ux, uy)
+            ux /= nrm
+            uy /= nrm
+    ax, ay, sp = approach_point(px[me], py[me], bx, by, ux, uy, pvx[me], pvy[me])
+    ready = wait * 3 >= min_wait
+    if not ready:
+        # acercarse sin tocar: quedarse a 40 px del punto de contacto
+        ax = bx - ux * (R_P + R_B + 28.0)
+        ay = by - uy * (R_P + R_B + 28.0)
+        sp = 0.0
+    mv = move_action(px[me], py[me], pvx[me], pvy[me], ax, ay, sp, spd, False)
+    tol = math.cos(lvl[L_AIM_TOL] * math.pi / 180.0)
+    if ready and not kick_cancel[me] and kick_ready(px[me], py[me], pvx[me], pvy[me], bx, by, 0.0, 0.0, ux, uy, tol, mv):
+        mem_i[M_PLAN + me] = P_NONE
+        return mv + 9
+    return mv
