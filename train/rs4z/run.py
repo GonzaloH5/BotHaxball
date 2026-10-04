@@ -76,6 +76,8 @@ class Config:
     overlap: bool = False          # aprender (device) mientras se juega la iteración siguiente (rollout_device)
     rollout_device: str = ""       # dispositivo de la copia que juega (vacío: el mismo que aprende)
     tf32: bool = True              # matemática TF32 en GPU Ampere+ (actualización ~17% más rápida)
+    max_kl_start: float = 0.2      # KL entre la política que jugó y la que aprende antes de aprender: si lo supera,
+                                   # las dos no coinciden (error de sincronización) y se detiene sin guardar
     match_min_minutes: float = 3.0  # duración de reloj de los partidos desde S5 (uniforme; la sala juega ~10 min)
     match_max_minutes: float = 10.0
 
@@ -151,10 +153,21 @@ class Trainer:
         self.assign(np.arange(N))
 
     def _sync_actor(self):
-        if self.actor is not self.model:
-            with torch.no_grad():
-                for a, m in zip(self.actor.parameters(), self.model.parameters()):
-                    a.copy_(m.detach().to(self.rollout_device, non_blocking=True))
+        """Copiar la política que aprende a la que juega, pasando por la CPU y verificando.
+
+        En el Pod de 2×A4000 la copia directa GPU→GPU (P2P) llega corrupta aunque el driver la declara disponible
+        (2026-10-04): la que juega quedó con otros pesos y la actualización divergió. Por la CPU es exacta y cuesta
+        1,6 MB por iteración.
+        """
+        if self.actor is self.model:
+            return
+        with torch.no_grad():
+            host = [m.detach().to("cpu") for m in self.model.parameters()]
+            for a, h in zip(self.actor.parameters(), host):
+                a.copy_(h.to(self.rollout_device))
+            back = [a.detach().to("cpu") for a in self.actor.parameters()]
+        if not all(torch.equal(h, b) for h, b in zip(host, back)):
+            raise RuntimeError("la copia de la política a la que juega no es exacta")
 
     # ------------------------------------------------------------------ curriculum
     @property
@@ -468,10 +481,18 @@ class Trainer:
                 a = adv_t[idx]
                 a = (a - a.mean()) / (a.std() + 1e-8)
                 ratio = torch.exp(logp - old_logp[idx])
+                if epoch == 0 and i == 0:
+                    with torch.no_grad():
+                        logs["kl_start"] = ((ratio - 1) - torch.log(ratio)).mean().item()
+                    if not math.isfinite(logs["kl_start"]) or logs["kl_start"] > cfg.max_kl_start:
+                        raise RuntimeError(f"la política que jugó no coincide con la que aprende "
+                                           f"(KL inicial {logs['kl_start']:.3f}): no se actualiza ni se guarda")
                 pl = -torch.min(ratio * a, torch.clamp(ratio, 1 - cfg.clip, 1 + cfg.clip) * a).mean()
                 vl = 0.5 * ((value - ret_t[idx]) ** 2).mean()
                 ent = dist.entropy().mean()
                 loss = pl + cfg.vf_coef * vl - ent_coef * ent
+                if not torch.isfinite(loss):
+                    raise RuntimeError("pérdida no finita en la actualización PPO: no se guarda")
                 self.opt.zero_grad(set_to_none=True)
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), cfg.max_grad)
@@ -542,6 +563,7 @@ class Trainer:
         self.ret_mean, self.ret_var, self.ret_count = s["ret"]
         self.rng.bit_generator.state = s["rng"]
         self.league.load_state(s["league"])
+        self._last_ckpt = self.samples      # no volver a guardar en la primera iteración después de reanudar
         self.task_log.update(s.get("task_log", {}))
         self.match_ratio.update(s.get("match_ratio", {}))
         self.ep_len.update(s.get("ep_len", {}))
