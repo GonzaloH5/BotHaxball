@@ -1,0 +1,311 @@
+{
+ "version": "RS4-Z-gates-1",
+ "code_hash": "d7b610936c5cf1de",
+ "episodes": 512,
+ "seed": 0,
+ "rules": {
+  "control_battery": {
+   "mean_frac": 0.9,
+   "task_frac": 0.75
+  },
+  "duel_battery": {
+   "mean_frac": 0.85,
+   "task_frac": 0.65,
+   "conceded_slack": 1.3
+  },
+  "passing_battery": {
+   "mean_frac": 0.8,
+   "task_frac": 0.6
+  },
+  "defense_battery": {
+   "mean_frac": 0.8,
+   "task_frac": 0.6,
+   "conceded_slack": 1.1
+  },
+  "match_1v1_vs_l3": {
+   "points": 0.55,
+   "level": 3,
+   "active": [
+    1,
+    1
+   ]
+  },
+  "detectors_small": {
+   "level": 3,
+   "active": [
+    2,
+    2
+   ],
+   "parked": 0.05,
+   "goal_hug": 0.05,
+   "clump": 0.12
+  },
+  "match_4v4_vs_l5": {
+   "points": 0.6,
+   "level": 5
+  },
+  "reserved_style": {
+   "points": 0.5,
+   "level": 5
+  },
+  "restart_battery": {
+   "max_forfeit_rate": 0.02
+  },
+  "detectors_4v4": {
+   "parked": 0.05,
+   "goal_hug": 0.05,
+   "clump": 0.1
+  },
+  "league_milestone": {
+   "points_l5": 0.75,
+   "points_reserved": 0.65
+  },
+  "robustness": {
+   "max_drop": 0.1,
+   "latency": 8
+  }
+ },
+ "stage_gates": {
+  "S1": [
+   "control_battery"
+  ],
+  "S2": [
+   "duel_battery",
+   "match_1v1_vs_l3"
+  ],
+  "S3": [
+   "passing_battery"
+  ],
+  "S4": [
+   "defense_battery",
+   "detectors_small"
+  ],
+  "S5": [
+   "match_4v4_vs_l5",
+   "reserved_style",
+   "restart_battery",
+   "detectors_4v4"
+  ],
+  "S6": [
+   "league_milestone"
+  ],
+  "S7": [
+   "robustness"
+  ]
+ },
+ "reference": {
+  "control_battery": {
+   "touch": {
+    "success": 0.91796875,
+    "conceded": 0.0,
+    "episodes": 512
+   },
+   "empty_goal": {
+    "success": 0.666015625,
+    "conceded": 0.0,
+    "episodes": 512
+   },
+   "carry_goal": {
+    "success": 0.83203125,
+    "conceded": 0.0,
+    "episodes": 512
+   },
+   "receive_shot": {
+    "success": 0.912109375,
+    "conceded": 0.0,
+    "episodes": 512
+   }
+  },
+  "duel_battery": {
+   "shot_vs_last": {
+    "success": 0.240234375,
+    "conceded": 0.0,
+    "episodes": 512
+   },
+   "attack_1v1": {
+    "success": 0.001953125,
+    "conceded": 0.0,
+    "episodes": 512
+   },
+   "defend_1v1": {
+    "success": 0.716796875,
+    "conceded": 0.0,
+    "episodes": 512
+   },
+   "loose_ball": {
+    "success": 0.32421875,
+    "conceded": 0.0,
+    "episodes": 512
+   }
+  },
+  "passing_battery": {
+   "attack_2v1": {
+    "success": 0.53125,
+    "conceded": 0.0,
+    "episodes": 512
+   },
+   "one_two": {
+    "success": 0.412109375,
+    "conceded": 0.0,
+    "episodes": 512
+   },
+   "through_ball": {
+    "success": 0.015625,
+    "conceded": 0.0,
+    "episodes": 512
+   },
+   "redirect": {
+    "success": 0.06640625,
+    "conceded": 0.0,
+    "episodes": 512
+   },
+   "attack_2v2": {
+    "success": 0.02734375,
+    "conceded": 0.0,
+    "episodes": 512
+   }
+  },
+  "defense_battery": {
+   "defend_2v2": {
+    "success": 0.833984375,
+    "conceded": 0.017578125,
+    "episodes": 512
+   },
+   "defend_4v4": {
+    "success": 0.82421875,
+    "conceded": 0.001953125,
+    "episodes": 512
+   },
+   "defend_restart": {
+    "success": 0.853515625,
+    "conceded": 0.017578125,
+    "episodes": 512
+   }
+  },
+  "situation_battery": {
+   "situation_attack": {
+    "success": 0.056640625,
+    "conceded": 0.001953125,
+    "episodes": 512
+   },
+   "restart_attack": {
+    "success": 0.15234375,
+    "conceded": 0.0,
+    "episodes": 512
+   },
+   "transition": {
+    "success": 0.8333333333333334,
+    "conceded": 0.16666666666666666,
+    "episodes": 6
+   }
+  }
+ },
+ "reference_l3": {
+  "control_battery": {
+   "touch": {
+    "success": 0.921875,
+    "conceded": 0.0,
+    "episodes": 256
+   },
+   "empty_goal": {
+    "success": 0.421875,
+    "conceded": 0.0,
+    "episodes": 256
+   },
+   "carry_goal": {
+    "success": 0.71875,
+    "conceded": 0.0,
+    "episodes": 256
+   },
+   "receive_shot": {
+    "success": 0.63671875,
+    "conceded": 0.0,
+    "episodes": 256
+   }
+  },
+  "duel_battery": {
+   "shot_vs_last": {
+    "success": 0.08203125,
+    "conceded": 0.0,
+    "episodes": 256
+   },
+   "attack_1v1": {
+    "success": 0.0,
+    "conceded": 0.0,
+    "episodes": 256
+   },
+   "defend_1v1": {
+    "success": 0.75390625,
+    "conceded": 0.0,
+    "episodes": 256
+   },
+   "loose_ball": {
+    "success": 0.26953125,
+    "conceded": 0.0,
+    "episodes": 256
+   }
+  },
+  "passing_battery": {
+   "attack_2v1": {
+    "success": 0.234375,
+    "conceded": 0.0,
+    "episodes": 256
+   },
+   "one_two": {
+    "success": 0.1171875,
+    "conceded": 0.0,
+    "episodes": 256
+   },
+   "through_ball": {
+    "success": 0.0078125,
+    "conceded": 0.0,
+    "episodes": 256
+   },
+   "redirect": {
+    "success": 0.05859375,
+    "conceded": 0.0,
+    "episodes": 256
+   },
+   "attack_2v2": {
+    "success": 0.0078125,
+    "conceded": 0.0,
+    "episodes": 256
+   }
+  },
+  "defense_battery": {
+   "defend_2v2": {
+    "success": 0.88671875,
+    "conceded": 0.01953125,
+    "episodes": 256
+   },
+   "defend_4v4": {
+    "success": 0.85546875,
+    "conceded": 0.00390625,
+    "episodes": 256
+   },
+   "defend_restart": {
+    "success": 0.83203125,
+    "conceded": 0.03125,
+    "episodes": 256
+   }
+  },
+  "situation_battery": {
+   "situation_attack": {
+    "success": 0.0390625,
+    "conceded": 0.0,
+    "episodes": 256
+   },
+   "restart_attack": {
+    "success": 0.0546875,
+    "conceded": 0.0,
+    "episodes": 256
+   },
+   "transition": {
+    "success": 0.0,
+    "conceded": 1.0,
+    "episodes": 3
+   }
+  }
+ },
+ "seconds": 89.99046635627747
+}

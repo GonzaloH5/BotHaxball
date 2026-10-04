@@ -23,12 +23,12 @@ from .geom import HORIZON, TTR_TABLE
 # Niveles: misma lógica con capacidades crecientes (ver auditoría). La reacción de L5 (~10 ticks,
 # 167 ms) es la de un humano experto que anticipa; su fuerza viene de decidir mejor, no de reflejos.
 LEVELS = {
-    0: dict(delay=30, noise=26.0, aim_tol=32.0, aim_noise=12.0, options=0, temp=0.30, hyst=20.0, react=6.0, commit=3, speed=1.0),
-    1: dict(delay=24, noise=18.0, aim_tol=27.0, aim_noise=8.0, options=1, temp=0.20, hyst=40.0, react=6.0, commit=4, speed=1.0),
-    2: dict(delay=18, noise=12.0, aim_tol=22.0, aim_noise=5.5, options=2, temp=0.13, hyst=60.0, react=6.0, commit=4, speed=1.0),
-    3: dict(delay=15, noise=8.0, aim_tol=18.0, aim_noise=3.5, options=3, temp=0.08, hyst=80.0, react=6.0, commit=5, speed=1.0),
-    4: dict(delay=12, noise=5.0, aim_tol=15.0, aim_noise=2.2, options=4, temp=0.05, hyst=95.0, react=6.0, commit=5, speed=1.0),
-    5: dict(delay=9, noise=3.0, aim_tol=13.0, aim_noise=1.3, options=5, temp=0.035, hyst=110.0, react=6.0, commit=6, speed=1.0),
+    0: dict(delay=39, noise=45.0, aim_tol=40.0, aim_noise=18.0, options=2, temp=0.55, hyst=15.0, react=6.0, commit=3, speed=1.0),
+    1: dict(delay=30, noise=28.0, aim_tol=30.0, aim_noise=10.0, options=3, temp=0.30, hyst=40.0, react=6.0, commit=4, speed=1.0),
+    2: dict(delay=21, noise=14.0, aim_tol=22.0, aim_noise=6.0, options=4, temp=0.15, hyst=60.0, react=6.0, commit=4, speed=1.0),
+    3: dict(delay=15, noise=8.0, aim_tol=17.0, aim_noise=3.5, options=5, temp=0.08, hyst=80.0, react=6.0, commit=5, speed=1.0),
+    4: dict(delay=12, noise=5.0, aim_tol=14.0, aim_noise=2.5, options=5, temp=0.06, hyst=100.0, react=6.0, commit=6, speed=1.0),
+    5: dict(delay=8, noise=2.0, aim_tol=10.0, aim_noise=1.0, options=5, temp=0.025, hyst=120.0, react=6.0, commit=6, speed=1.0),
 }
 STYLE_NAMES = ("press", "direct", "width", "risk", "tempo", "depth")
 STYLE_BALANCED = np.full(6, 0.5)
