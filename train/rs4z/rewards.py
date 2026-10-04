@@ -39,7 +39,7 @@ TERMS = {
     "access": dict(kind="pbrs", scale=0.05, why="presión/posicionamiento: el equipo que llega antes a la pelota",
                    exploit="que todos persigan no mejora el margen de equipo (sólo cuenta el mínimo)",
                    retire="a 0 al salir de S4"),
-    "ball": dict(kind="pbrs", scale=0.05, why="exploración en 1v0: acercarse a la pelota",
+    "ball": dict(kind="pbrs", scale=0.5, why="exploración en 1v0: acercarse a la pelota",
                  exploit="quedarse cerca sin jugar no rinde (PBRS); sólo en ejercicios 1v0",
                  retire="a 0 al salir de S1"),
     "crowd": dict(kind="pbrs", scale=0.02, why="contingencia contra la aglomeración",

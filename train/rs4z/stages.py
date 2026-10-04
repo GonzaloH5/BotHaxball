@@ -39,7 +39,7 @@ class Stage:
 STAGES = [
     Stage("S1", 0.3e9,
           tasks=dict(touch=0.25, empty_goal=0.35, carry_goal=0.2, receive_shot=0.2),
-          coefs=dict(goal=1.0, drill=1.0, ball=0.05, threat=0.25),
+          coefs=dict(goal=1.0, drill=1.0, ball=0.5, threat=0.25),
           coefs_end=dict(ball=0.0),
           gates=("control_battery",),
           notes="1v0: pelota, conducción y definición a arco vacío"),

@@ -43,8 +43,8 @@ class Config:
     run: str = "rs4z"
     envs: int = 576
     rollout: int = 128
-    epochs: int = 3
-    minibatch: int = 16384
+    epochs: int = 4
+    minibatch: int = 8192
     lr: float = 3e-4
     lr_min: float = 5e-5
     clip: float = 0.2
@@ -65,6 +65,8 @@ class Config:
     smoke: bool = False
     gate_episodes: int = 256
     target_success: float = 0.6    # dificultad adaptativa: éxito buscado por tarea
+    only_tasks: str = ""           # pruebas de humo: restringir la mezcla (lista separada por comas)
+    exploiter_of: str = ""         # ruta del checkpoint principal: entrenar un exploiter contra él (S6)
 
 
 class Trainer:
@@ -93,6 +95,12 @@ class Trainer:
         self.model = ActorCritic().to(self.device)
         self.opt = torch.optim.Adam(self.model.parameters(), lr=cfg.lr, eps=1e-5)
         self.league = League(self.dir / "league", device=self.device)
+        if cfg.exploiter_of:
+            # exploiter (AlphaStar): parte del principal y juega sólo contra el principal congelado
+            main = torch.load(cfg.exploiter_of, map_location=self.device, weights_only=False)
+            self.model.load_state_dict(main["model"])
+            self.league.add(self.model, int(main.get("samples", 0)))
+            self.stage_i = STAGE_INDEX["S6"]
         self.samples = 0
         self.stage_samples = 0
         self.iter = 0
@@ -128,6 +136,9 @@ class Trainer:
 
     def _task_weights(self):
         st = self.stage
+        if self.cfg.only_tasks:
+            names = [t.strip() for t in self.cfg.only_tasks.split(",") if t.strip()]
+            return names, np.full(len(names), 1.0 / len(names))
         names = list(st.tasks)
         w = np.array([st.tasks[t] for t in names], dtype=np.float64)
         w /= w.sum()
@@ -187,6 +198,8 @@ class Trainer:
             self.bot.sync(env, [n])
 
     def _opponent_mode(self):
+        if self.cfg.exploiter_of:
+            return "pfsp"
         opp = self.stage.opponents
         modes = list(opp)
         p = np.array([opp[m] for m in modes], dtype=np.float64)
@@ -455,9 +468,13 @@ class Trainer:
             if self.samples - self._last_ckpt >= cfg.ckpt_every:
                 self.save()
                 self._last_ckpt = self.samples
+                if self.league.merge_exploiters(self.dir / "exploiters.json"):
+                    print("exploiters nuevos en la liga", flush=True)
             if self.stage.name in ("S5", "S6", "S7") and self.samples - self._last_snapshot >= cfg.snapshot_every:
                 self.league.add(self.model, self.samples)
                 self._last_snapshot = self.samples
+            if cfg.exploiter_of:
+                continue
             if (progress >= cfg.eval_min_frac and self.samples - self._last_eval >= cfg.eval_every) or progress >= 1.0:
                 self._last_eval = self.samples
                 result = self.check_gates()
@@ -474,6 +491,15 @@ class Trainer:
                     self.stop_reason = (f"presupuesto de {self.stage.name} agotado sin aprobar compuertas: "
                                         f"{None if result is None else result['summary']}")
         self.save()
+        if cfg.exploiter_of:
+            # sumarlo a la liga del principal, marcado como exploiter
+            main_league = League(Path(cfg.exploiter_of).parent / "league", device="cpu")
+            state = torch.load(cfg.exploiter_of, map_location="cpu", weights_only=False).get("league")
+            if state:
+                main_league.load_state(state)
+            main_league.add(self.model, self.samples, exploiter=True)
+            (Path(cfg.exploiter_of).parent / "exploiters.json").write_text(
+                json.dumps(main_league.state(), indent=1), encoding="utf-8")
         print("fin:", self.stop_reason or "presupuesto total", flush=True)
 
 

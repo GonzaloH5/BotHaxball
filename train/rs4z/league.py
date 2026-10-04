@@ -80,6 +80,20 @@ class League:
             out[rows] = a.cpu().numpy()
         return out
 
+    def merge_exploiters(self, path):
+        """Sumar los exploiters entrenados aparte (escritos en exploiters.json por su corrida)."""
+        import json
+        path = Path(path)
+        if not path.exists():
+            return 0
+        known = {m["path"] for m in self.members}
+        added = 0
+        for m in json.loads(path.read_text(encoding="utf-8")).get("members", []):
+            if m.get("exploiter") and m["path"] not in known and Path(m["path"]).exists():
+                self.members.append(dict(m, wins=1.0, games=2.0))
+                added += 1
+        return added
+
     def state(self):
         return dict(members=self.members)
 
