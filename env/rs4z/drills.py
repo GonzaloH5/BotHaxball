@@ -42,6 +42,7 @@ class Task:
     opp_levels: tuple = (0, 5)     # rango de nivel de RS-Pro (la dificultad lo recorre)
     match_ticks: int = 0           # duración de reloj (sólo partidos)
     scripted_mates: int = 0        # compañeros del aprendiz controlados por RS-Pro
+    require_pass: bool = False     # el gol cuenta sólo después de un pase entre aprendices (la tarea ES un pase)
     notes: str = ""
 
 
@@ -65,9 +66,9 @@ TASKS = {t.name: t for t in [
     Task("attack_2v1", "S3", 2, 1, "attack_2v1", timeout=780, end_on_rival_touch=True, opp_levels=(1, 5),
          notes="2v1: el pase es la solución eficiente"),
     Task("one_two", "S3", 2, 1, "one_two", timeout=660, end_on_rival_touch=True, opp_levels=(1, 5),
-         notes="pared contra un presionante con espacio a la espalda"),
+         require_pass=True, notes="pared contra un presionante con espacio a la espalda"),
     Task("through_ball", "S3", 2, 2, "through_ball", timeout=720, end_on_rival_touch=True, opp_levels=(1, 5),
-         notes="pase en profundidad a un compañero que corre"),
+         require_pass=True, notes="pase en profundidad a un compañero que corre"),
     Task("redirect", "S3", 2, 1, "redirect", timeout=540, end_on_rival_touch=True, opp_levels=(1, 5),
          notes="centro rodando al área: desvío o control y definición"),
     Task("attack_2v2", "S3", 2, 2, "attack_2v2", timeout=900, end_on_rival_touch=True, opp_levels=(1, 5),
@@ -113,6 +114,8 @@ class DrillState:
     ticks: np.ndarray = None
     regain_since: np.ndarray = None  # ticks desde el último toque propio sin toque rival (-1 inactivo)
     lost_since: np.ndarray = None    # ticks desde el último toque rival sin toque propio (-1 inactivo)
+    last_touch: np.ndarray = None    # último jugador propio que tocó la pelota (-1 ninguno, -2 la tocó el rival)
+    passed: np.ndarray = None        # hubo un pase entre aprendices en el episodio
     difficulty: np.ndarray = None
     opp_level: np.ndarray = None
 
@@ -124,6 +127,8 @@ class DrillState:
         self.ticks = np.zeros(n, dtype=np.int64)
         self.regain_since = np.full(n, -1, dtype=np.int64)
         self.lost_since = np.full(n, -1, dtype=np.int64)
+        self.last_touch = np.full(n, -1, dtype=np.int64)
+        self.passed = np.zeros(n, dtype=bool)
         self.difficulty = np.zeros(n)
         self.opp_level = np.zeros(n, dtype=np.int64)
 
@@ -133,6 +138,7 @@ TASK_INDEX = {name: i for i, name in enumerate(TASK_NAMES)}
 _TASK_PARAMS = dict(
     timeout=np.array([TASKS[t].timeout for t in TASK_NAMES], dtype=np.int64),
     success_goal=np.array([TASKS[t].success == "goal" for t in TASK_NAMES]),
+    require_pass=np.array([TASKS[t].require_pass for t in TASK_NAMES]),
     success_touch=np.array([TASKS[t].success == "touch" for t in TASK_NAMES]),
     success_regain=np.array([TASKS[t].success == "regain" for t in TASK_NAMES]),
     rival_end=np.array([TASKS[t].end_on_rival_touch for t in TASK_NAMES]),
@@ -180,6 +186,8 @@ class Drills:
             st.ticks[n] = 0
             st.regain_since[n] = -1
             st.lost_since[n] = -1
+            st.last_touch[n] = -1
+            st.passed[n] = False
             st.difficulty[n] = difficulty[i]
             st.opp_level[n] = level
 
@@ -239,6 +247,12 @@ class Drills:
         st.lost_since = np.where(only_rival, np.where(st.lost_since < 0, 0, st.lost_since + dt),
                                  np.where(only_own | both, -1,
                                           np.where(st.lost_since >= 0, st.lost_since + dt, -1)))
+        # pase: toque de un propio distinto del último que la tocó, sin toque rival en el medio
+        own_t = ev["touched"] & own_mask
+        q = np.argmax(own_t, axis=1)
+        clean_own = own_touch & ~rival_touch
+        st.passed |= clean_own & (st.last_touch >= 0) & (st.last_touch != q)
+        st.last_touch = np.where(clean_own, q, np.where(rival_touch, -2, st.last_touch))
         done = np.zeros(N, dtype=bool)
         outcome = np.zeros(N)
         truncated = np.zeros(N, dtype=bool)
@@ -251,7 +265,7 @@ class Drills:
             outcome[m] = value[m] if np.ndim(value) else value
             open_ &= ~m
 
-        resolve(scored, np.where(P["success_goal"][task], 1.0, 0.0))
+        resolve(scored, np.where(P["success_goal"][task] & (~P["require_pass"][task] | st.passed), 1.0, 0.0))
         resolve(conceded, P["concede"][task])
         resolve(P["success_touch"][task] & own_touch, 1.0)
         resolve(P["success_regain"][task] & (st.regain_since >= REGAIN_TICKS), 1.0)

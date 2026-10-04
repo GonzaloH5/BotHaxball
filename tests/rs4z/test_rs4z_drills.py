@@ -97,3 +97,19 @@ def test_clean_rival_win_ends_the_attack():
     done, out, tr = d.check(_ev(2, touched=touched))
     assert done[0] and out[0] == 0.0
     assert not done[1]
+
+
+def test_pass_drills_need_a_pass_before_the_goal():
+    """Pared y pase en profundidad: un gol sin pase entre aprendices no es éxito (la tarea es el pase)."""
+    env = RS4ZEnv(2, seed=0)
+    d = Drills(env, np.random.default_rng(0))
+    d.start([0, 1], "one_two", 0.0, learner_team=0)
+    touched = np.zeros((2, 8), bool)
+    touched[1, 0] = True
+    d.check(_ev(2, touched=touched))
+    touched[1, 0], touched[1, 1] = False, True
+    d.check(_ev(2, touched=touched))            # fila 1: R0 → R1 (pase)
+    done, out, tr = d.check(_ev(2, goal=1))
+    assert done.all()
+    assert out[0] == 0.0 and out[1] == 1.0
+    assert d.st.passed[1] and not d.st.passed[0]

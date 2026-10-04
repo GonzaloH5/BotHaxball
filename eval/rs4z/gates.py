@@ -42,10 +42,10 @@ HUMAN_RESTART_P50 = dict(lateral=117.0, corner=153.0, goal_kick=249.0)
 RULES = {
     "control_battery": dict(mean_frac=0.90, task_frac=0.75),
     "duel_battery": dict(mean_frac=0.85, task_frac=0.65, conceded_slack=1.3),
-    # además, en las tareas pensadas para el pase, la mayoría de los goles debe venir de un pase entre
-    # aprendices (la etapa existe para eso: en el humo del 2026-10-04 S3 se aprobó gambeteando solo)
-    "passing_battery": dict(mean_frac=0.80, task_frac=0.60, pass_tasks=("attack_2v1", "one_two"),
-                            min_pass_share=0.5),
+    # además, en el 2v1 (abierto: se puede resolver solo o pasando) la mayoría de los goles debe venir de un pase
+    # entre aprendices (la etapa existe para eso: el 2026-10-04 S3 se aprobó dos veces gambeteando solo). La
+    # pared y el pase en profundidad ya exigen el pase por definición (drills.Task.require_pass).
+    "passing_battery": dict(mean_frac=0.80, task_frac=0.60, pass_tasks=("attack_2v1",), min_pass_share=0.5),
     "defense_battery": dict(mean_frac=0.80, task_frac=0.60, conceded_slack=1.1),
     # RS-Pro ataca mal en 1v1 (auditoría §5): contra L3 la compuerta no informa, se exige contra L5
     "match_1v1_vs_l5": dict(points=0.55, level=5, active=(1, 1)),

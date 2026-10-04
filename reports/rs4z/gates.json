@@ -1,6 +1,6 @@
 {
  "version": "RS4-Z-gates-2",
- "code_hash": "c31a5318ce90e236",
+ "code_hash": "08ec29997c680485",
  "episodes": 512,
  "seed": 0,
  "rules": {
@@ -17,8 +17,7 @@
    "mean_frac": 0.8,
    "task_frac": 0.6,
    "pass_tasks": [
-    "attack_2v1",
-    "one_two"
+    "attack_2v1"
    ],
    "min_pass_share": 0.5
   },
@@ -138,113 +137,113 @@
   },
   "duel_battery": {
    "shot_vs_last": {
-    "success": 0.240234375,
+    "success": 0.2421875,
     "conceded": 0.0,
     "episodes": 512,
-    "successes": 123,
+    "successes": 124,
     "pass_share": 0.0
    },
    "attack_1v1": {
+    "success": 0.001953125,
+    "conceded": 0.0,
+    "episodes": 512,
+    "successes": 1,
+    "pass_share": 0.0
+   },
+   "defend_1v1": {
+    "success": 0.98828125,
+    "conceded": 0.0,
+    "episodes": 512,
+    "successes": 506,
+    "pass_share": 0.0
+   },
+   "loose_ball": {
+    "success": 0.322265625,
+    "conceded": 0.0,
+    "episodes": 512,
+    "successes": 165,
+    "pass_share": 0.0
+   }
+  },
+  "passing_battery": {
+   "attack_2v1": {
+    "success": 0.296875,
+    "conceded": 0.0,
+    "episodes": 512,
+    "successes": 152,
+    "pass_share": 1.0
+   },
+   "one_two": {
+    "success": 0.2734375,
+    "conceded": 0.0,
+    "episodes": 512,
+    "successes": 140,
+    "pass_share": 1.0
+   },
+   "through_ball": {
     "success": 0.0,
     "conceded": 0.0,
     "episodes": 512,
     "successes": 0,
     "pass_share": NaN
    },
-   "defend_1v1": {
-    "success": 0.982421875,
-    "conceded": 0.0,
-    "episodes": 512,
-    "successes": 503,
-    "pass_share": 0.0
-   },
-   "loose_ball": {
-    "success": 0.32421875,
-    "conceded": 0.0,
-    "episodes": 512,
-    "successes": 166,
-    "pass_share": 0.0
-   }
-  },
-  "passing_battery": {
-   "attack_2v1": {
-    "success": 0.306640625,
-    "conceded": 0.0,
-    "episodes": 512,
-    "successes": 157,
-    "pass_share": 1.0
-   },
-   "one_two": {
-    "success": 0.3046875,
-    "conceded": 0.0,
-    "episodes": 512,
-    "successes": 156,
-    "pass_share": 1.0
-   },
-   "through_ball": {
-    "success": 0.00390625,
-    "conceded": 0.0,
-    "episodes": 512,
-    "successes": 2,
-    "pass_share": 0.0
-   },
    "redirect": {
-    "success": 0.033203125,
+    "success": 0.01171875,
     "conceded": 0.0,
     "episodes": 512,
-    "successes": 17,
-    "pass_share": 0.6470588235294118
+    "successes": 6,
+    "pass_share": 0.5
    },
    "attack_2v2": {
-    "success": 0.01953125,
+    "success": 0.009765625,
     "conceded": 0.0,
     "episodes": 512,
-    "successes": 10,
+    "successes": 5,
     "pass_share": 1.0
    }
   },
   "defense_battery": {
    "defend_2v2": {
-    "success": 0.919921875,
-    "conceded": 0.0078125,
+    "success": 0.93359375,
+    "conceded": 0.013671875,
     "episodes": 512,
-    "successes": 471,
-    "pass_share": 0.044585987261146494
+    "successes": 478,
+    "pass_share": 0.027196652719665274
    },
    "defend_4v4": {
-    "success": 0.87890625,
+    "success": 0.876953125,
     "conceded": 0.0,
     "episodes": 512,
-    "successes": 450,
-    "pass_share": 0.07777777777777778
+    "successes": 449,
+    "pass_share": 0.0757238307349666
    },
    "defend_restart": {
-    "success": 0.869140625,
+    "success": 0.86328125,
     "conceded": 0.017578125,
     "episodes": 512,
-    "successes": 445,
-    "pass_share": 0.13258426966292136
+    "successes": 442,
+    "pass_share": 0.12669683257918551
    }
   },
   "situation_battery": {
    "situation_attack": {
-    "success": 0.0625,
+    "success": 0.060546875,
     "conceded": 0.0,
     "episodes": 512,
-    "successes": 32,
-    "pass_share": 0.90625
+    "successes": 31,
+    "pass_share": 0.9354838709677419
    },
    "restart_attack": {
-    "success": 0.15234375,
+    "success": 0.138671875,
     "conceded": 0.0,
     "episodes": 512,
-    "successes": 78,
-    "pass_share": 0.8333333333333334
+    "successes": 71,
+    "pass_share": 0.8591549295774648
    },
    "transition": {
-    "success": 0.6666666666666666,
-    "conceded": 0.3333333333333333,
-    "episodes": 3,
+    "success": 0.4,
+    "conceded": 0.6,
+    "episodes": 5,
     "successes": 2,
     "pass_share": 0.0
    }
@@ -283,10 +282,10 @@
   },
   "duel_battery": {
    "shot_vs_last": {
-    "success": 0.125,
+    "success": 0.07421875,
     "conceded": 0.0,
     "episodes": 256,
-    "successes": 32,
+    "successes": 19,
     "pass_share": 0.0
    },
    "attack_1v1": {
@@ -304,96 +303,96 @@
     "pass_share": 0.0
    },
    "loose_ball": {
-    "success": 0.28125,
+    "success": 0.2890625,
     "conceded": 0.0,
     "episodes": 256,
-    "successes": 72,
+    "successes": 74,
     "pass_share": 0.0
    }
   },
   "passing_battery": {
    "attack_2v1": {
-    "success": 0.09765625,
+    "success": 0.1015625,
     "conceded": 0.0,
     "episodes": 256,
-    "successes": 25,
+    "successes": 26,
     "pass_share": 1.0
    },
    "one_two": {
-    "success": 0.078125,
+    "success": 0.125,
     "conceded": 0.0,
     "episodes": 256,
-    "successes": 20,
+    "successes": 32,
     "pass_share": 1.0
    },
    "through_ball": {
-    "success": 0.00390625,
+    "success": 0.0,
     "conceded": 0.0,
     "episodes": 256,
-    "successes": 1,
-    "pass_share": 1.0
+    "successes": 0,
+    "pass_share": NaN
    },
    "redirect": {
-    "success": 0.0078125,
+    "success": 0.01171875,
     "conceded": 0.0,
     "episodes": 256,
-    "successes": 2,
+    "successes": 3,
     "pass_share": 1.0
    },
    "attack_2v2": {
-    "success": 0.0078125,
+    "success": 0.0,
     "conceded": 0.0,
     "episodes": 256,
-    "successes": 2,
-    "pass_share": 1.0
+    "successes": 0,
+    "pass_share": NaN
    }
   },
   "defense_battery": {
    "defend_2v2": {
     "success": 0.9375,
-    "conceded": 0.0078125,
+    "conceded": 0.01171875,
     "episodes": 256,
     "successes": 240,
     "pass_share": 0.029166666666666667
    },
    "defend_4v4": {
     "success": 0.85546875,
-    "conceded": 0.0078125,
+    "conceded": 0.0,
     "episodes": 256,
     "successes": 219,
-    "pass_share": 0.091324200913242
+    "pass_share": 0.045662100456621
    },
    "defend_restart": {
-    "success": 0.87890625,
-    "conceded": 0.0078125,
+    "success": 0.890625,
+    "conceded": 0.01953125,
     "episodes": 256,
-    "successes": 225,
-    "pass_share": 0.16
+    "successes": 228,
+    "pass_share": 0.14035087719298245
    }
   },
   "situation_battery": {
    "situation_attack": {
-    "success": 0.015625,
-    "conceded": 0.00390625,
-    "episodes": 256,
-    "successes": 4,
-    "pass_share": 1.0
-   },
-   "restart_attack": {
-    "success": 0.0625,
+    "success": 0.01953125,
     "conceded": 0.0,
     "episodes": 256,
-    "successes": 16,
-    "pass_share": 0.6875
+    "successes": 5,
+    "pass_share": 0.6
+   },
+   "restart_attack": {
+    "success": 0.046875,
+    "conceded": 0.0,
+    "episodes": 256,
+    "successes": 12,
+    "pass_share": 0.5833333333333334
    },
    "transition": {
-    "success": 0.0,
-    "conceded": 1.0,
-    "episodes": 2,
+    "success": NaN,
+    "conceded": NaN,
+    "episodes": 0,
     "successes": 0,
     "pass_share": NaN
    }
   }
  },
- "seconds": 76.21900629997253
+ "seconds": 73.32243061065674
 }

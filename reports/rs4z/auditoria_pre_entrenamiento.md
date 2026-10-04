@@ -67,20 +67,20 @@ Desviaciones aceptadas (sin efecto relevante en el aprendizaje): la sala cobra l
 - **Ejecución**: navegación de órbita alrededor de la pelota (no la toca al rodearla) y frenado por velocidad deseada.
 - **Saques**: ejecutor por costo, espera de apoyos, impulsos reales del córner (×1,98) y del saque de arco (×2,71).
 
-Validación (`reports/rs4z/rspro_ladder.json`, 256 partidos de 3 min por par, ambos colores, estilos al azar; versión final con contención, relevo y salida sólo con ventaja clara, §9.2; entre paréntesis la versión original):
+Validación (`reports/rs4z/rspro_ladder.json`, 256 partidos de 3 min por par, ambos colores, estilos al azar; versión final con contención, relevo, salida sólo con ventaja clara y zona de tiro sin tirarse, §9.2; entre paréntesis la versión original):
 
 | Par | Puntos del nivel superior (IC95) |
 |---|---|
-| L1–L0 | 0,57 (0,54) |
+| L1–L0 | 0,54 (0,54) |
 | L2–L1 | 0,67 (0,67) |
-| L3–L2 | 0,59 (0,65) |
+| L3–L2 | 0,62 (0,65) |
 | L4–L3 | 0,55, IC 0,51–0,58 (0,57) |
-| L5–L4 | 0,53, IC 0,50–0,57 (0,58) |
-| L5–L3 / L2 / L1 / L0 | 0,58 / 0,72 / 0,84 / 0,90 (0,65 / 0,77 / 0,90 / 0,92) |
+| L5–L4 | 0,53, IC 0,49–0,56 (0,58) |
+| L5–L3 / L2 / L1 / L0 | 0,62 / 0,70 / 0,84 / 0,91 (0,65 / 0,77 / 0,90 / 0,92) |
 
-La parte alta se comprimió: con la defensa que contiene hay menos goles y más empates, así que los puntos se acercan a 0,5 aunque haya diferencia de nivel. El ritmo de goles de L5 contra L5 es 0,072 por minuto, igual al humano (0,071): el RS4 real también se juega con muy pocos goles.
+La parte alta se comprimió: con la defensa que contiene hay menos goles y más empates, así que los puntos se acercan a 0,5 aunque haya diferencia de nivel. El ritmo de goles de L5 contra L5 es 0,074 por minuto, igual al humano (0,071): el RS4 real también se juega con muy pocos goles.
 
-Estructura L5 contra L5 frente a humanos (69 grabaciones, mismas definiciones): dispersión 149 (humano 166), profundidad 322 (362), anchura 256 (260), distancias a la pelota 112/223/301/416 (96/203/283/392), aglomeración ~7% (4%), flotación junto al arco 0%; pases por pérdida 0,46 (1,15), tiros 0,16 por minuto (0,47), goles 0,072 por minuto (0,071).
+Estructura L5 contra L5 frente a humanos (69 grabaciones, mismas definiciones): dispersión 150 (humano 166), profundidad 323 (362), anchura 257 (260), distancias a la pelota 113/224/301/416 (96/203/283/392), aglomeración ~7% (4%), flotación junto al arco 0%; pases por pérdida 0,48 (1,15), tiros 0,16 por minuto (0,47), goles 0,074 por minuto (0,071).
 
 Baterías de referencia (L5 en los lugares del aprendiz, 512 episodios): control 0,92/0,67/0,83/0,91 (tocar, arco vacío, conducir y definir, recibir y definir); duelos: tiro contra el último hombre 0,23, defender 1v1 0,92, pelota dividida 0,37; 2v1 0,44 y pared 0,36, con pase en 98–99% de los goles; defensa 2v2/4v4/saques 0,88/0,86/0,90.
 
@@ -98,7 +98,7 @@ Las compuertas sólo juzgan tareas donde la referencia resuelve ≥15%.
 |---|---|---|---|---|
 | S1 control | 1v0: tocar, arco vacío, conducir y definir, recibir y definir | 0,3B | gol/ejercicio + Φ_ball (se retira) + Φ_threat | control ≥ 0,90×L5 (cada tarea ≥ 0,75×) |
 | S2 pelota y 1v1 | tiro contra último hombre, 1v1 ataque/defensa, pelota dividida, 1v1 completo | 0,5B | + Φ_access | duelos ≥ 0,85×L5; 1v1 contra L5 ≥ 55% (IC90 > 50%) |
-| S3 tiro, pase, rebotes | 2v1, pared, profundidad, desvío, 2v2 ofensivo (2 aprendices) | 0,7B | idem | pases ≥ 0,80×L5 y, en 2v1 y pared, ≥50% de los goles con un pase entre aprendices |
+| S3 tiro, pase, rebotes | 2v1, pared, profundidad, desvío, 2v2 ofensivo (2 aprendices); pared y profundidad exigen el pase | 0,7B | idem | batería de pases contra defensores L5 ≥ 0,80×L5 y, en 2v1, ≥50% de los goles con un pase entre aprendices |
 | S4 defensa | 2v2, 4v4 y saques en contra; 2v2 completo | 0,8B | Φ_access → 0 | defensa ≥ 0,80×L5, goles recibidos ≤ 1,1×L5; detectores 2v2 |
 | S5 cooperación 4v4 | 4v4 contra la escalera, 4v3, 4v2, 3v4, estados humanos, saques, transiciones; 30% espejo | 2,5B | + resultado ±0,3; Φ_threat → 0 | ≥60% contra L5 (IC90 >50%), ≥50% contra el estilo reservado; saques propios: ≤2% tardan ≥600 ticks y la mediana de cada tipo ≤2× la humana; detectores 4v4 |
 | S6 liga | espejo 45%, PFSP 25%, RS-Pro 20%, exploiters 10%; 15% compañeros scripted | 7,5B | sólo goles y resultado | ≥75% contra L5, ≥65% contra el reservado, brecha visto−reservado ≤10 pp, detectores 4v4 en banda |
@@ -147,9 +147,9 @@ Las compuertas sólo juzgan tareas donde la referencia resuelve ≥15%.
   - estructura y perfil de distancias;
   - detectores de aglomeración, colgado, flotación junto al arco, quietud y oscilación;
   - duración de saques.
-- **Baterías reproducibles** (`eval/rs4z/batteries.py`): mismas semillas para el candidato y la referencia. Las compuertas viven en `eval/rs4z/gates.py` y la calibración congelada en `reports/rs4z/gates.json` (huella de código `c31a5318ce90e236`).
+- **Baterías reproducibles** (`eval/rs4z/batteries.py`): mismas semillas para el candidato y la referencia. Las compuertas viven en `eval/rs4z/gates.py` y la calibración congelada en `reports/rs4z/gates.json` (huella de código `08ec29997c680485`).
 - **Tests**: suite completa 876 aprobados, 44 omitidos al 2026-10-04 antes de §9.2; RS4-Z hoy 86 (793 anteriores + 83 RS4-Z en `tests/rs4z`: paridad del árbitro, reglas v2, obs y simetría, ejercicios, rewards y tramposos, RS-Pro, entrenador, liga, mezcla del curriculum y compuertas).
-- **Tramposos contra RS-Pro L5** (128 partidos cada uno, versión final): quieto 1,00; oscilar 1,00; todos persiguen 0,97; pelotazos 1,00; sacarla afuera 0,79; bloque en el arco 0,97; delantero colgado 1,00; trabar saques 0,99; azar 0,99 (puntos de L5).
+- **Tramposos contra RS-Pro L5** (128 partidos cada uno, versión final): quieto 1,00; oscilar 1,00; todos persiguen 0,96; pelotazos 1,00; sacarla afuera 0,78; bloque en el arco 0,97; delantero colgado 1,00; trabar saques 0,97; azar 0,99 (puntos de L5).
 - **Humo en Pod** (RTX 3090, 1024 partidos, pesos aleatorios, `runs/rs4z/smoke_s1_gpu`):
   - **Corrección previa**: con minilotes de 32k (6 pasos por iteración) y Φ_ball = 0,05 la política no se movía (KL ~3e-4 a los 8,5M). Con minilotes de 8192 × 4 épocas y Φ_ball = 0,5 (PBRS, no cambia el óptimo) aprende.
   - Prueba aislada "tocar la pelota": éxito de 7% a 82–84% en 6M muestras; entropía de 2,89 a 0,66; KL 0,002–0,01.
@@ -212,6 +212,20 @@ Segunda revisión (S2 retomado, a los ~25M de la etapa), dos fallos más:
 - **1v1 completo**: RS-Pro contra RS-Pro termina 0-0 en 94–98% de los partidos (su ataque 1v1 es muy débil). La red gana el 1v1 contra L5 (0,79) recuperando la pelota cuando RS-Pro ataca, así que la compuerta de S2 es alcanzable; en 4v4 RS-Pro tiene pases y apoyos y su estructura está validada.
 - **Calibración** nueva con huella `c31a5318ce90e236`: 2v1 0,31 y pared 0,31, 100% con pase; defender 1v1 0,98.
 - **Lección**: el RL encuentra en minutos cualquier regla rígida del scripted. Revisar repeticiones y la geometría de los éxitos en cada etapa (no sólo la tasa) es parte del procedimiento, no un extra.
+
+Tercera revisión (corrida nocturna, 2026-10-04): S2 aprobó (duelos 0,855; 1v1 contra L5 1,00) y **S3 agotó su presupuesto sin aprobar**. Éxito 0,93–1,00 en 2v1, pared, profundidad y 2v2 a dificultad máxima, pero con 0 pases en las nueve evaluaciones: la regla de pases lo frenó, como debía.
+
+- **Causa**: en zona de tiro (< 430 px) el último hombre iba al contacto, y un corte en diagonal lo dejaba pasado. La red ganaba así el 1v1 contra L5 el 81–95% y el 2v1 el 97–100%, sola.
+- **RS-Pro**: en zona de tiro el último hombre tapa el ángulo a 30–50 px del lado del arco, leyendo la conducción del poseedor (su velocidad), y sólo mete la pierna si la pelota le queda al alcance.
+  - Con la misma red, en solitario contra L5: 1v1 de 81–95% a 1–8%; 2v1 de 97–100% a 3–14%.
+  - Contra L4 y L3 sigue siendo posible (32–79%).
+  - RS-Pro L5 atacando con pases gana el 2v1 0,26–0,29 contra cualquier nivel, así que contra L5 pasar rinde más que gambetear.
+- **Ejercicios**: la pared y el pase en profundidad exigen un pase entre aprendices antes del gol (la tarea es el pase; un gol en solitario no la cumple). El 2v1 y el 2v2 siguen abiertos.
+- **Compuerta de S3**:
+  - la batería de pases usa defensores L5 (contra L3 gambetear sigue siendo razonable y "elige pasar" era ambiguo);
+  - el 2v1 exige ≥50% de goles con pase;
+  - referencia: 2v1 0,30 y pared 0,27, 100% con pase;
+  - calibración `08ec29997c680485`.
 
 ## 10. Riesgos e incertidumbres abiertas
 

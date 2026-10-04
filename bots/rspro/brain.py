@@ -656,7 +656,7 @@ def decide(n, team, seed, table, pos, vel, active, kick_cancel, ctrl, ri_team, r
             hold = contain and d_bg > 430.0 and t_own > 3.0 and t_opp - t_own < 20.0
             if pressing or hold:
                 out[lead] = _press(n, seed, dec, lead, px, py, pvx, pvy, bx, by, bvx, bvy, own_gx, kick_cancel,
-                                   lvl, sty, mem_i, traj, contain)
+                                   lvl, sty, mem_i, traj, contain, opp_win)
             else:
                 out[lead] = _carrier(n, team, seed, dec, table, lead, px, py, pvx, pvy, bx, by, bvx, bvy, ix[lead],
                                      iy[lead], t_int[lead], own_idx, n_own, opp_x, opp_y, opp_vx, opp_vy, n_opp,
@@ -729,7 +729,7 @@ def safe_clear(px, py, bx, by, own_gx):
 
 @njit(cache=True)
 def _press(n, seed, dec, me, px, py, pvx, pvy, bx, by, bvx, bvy, own_gx, kick_cancel, lvl, sty, mem_i, traj,
-           contain):
+           contain, carrier):
     """Presionante sin la pelota: ir a la pelota por el lado del arco propio (bloquear la conducción) y
     disputarla con una patada de quite cuando no la manda hacia el arco propio.
 
@@ -739,12 +739,20 @@ def _press(n, seed, dec, me, px, py, pvx, pvy, bx, by, bvx, bvy, own_gx, kick_ca
     y el 2v1 se resuelve pasando. Una pelota suelta que el defensor gana no llega acá (la fase deja de ser
     de posesión rival y va a disputarla); una que el poseedor sigue ganando no es motivo para salir: el RL
     aprendió a alejarse de la pelota para hacerlo salir y desbordarlo (2026-10-04).
+
+    En zona de tiro, el último hombre no se tira al contacto: tapa el ángulo a 30–50 px del lado del arco,
+    leyendo la conducción del poseedor (su velocidad), y sólo mete la pierna si la pelota le queda al alcance.
+    Ir al contacto lo dejaba pasado con un corte en diagonal (el RL ganaba así el 1v1 el 81–95%, S3 2026-10-04).
     """
     spd = lvl[L_SPEED]
     # pelota un poco adelantada (el poseedor la empuja)
     t = 4
     cbx = traj[t, 0]
     cby = traj[t, 1]
+    if contain and carrier >= 0 and math.hypot(px[carrier] - bx, py[carrier] - by) < R_P + R_B + 20.0:
+        # pelota conducida: leer hacia dónde va el poseedor (lo empuja con el cuerpo)
+        cbx = bx + pvx[carrier] * 6.0
+        cby = by + pvy[carrier] * 6.0
     gdx = own_gx - cbx
     gdy = -cby
     gd = math.sqrt(gdx * gdx + gdy * gdy) + 1e-9
@@ -752,6 +760,10 @@ def _press(n, seed, dec, me, px, py, pvx, pvy, bx, by, bvx, bvy, own_gx, kick_ca
     arrive = 1.2
     if contain and gd > 430.0:
         off = 70.0 + _clip((gd - 430.0) / 320.0, 0.0, 1.0) * 40.0
+        arrive = 0.0
+    elif contain:
+        # zona de tiro: tapar el ángulo sin tirarse (30 px junto al arco, 50 px al borde de la zona)
+        off = 30.0 + 20.0 * _clip((gd - 200.0) / 230.0, 0.0, 1.0)
         arrive = 0.0
     elif d_me < 140.0:
         # cerca: contra la pelota del lado del arco

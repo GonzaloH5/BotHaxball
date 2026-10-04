@@ -20,7 +20,8 @@ from .runner import env_sample
 BATTERIES = {
     "control_battery": dict(tasks=("touch", "empty_goal", "carry_goal", "receive_shot"), level=0),
     "duel_battery": dict(tasks=("shot_vs_last", "attack_1v1", "defend_1v1", "loose_ball"), level=3),
-    "passing_battery": dict(tasks=("attack_2v1", "one_two", "through_ball", "redirect", "attack_2v2"), level=3),
+    # defensores L5: contra L3 gambetear solo sigue siendo razonable y la medición de "elige pasar" es ambigua
+    "passing_battery": dict(tasks=("attack_2v1", "one_two", "through_ball", "redirect", "attack_2v2"), level=5),
     "defense_battery": dict(tasks=("defend_2v2", "defend_4v4", "defend_restart"), level=4),
     "situation_battery": dict(tasks=("situation_attack", "restart_attack", "transition"), level=4),
 }
