@@ -84,6 +84,9 @@ TASKS = {t.name: t for t in [
     Task("restart_take", "S4", 2, 2, "restart_take", timeout=480, success="exec", end_on_own_out=False,
          opp_levels=(1, 4), notes="ejecutar un saque propio (lateral, córner, saque de arco, inicial) antes del plazo; "
                                   "sin esto, en partido los saques vencían y el equipo se replegaba detrás de su arco"),
+    Task("restart_take4", "S5", 4, 4, "restart_take", timeout=480, success="exec", end_on_own_out=False,
+         opp_levels=(2, 5), notes="saque propio en 4v4: lo aprendido en 2v2 no se trasladaba (5% ejecutados en 4v4, "
+                                  "~180 saques vencidos por iteración al empezar S5)"),
     # ------------------------------------------------------------- S5 cooperación 4v4 y situaciones
     Task("match_4v4", "S5", 4, 4, "kickoff", match_ticks=3600 * 3, opp_levels=(1, 5)),
     Task("match_4v3", "S5", 4, 3, "kickoff", match_ticks=3600 * 3, opp_levels=(2, 5), notes="superioridad"),
@@ -93,8 +96,10 @@ TASKS = {t.name: t for t in [
          end_on_own_out=False, concede_outcome=-1.0, opp_levels=(2, 5), notes="estado humano de juego abierto"),
     Task("situation_attack", "S5", 4, 4, "recorded_attack", timeout=720, timeout_outcome="fail", success="goal",
          end_on_own_out=False, concede_outcome=-1.0, opp_levels=(2, 5), notes="estado humano de ataque"),
+    # gol en contra = 0 (no −1): con −1, dejar vencer el saque (0 sin riesgo) le ganaba a sacar y perder la
+    # pelota; la red ejecutaba el 5% de los saques (2026-10-04). Es un ejercicio de ataque.
     Task("restart_attack", "S5", 4, 4, "restart_attack", timeout=720, timeout_outcome="fail", success="goal",
-         end_on_own_out=False, concede_outcome=-1.0, opp_levels=(2, 5), notes="saque propio en campo rival"),
+         end_on_own_out=False, concede_outcome=0.0, opp_levels=(2, 5), notes="saque propio en campo rival"),
     Task("transition", "S5", 4, 4, "transition", timeout=600, timeout_outcome="truncate", success="goal",
          end_on_own_out=False, concede_outcome=-1.0, opp_levels=(2, 5), notes="pelota recién recuperada"),
     # ------------------------------------------------------------- S6 liga (rivales del pool, no RS-Pro sólo)
@@ -463,7 +468,7 @@ def _defend_restart(d, n, lt, diff):
 
 
 def _restart_take(d, n, lt, diff):
-    """Saque propio con los aprendices a 100–700 px del punto (alcanzable antes del plazo) y dos rivales."""
+    """Saque propio con los aprendices a 100–700 px del punto (alcanzable antes del plazo) y los rivales del plantel."""
     env, rng = d.env, d.rng
     kind = int(rng.choice([C.LATERAL, C.CORNER, C.GOAL_KICK, 0], p=[0.45, 0.15, 0.2, 0.2]))
     s = 1.0 if lt == 0 else -1.0
@@ -474,11 +479,13 @@ def _restart_take(d, n, lt, diff):
         spot = (1140.0, sy * 660.0)
     else:
         spot = (-1030.0, sy * 180.0) if kind == C.GOAL_KICK else (0.0, 0.0)
+    n_own = int(env.active[n, team_slots(lt, 4)].sum())
+    n_opp = int(env.active[n, team_slots(1 - lt, 4)].sum())
     own = []
-    for _ in range(2):
+    for _ in range(n_own):
         a, r = d._u(0, 2 * np.pi), d._u(100, 700)
         own.append((float(np.clip(spot[0] + r * np.cos(a), -1100, 1100)), float(np.clip(spot[1] + r * np.sin(a), -620, 620))))
-    opp = [(d._u(-900, 900), d._u(-500, 500)) for _ in range(2)]
+    opp = [(d._u(-900, 900), d._u(-500, 500)) for _ in range(n_opp)]
     d._place(n, lt, (0.0, 0.0), own, opp)
     if kind == 0:
         env.reset_kickoff([n], lt)
