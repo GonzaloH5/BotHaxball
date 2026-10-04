@@ -646,7 +646,7 @@ def reset_kickoff(ko_team, pos, vel, mask, group, radius, inv, kick_cancel, grav
 
 
 # ============================================================================ decisión
-@njit(cache=True, parallel=True)
+@njit(cache=True, parallel=True, nogil=True)
 def decision_step(pos, vel, mask, group, radius, inv, bcoef, damping, kick_cancel, grav, active, team,
                   spawn_rank, ri, rf, outside, act_hist, delay, rand,
                   fp, frame_skip, prm, flags, deadline, ko_deadline, sd_home, base_mask, d_pos,

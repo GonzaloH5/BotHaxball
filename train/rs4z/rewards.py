@@ -84,7 +84,7 @@ def _xt_lookup(grid, x0, dx, y0, dy, x, y):
 
 
 # ----------------------------------------------------------------------------- potenciales
-@njit(cache=True, parallel=True)
+@njit(cache=True, parallel=True, nogil=True)
 def _access(pos, vel, active, fp, out):
     """Φ_access por partido para el rojo: tanh((t_azul − t_rojo)/10) con tiempo de llegada a la pelota."""
     N = pos.shape[0]
@@ -109,7 +109,7 @@ def _access(pos, vel, active, fp, out):
             out[n] = math.tanh((min(best[1], 400.0) - min(best[0], 400.0)) / 10.0)
 
 
-@njit(cache=True, parallel=True)
+@njit(cache=True, parallel=True, nogil=True)
 def _crowd(pos, active, fp, out):
     N = pos.shape[0]
     for n in prange(N):

@@ -57,7 +57,7 @@ def sample_style(rng, reserved=False):
 BUFFER = 12   # decisiones de historia para la percepción retrasada (≥ 30 ticks)
 
 
-@njit(cache=True, parallel=True)
+@njit(cache=True, parallel=True, nogil=True)
 def _act_all(seed, table, pos9, vel9, buf_pos, buf_vel, head, active, kick_cancel, ctrl, ri, rf, grav, lvl, sty,
              mem_i, mem_f, traj, out):
     N = pos9.shape[0]

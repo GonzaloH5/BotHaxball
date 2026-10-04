@@ -1,6 +1,6 @@
 {
  "version": "RS4-Z-gates-2",
- "code_hash": "df066e62d1a4df68",
+ "code_hash": "6458bb748b0bd820",
  "episodes": 512,
  "seed": 0,
  "rules": {
@@ -394,5 +394,5 @@
    }
   }
  },
- "seconds": 76.7077407836914
+ "seconds": 97.83478713035583
 }

@@ -128,3 +128,17 @@ def test_resume_from_a_checkpoint_without_newer_tasks(trainer, tmp_path):
     other = Trainer(Config(run="pytest_rs4z_c", envs=8, rollout=16, device="cpu", minibatch=512, samples=1e12))
     other.load(path)
     assert "restart_take" in other.difficulty and "restart_take" in other.success
+
+
+def test_overlapped_training_runs_and_syncs_the_acting_copy():
+    """Superposición: aprende la iteración k en un hilo mientras juega la k+1; al terminar, la copia que juega
+    queda igual a la que aprende y se contaron las muestras de cada actualización."""
+    tr = Trainer(Config(run="pytest_rs4z_overlap", envs=8, rollout=8, device="cpu", minibatch=256, samples=400,
+                        overlap=True, eval_every=1e12))
+    assert tr.actor is not tr.model
+    before = [p.clone() for p in tr.model.parameters()]
+    tr.train()
+    assert tr.samples >= 400 and tr.iter >= 2
+    assert any(not torch.equal(a, b) for a, b in zip(before, tr.model.parameters()))
+    for a, m in zip(tr.actor.parameters(), tr.model.parameters()):
+        assert torch.equal(a, m)

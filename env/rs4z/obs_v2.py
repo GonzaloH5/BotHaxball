@@ -60,7 +60,7 @@ def _clip1(v):
     return 1.0 if v > 1.0 else (0.0 if v < 0.0 else v)
 
 
-@njit(cache=True, parallel=True)
+@njit(cache=True, parallel=True, nogil=True)
 def build_obs(pos, vel, kick_cancel, active, team, ri, rf, radius, act_hist, applied, delay, fp, out):
     """out[n, p, :] = observación del jugador p del partido n (ceros si no juega)."""
     N = pos.shape[0]
@@ -182,7 +182,7 @@ def build_obs(pos, vel, kick_cancel, active, team, ri, rf, radius, act_hist, app
                 row[base + 8] = 1.0 if (applied[n, q] >= 9 and not kick_cancel[n, q]) else 0.0
 
 
-@njit(cache=True, parallel=True)
+@njit(cache=True, parallel=True, nogil=True)
 def build_critic(active, team, ri, delay, deadline, out):
     """Features privilegiadas sólo para el crítico (por jugador, en el marco de su equipo)."""
     N = active.shape[0]

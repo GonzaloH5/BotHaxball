@@ -14,6 +14,7 @@ import argparse
 import copy
 import json
 import math
+import threading
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -72,6 +73,9 @@ class Config:
     exploiter_of: str = ""         # ruta del checkpoint principal: entrenar un exploiter contra él (S6)
     exploiter_accept: float = 0.60  # un exploiter entra a la liga del principal si le saca ≥ 60% de los puntos
     exploiter_eval_games: int = 128
+    overlap: bool = False          # aprender (device) mientras se juega la iteración siguiente (rollout_device)
+    rollout_device: str = ""       # dispositivo de la copia que juega (vacío: el mismo que aprende)
+    tf32: bool = True              # matemática TF32 en GPU Ampere+ (actualización ~17% más rápida)
     match_min_minutes: float = 3.0  # duración de reloj de los partidos desde S5 (uniforme; la sala juega ~10 min)
     match_max_minutes: float = 10.0
 
@@ -84,6 +88,11 @@ class Trainer:
         self.rng = np.random.default_rng(cfg.seed)
         torch.manual_seed(cfg.seed)
         self.device = torch.device(cfg.device if (cfg.device != "cuda" or torch.cuda.is_available()) else "cpu")
+        rd = cfg.rollout_device or cfg.device
+        self.rollout_device = torch.device(rd if (not rd.startswith("cuda") or torch.cuda.is_available()) else "cpu")
+        if cfg.tf32 and self.device.type == "cuda":
+            torch.backends.cuda.matmul.allow_tf32 = True
+            torch.backends.cudnn.allow_tf32 = True
         N = cfg.envs
         self.env = RS4ZEnv(N, contract="v2", seed=cfg.seed, deadline=C.TRAINING_DEADLINE,
                            kickoff_deadline=C.TRAINING_DEADLINE, max_delay=12)
@@ -101,7 +110,7 @@ class Trainer:
         self.rewards = Rewards(self.env, STAGES[self.stage_i].gamma, self.xt)
         self.model = ActorCritic().to(self.device)
         self.opt = torch.optim.Adam(self.model.parameters(), lr=cfg.lr, eps=1e-5)
-        self.league = League(self.dir / "league", device=self.device)
+        self.league = League(self.dir / "league", device=self.rollout_device)
         if cfg.exploiter_of:
             # exploiter (AlphaStar): parte del principal y juega sólo contra el principal congelado
             cfg.exploiter_of = str(Path(cfg.exploiter_of).resolve())
@@ -134,7 +143,18 @@ class Trainer:
         self._last_snapshot = 0
         self.stop_reason = None
         self._apply_stage()
+        # copia que juega: con superposición, juega la iteración k+1 con la política k mientras aprende
+        self.actor = (copy.deepcopy(self.model).to(self.rollout_device)
+                      if (cfg.overlap or self.rollout_device != self.device) else self.model)
+        if self.actor is not self.model:
+            self.actor.eval()
         self.assign(np.arange(N))
+
+    def _sync_actor(self):
+        if self.actor is not self.model:
+            with torch.no_grad():
+                for a, m in zip(self.actor.parameters(), self.model.parameters()):
+                    a.copy_(m.detach().to(self.rollout_device, non_blocking=True))
 
     # ------------------------------------------------------------------ curriculum
     @property
@@ -273,9 +293,9 @@ class Trainer:
     # ------------------------------------------------------------------ rollout
     @torch.no_grad()
     def _policy(self, obs, crit):
-        x = torch.from_numpy(obs).to(self.device)
-        c = torch.from_numpy(crit).to(self.device)
-        logits, value = self.model(x, c)
+        x = torch.from_numpy(obs).to(self.rollout_device)
+        c = torch.from_numpy(crit).to(self.rollout_device)
+        logits, value = self.actor(x, c)
         dist = torch.distributions.Categorical(logits=logits)
         a = dist.sample()
         return a.cpu().numpy(), dist.log_prob(a).cpu().numpy(), value.cpu().numpy()
@@ -353,8 +373,8 @@ class Trainer:
                     fi = np.nonzero(sel)
                     if len(fi[0]):
                         with torch.no_grad():
-                            fv = self.model.value(torch.from_numpy(fo[fi]).to(self.device),
-                                                  torch.from_numpy(fc[fi]).to(self.device)).cpu().numpy()
+                            fv = self.actor.value(torch.from_numpy(fo[fi]).to(self.rollout_device),
+                                                  torch.from_numpy(fc[fi]).to(self.rollout_device)).cpu().numpy()
                         buf["final_val"][t][fi] = fv
             for n in ended:
                 name = TASK_NAMES[self.drills.st.task[n]]
@@ -389,8 +409,8 @@ class Trainer:
         li = np.nonzero((self.ctrl == LEARNER) & env.active)
         if len(li[0]):
             with torch.no_grad():
-                last_v[li] = self.model.value(torch.from_numpy(obs[li]).to(self.device),
-                                              torch.from_numpy(crit[li]).to(self.device)).cpu().numpy()
+                last_v[li] = self.actor.value(torch.from_numpy(obs[li]).to(self.rollout_device),
+                                              torch.from_numpy(crit[li]).to(self.rollout_device)).cpu().numpy()
         return buf, last_v, stats
 
     # ------------------------------------------------------------------ PPO
@@ -527,6 +547,7 @@ class Trainer:
         self.ep_len.update(s.get("ep_len", {}))
         self._refresh_len_priors()
         self._apply_stage(min(1.0, self.stage_samples / self.stage.budget))
+        self._sync_actor()
         self.assign(np.arange(self.env.N))
 
     # ------------------------------------------------------------------ bucle
@@ -534,12 +555,39 @@ class Trainer:
         cfg = self.cfg
         budget = self._budget()
         log_path = self.dir / "log.jsonl"
+        pending = None
+        if cfg.overlap and self.samples < budget:
+            pending = self.rollout()
         while self.samples < budget and self.stop_reason is None:
             t0 = time.time()
-            buf, last_v, stats = self.rollout()
-            t1 = time.time()
-            logs, rows = self.update(buf, last_v)
-            t2 = time.time()
+            if cfg.overlap:
+                # aprender de la iteración k (device) mientras se juega la k+1 con la política k (rollout_device)
+                buf, last_v, stats = pending
+                box = {}
+
+                def job():
+                    try:
+                        u0 = time.time()
+                        box["out"] = self.update(buf, last_v)
+                        box["secs"] = time.time() - u0
+                    except BaseException as exc:      # se re-lanza en el hilo principal
+                        box["err"] = exc
+                th = threading.Thread(target=job, daemon=True)
+                th.start()
+                pending = self.rollout()
+                t1 = time.time()
+                th.join()
+                if "err" in box:
+                    raise box["err"]
+                logs, rows = box["out"]
+                self._sync_actor()
+                t2 = time.time()
+                t1 = t2 - box["secs"]       # para el registro: update_s es el tiempo propio de aprender
+            else:
+                buf, last_v, stats = self.rollout()
+                t1 = time.time()
+                logs, rows = self.update(buf, last_v)
+                t2 = time.time()
             self.samples += rows
             self.stage_samples += rows
             self.iter += 1
