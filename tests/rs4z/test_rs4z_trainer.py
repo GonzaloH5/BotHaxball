@@ -142,3 +142,27 @@ def test_overlapped_training_runs_and_syncs_the_acting_copy():
     assert any(not torch.equal(a, b) for a, b in zip(before, tr.model.parameters()))
     for a, m in zip(tr.actor.parameters(), tr.model.parameters()):
         assert torch.equal(a, m)
+
+
+def test_cli_booleans_keep_dataclass_defaults(monkeypatch):
+    """La línea de comandos no apaga en silencio los booleanos que valen True por defecto (tf32, compile)."""
+    import argparse
+    import train.rs4z.run as R
+    captured = {}
+
+    class Stop(Exception):
+        pass
+
+    def fake_trainer(cfg):
+        captured["cfg"] = cfg
+        raise Stop
+    monkeypatch.setattr(R, "Trainer", fake_trainer)
+    monkeypatch.setattr("sys.argv", ["run", "--run", "x", "--overlap"])
+    with pytest.raises(Stop):
+        R.main()
+    cfg = captured["cfg"]
+    assert cfg.overlap and cfg.tf32 and cfg.compile and not cfg.smoke
+    monkeypatch.setattr("sys.argv", ["run", "--run", "x", "--no-compile"])
+    with pytest.raises(Stop):
+        R.main()
+    assert not captured["cfg"].compile and captured["cfg"].tf32

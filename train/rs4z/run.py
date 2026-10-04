@@ -715,7 +715,8 @@ def main():
     ap = argparse.ArgumentParser()
     for f in Config.__dataclass_fields__.values():
         if f.type in ("bool", bool):
-            ap.add_argument(f"--{f.name.replace('_', '-')}", action="store_true")
+            # respeta el valor por defecto del dataclass (tf32/compile son True); se apagan con --no-<nombre>
+            ap.add_argument(f"--{f.name.replace('_', '-')}", action=argparse.BooleanOptionalAction, default=f.default)
         else:
             ap.add_argument(f"--{f.name.replace('_', '-')}", type=type(f.default), default=f.default)
     ap.add_argument("--resume", action="store_true")
