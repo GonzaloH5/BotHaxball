@@ -81,3 +81,16 @@ def test_save_and_resume(trainer, tmp_path):
     for k, v in trainer.model.state_dict().items():
         assert torch.equal(v, other.model.state_dict()[k])
     assert other.samples == trainer.samples and other.stage.name == trainer.stage.name
+
+
+def test_gate_confirmation_uses_a_fresh_seed(trainer, monkeypatch):
+    import eval.rs4z.gates as gates
+    seeds = []
+
+    def fake(stage, model, episodes, seed):
+        seeds.append(seed)
+        return dict(stage=stage, passed=True, summary={}, details={})
+    monkeypatch.setattr(gates, "evaluate_stage", fake)
+    a = trainer.check_gates()
+    b = trainer.check_gates(confirm=True)
+    assert not a["confirmation"] and b["confirmation"] and seeds[0] != seeds[1]

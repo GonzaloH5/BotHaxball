@@ -58,7 +58,8 @@ class Config:
     seed: int = 0
     start_stage: str = "S1"
     samples: float = 0.0           # techo total (0 = presupuesto del curriculum)
-    eval_every: float = 50e6
+    eval_every: float = 25e6       # intervalo mínimo entre evaluaciones de compuertas
+    eval_frac: float = 0.10        # ... y, como mínimo, este % del presupuesto de la etapa (≈ 8 por etapa)
     eval_min_frac: float = 0.25    # no evaluar compuertas antes de este % del presupuesto de la etapa
     ckpt_every: float = 25e6
     snapshot_every: float = 250e6
@@ -67,6 +68,10 @@ class Config:
     target_success: float = 0.6    # dificultad adaptativa: éxito buscado por tarea
     only_tasks: str = ""           # pruebas de humo: restringir la mezcla (lista separada por comas)
     exploiter_of: str = ""         # ruta del checkpoint principal: entrenar un exploiter contra él (S6)
+    exploiter_accept: float = 0.60  # un exploiter entra a la liga del principal si le saca ≥ 60% de los puntos
+    exploiter_eval_games: int = 128
+    match_min_minutes: float = 3.0  # duración de reloj de los partidos desde S5 (uniforme; la sala juega ~10 min)
+    match_max_minutes: float = 10.0
 
 
 class Trainer:
@@ -97,6 +102,7 @@ class Trainer:
         self.league = League(self.dir / "league", device=self.device)
         if cfg.exploiter_of:
             # exploiter (AlphaStar): parte del principal y juega sólo contra el principal congelado
+            cfg.exploiter_of = str(Path(cfg.exploiter_of).resolve())
             main = torch.load(cfg.exploiter_of, map_location=self.device, weights_only=False)
             self.model.load_state_dict(main["model"])
             self.league.add(self.model, int(main.get("samples", 0)))
@@ -112,6 +118,13 @@ class Trainer:
         self.is_match = np.zeros(N, dtype=bool)
         self.ball_task = np.zeros(N, dtype=bool)
         self.task_log = {t: [0, 0.0] for t in TASK_NAMES}
+        # duración media de episodio por tarea (decisiones): los pesos de etapa son fracciones de TIEMPO
+        # simulado, así que la probabilidad de iniciar una tarea es ∝ peso / duración (sin esto, los partidos
+        # de 3–10 min tapan a los ejercicios y al repaso). En partidos se estima la razón ticks reales / ticks
+        # de reloj (sin sesgo: los partidos cortos terminan primero) y se multiplica por la duración conocida.
+        self.match_ratio = {t: 1.1 for t in TASK_NAMES}
+        self.ep_len = {t: self._len_prior(TASKS[t]) for t in TASK_NAMES}
+        self.ep_steps = np.zeros(N, dtype=np.int64)
         self.history = []
         self._last_eval = 0
         self._last_ckpt = 0
@@ -135,10 +148,13 @@ class Trainer:
         self.rewards.gamma = st.gamma
 
     def _task_weights(self):
+        """Tareas de la etapa y su fracción buscada del tiempo simulado (incluye el repaso)."""
         st = self.stage
         if self.cfg.only_tasks:
             names = [t.strip() for t in self.cfg.only_tasks.split(",") if t.strip()]
             return names, np.full(len(names), 1.0 / len(names))
+        if self.cfg.exploiter_of:
+            return ["league_4v4"], np.ones(1)
         names = list(st.tasks)
         w = np.array([st.tasks[t] for t in names], dtype=np.float64)
         w /= w.sum()
@@ -149,14 +165,42 @@ class Trainer:
             w = np.concatenate([w, np.full(len(prev), st.retention / len(prev))])
         return names, w
 
+    def _task_probs(self):
+        """Probabilidad de iniciar cada tarea: peso de tiempo / duración media del episodio."""
+        names, w = self._task_weights()
+        p = w / np.array([self.ep_len[t] for t in names])
+        return names, p / p.sum()
+
+    def _refresh_len_priors(self):
+        """Al cambiar de etapa: partidos con la duración de reloj de la etapa nueva; ejercicios nunca
+        terminados con su duración a priori."""
+        for t in TASK_NAMES:
+            if not TASKS[t].timeout or self.task_log[t][0] == 0:
+                self.ep_len[t] = self._len_prior(TASKS[t])
+
+    def _full_matches(self):
+        return self.stage_i >= STAGE_INDEX["S5"]
+
+    def _len_prior(self, task):
+        if task.timeout:
+            return max(1.0, 0.6 * task.timeout / self.env.frame_skip)
+        ticks = task.match_ticks
+        if self._full_matches():
+            ticks = 1800 * (self.cfg.match_min_minutes + self.cfg.match_max_minutes)
+        return max(1.0, self.match_ratio[task.name] * ticks / self.env.frame_skip)
+
     def assign(self, rows):
         """Episodio nuevo en `rows`: tarea, rivales, compañeros, latencia y variante del mapa."""
         env, st, rng = self.env, self.stage, self.rng
-        names, w = self._task_weights()
+        names, w = self._task_probs()
         for n in np.atleast_1d(rows):
             task = TASKS[names[rng.choice(len(names), p=w)]]
             diff = self.difficulty[task.name]
-            self.drills.start([n], task.name, diff)
+            length = None
+            if task.match_ticks and self._full_matches():
+                length = int(rng.uniform(self.cfg.match_min_minutes, self.cfg.match_max_minutes) * 3600)
+            self.drills.start([n], task.name, diff, match_ticks=length)
+            self.ep_steps[n] = 0
             lt = int(self.drills.st.learner_team[n])
             ctrl = np.where(env.active[n], RSPRO, RSPRO)
             ctrl[team_slots(lt, task.n_own)] = LEARNER
@@ -223,7 +267,8 @@ class Trainer:
                    val=np.zeros((T, N, 8), np.float32), rew=np.zeros((T, N, 8), np.float32),
                    learn=np.zeros((T, N, 8), bool), term=np.zeros((T, N), bool), trunc=np.zeros((T, N), bool),
                    final_val=np.zeros((T, N, 8), np.float32))
-        stats = dict(goals=0, matches=0, drill_done=0, forfeits=0, reward_terms={})
+        stats = dict(goals=0, matches=0, drill_done=0, forfeits=0, stalled=0, reward_terms={},
+                     task_steps=np.zeros(len(TASK_NAMES), dtype=np.int64))
         obs = np.zeros((N, 8, OBS_DIM), np.float32)
         crit = np.zeros((N, 8, CRITIC_DIM), np.float32)
         out = np.zeros((N, 8), dtype=np.int64)
@@ -249,6 +294,8 @@ class Trainer:
             phi0 = self.rewards.potentials(self.ball_task)
             ev = env.step(out)
             self.bot.push(env)
+            self.ep_steps += 1
+            stats["task_steps"] += np.bincount(self.drills.st.task, minlength=len(TASK_NAMES))
             done, outcome, trunc = self.drills.check(ev)
             match_end = ev["match_end"] & self.is_match
             terminal = (done & ~trunc) | match_end
@@ -290,6 +337,16 @@ class Trainer:
                         buf["final_val"][t][fi] = fv
             for n in ended:
                 name = TASK_NAMES[self.drills.st.task[n]]
+                k = self.task_log[name][0]
+                rate = max(0.02, 1.0 / (k + 2))
+                if self.is_match[n]:
+                    obs_ratio = self.ep_steps[n] * env.frame_skip / max(1, env.ri[n, K.RI_LEN])
+                    self.match_ratio[name] += (float(obs_ratio) - self.match_ratio[name]) * rate
+                    self.ep_len[name] = self._len_prior(TASKS[name])
+                else:
+                    self.ep_len[name] += (float(self.ep_steps[n]) - self.ep_len[name]) * rate
+                if self.is_match[n] and not match_end[n]:
+                    stats["stalled"] += 1
                 ok = outcome[n] > 0.5 if not self.is_match[n] else (env.score[n, lt[n]] > env.score[n, 1 - lt[n]])
                 if self.is_match[n] and self.frozen_id[n] >= 0:
                     mine, theirs = env.score[n, lt[n]], env.score[n, 1 - lt[n]]
@@ -400,14 +457,18 @@ class Trainer:
         return self.cfg.samples if self.cfg.samples else sum(s.budget for s in STAGES)
 
     # ------------------------------------------------------------------ compuertas
-    def check_gates(self):
+    def check_gates(self, confirm=False):
+        """Evaluar las compuertas de la etapa. Una aprobación se confirma con otra semilla antes de avanzar
+        (evaluar ~8 veces por etapa sin confirmar inflaría la probabilidad de aprobar por ruido)."""
         from eval.rs4z.gates import evaluate_stage
         st = self.stage
         if not st.gates:
             return None
         cpu_model = copy.deepcopy(self.model).to("cpu")
-        result = evaluate_stage(st.name, cpu_model, episodes=self.cfg.gate_episodes, seed=1000 + self.iter)
+        seed = (50_000 if confirm else 1000) + self.iter
+        result = evaluate_stage(st.name, cpu_model, episodes=self.cfg.gate_episodes, seed=seed)
         result["samples"] = self.samples
+        result["confirmation"] = confirm
         with (self.dir / "gates.jsonl").open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(result) + "\n")
         return result
@@ -418,10 +479,16 @@ class Trainer:
                      model_config=self.model.config, samples=self.samples, stage=self.stage.name,
                      stage_samples=self.stage_samples, iter=self.iter, difficulty=self.difficulty,
                      success=self.success, ret=(self.ret_mean, self.ret_var, self.ret_count),
-                     rng=self.rng.bit_generator.state, league=self.league.state())
+                     rng=self.rng.bit_generator.state, league=self.league.state(), ep_len=self.ep_len,
+                     task_log=self.task_log, match_ratio=self.match_ratio)
         tmp = self.dir / (name + ".tmp")
         torch.save(state, tmp)
         tmp.replace(self.dir / name)
+        if name == "latest.pt":
+            # estado liviano para el supervisor (tools/rs4z_supervisor.py) sin cargar el checkpoint
+            status = dict(stage=self.stage.name, samples=int(self.samples), iter=self.iter, time=time.time(),
+                          stop_reason=self.stop_reason, exploiter_of=self.cfg.exploiter_of or None)
+            (self.dir / "status.json").write_text(json.dumps(status), encoding="utf-8")
 
     def load(self, path):
         s = torch.load(path, map_location=self.device, weights_only=False)
@@ -433,6 +500,10 @@ class Trainer:
         self.ret_mean, self.ret_var, self.ret_count = s["ret"]
         self.rng.bit_generator.state = s["rng"]
         self.league.load_state(s["league"])
+        self.task_log.update(s.get("task_log", {}))
+        self.match_ratio.update(s.get("match_ratio", {}))
+        self.ep_len.update(s.get("ep_len", {}))
+        self._refresh_len_priors()
         self._apply_stage(min(1.0, self.stage_samples / self.stage.budget))
         self.assign(np.arange(self.env.N))
 
@@ -455,6 +526,9 @@ class Trainer:
             row = dict(iter=self.iter, samples=self.samples, stage=self.stage.name, stage_progress=progress,
                        sps=rows / (t2 - t0), rollout_s=t1 - t0, update_s=t2 - t1, goals=stats["goals"],
                        matches=stats["matches"], drills=stats["drill_done"], forfeits=stats["forfeits"],
+                       stalled=stats["stalled"],
+                       share={TASK_NAMES[i]: round(float(v) / max(1, stats["task_steps"].sum()), 4)
+                              for i, v in enumerate(stats["task_steps"]) if v},
                        coefs=asdict(self.rewards.coefs),
                        success={k: round(v, 3) for k, v in self.success.items() if k in self.stage.tasks},
                        difficulty={k: round(v, 2) for k, v in self.difficulty.items() if k in self.stage.tasks},
@@ -470,14 +544,18 @@ class Trainer:
                 self._last_ckpt = self.samples
                 if self.league.merge_exploiters(self.dir / "exploiters.json"):
                     print("exploiters nuevos en la liga", flush=True)
-            if self.stage.name in ("S5", "S6", "S7") and self.samples - self._last_snapshot >= cfg.snapshot_every:
+            if (self.stage.name in ("S5", "S6", "S7") and not cfg.exploiter_of
+                    and self.samples - self._last_snapshot >= cfg.snapshot_every):
                 self.league.add(self.model, self.samples)
                 self._last_snapshot = self.samples
             if cfg.exploiter_of:
                 continue
-            if (progress >= cfg.eval_min_frac and self.samples - self._last_eval >= cfg.eval_every) or progress >= 1.0:
+            interval = max(cfg.eval_every, cfg.eval_frac * self.stage.budget)
+            if (progress >= cfg.eval_min_frac and self.samples - self._last_eval >= interval) or progress >= 1.0:
                 self._last_eval = self.samples
                 result = self.check_gates()
+                if result is not None and result["passed"]:
+                    result = self.check_gates(confirm=True)
                 if result is not None and result["passed"]:
                     print(f"compuertas de {self.stage.name} aprobadas: {result['summary']}", flush=True)
                     self.save(f"stage_{self.stage.name}.pt")
@@ -485,6 +563,7 @@ class Trainer:
                         self.stage_i += 1
                         self.stage_samples = 0
                         self._apply_stage()
+                        self._refresh_len_priors()
                     else:
                         self.stop_reason = "curriculum completo"
                 elif progress >= 1.0:
@@ -492,15 +571,39 @@ class Trainer:
                                         f"{None if result is None else result['summary']}")
         self.save()
         if cfg.exploiter_of:
-            # sumarlo a la liga del principal, marcado como exploiter
-            main_league = League(Path(cfg.exploiter_of).parent / "league", device="cpu")
-            state = torch.load(cfg.exploiter_of, map_location="cpu", weights_only=False).get("league")
-            if state:
-                main_league.load_state(state)
-            main_league.add(self.model, self.samples, exploiter=True)
-            (Path(cfg.exploiter_of).parent / "exploiters.json").write_text(
-                json.dumps(main_league.state(), indent=1), encoding="utf-8")
+            self._publish_exploiter()
         print("fin:", self.stop_reason or "presupuesto total", flush=True)
+
+    def _publish_exploiter(self):
+        """Evaluar al exploiter contra el principal congelado y, si lo explota, sumarlo a su liga.
+
+        `exploiters.json` (junto al checkpoint principal) acumula los aceptados y el historial; el principal
+        los incorpora en su siguiente guardado (`League.merge_exploiters`).
+        """
+        from eval.rs4z.gates import head_to_head
+        from eval.rs4z.net_controller import load_model
+        cfg = self.cfg
+        main_dir = Path(cfg.exploiter_of).parent
+        me = copy.deepcopy(self.model).to("cpu")
+        main = load_model(cfg.exploiter_of)
+        pts, ci = head_to_head(me, main, games=cfg.exploiter_eval_games, seed=cfg.seed + 101)
+        accepted = pts >= cfg.exploiter_accept
+        verdict = dict(run=cfg.run, main=cfg.exploiter_of, samples=int(self.samples), points_vs_main=round(pts, 3),
+                       ci90=[round(c, 3) for c in ci], accepted=bool(accepted))
+        path = main_dir / "exploiters.json"
+        data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else dict(members=[], history=[])
+        data.setdefault("history", []).append(verdict)
+        if accepted:
+            (main_dir / "league").mkdir(parents=True, exist_ok=True)
+            target = main_dir / "league" / f"exploiter_{cfg.run}_{int(self.samples)}.pt"
+            torch.save(dict(model=me.state_dict(), model_config=me.config, samples=self.samples), target)
+            data.setdefault("members", []).append(dict(path=str(target.resolve()), samples=int(self.samples),
+                                                       wins=1.0, games=2.0, exploiter=True))
+        tmp = path.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(data, indent=1), encoding="utf-8")
+        tmp.replace(path)
+        print(f"exploiter contra el principal: {pts:.3f} (IC90 {ci[0]:.3f}–{ci[1]:.3f}) → "
+              f"{'aceptado en la liga' if accepted else 'descartado'}", flush=True)
 
 
 def main():

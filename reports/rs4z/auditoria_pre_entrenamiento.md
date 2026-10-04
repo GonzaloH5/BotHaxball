@@ -1,6 +1,6 @@
 # Auditoría previa al entrenamiento RS4-Z (RS4 4v4 desde cero)
 
-Fecha: 2026-10-03. Rama `rs4z`. Plan aprobado: `~/.claude/plans/fallamos-catastroficamente-en-muchas-agile-whisper.md`.
+Fecha: 2026-10-03, actualizada el 2026-10-04 con el humo de liga, exploiters y compuertas. Rama `rs4z`. Plan aprobado: `~/.claude/plans/fallamos-catastroficamente-en-muchas-agile-whisper.md`.
 
 **Estado: infraestructura lista para pruebas largas; el entrenamiento largo NO se lanzó y requiere tu aprobación.**
 La sección 10 lista lo que todavía queda abierto.
@@ -14,7 +14,7 @@ La sección 10 lista lo que todavía queda abierto.
 | Scripted | RS-Pro (nuevo, numba) con niveles L0–L5 y estilos continuos | escalera monotónica; L5 le gana a L0 92%; estructura en bandas humanas |
 | Curriculum | 7 etapas con compuertas pre-registradas; 26 tareas | `train/rs4z/stages.py`, `reports/rs4z/gates.json` |
 | Rewards | goles ±1 + resultado ±0,3 + PBRS (xT humano, acceso, distancia en 1v0) con retiro | identidad telescópica y suma cero verificadas por test; tramposos sin ganancia |
-| Entrenador | PPO + crítico centralizado (MAPPO), inicio aleatorio, liga PFSP, compuertas | 66 tests RS4-Z; humo en Pod (sección 9) |
+| Entrenador | PPO + crítico centralizado (MAPPO), inicio aleatorio, liga PFSP, compuertas | 83 tests RS4-Z; humos en Pod (secciones 9 y 9.1) |
 | Despliegue | observación v2 portada a Node; export ONNX sin entradas privilegiadas | paridad obs 0,0; logits Node 6,7e-8 |
 
 ## 2. Problemas encontrados y correcciones
@@ -95,14 +95,17 @@ Las compuertas sólo juzgan tareas donde la referencia resuelve ≥15%.
 | Etapa | Tareas | Muestras (techo) | Rewards | Compuerta (pre-registrada) |
 |---|---|---|---|---|
 | S1 control | 1v0: tocar, arco vacío, conducir y definir, recibir y definir | 0,3B | gol/ejercicio + Φ_ball (se retira) + Φ_threat | control ≥ 0,90×L5 (cada tarea ≥ 0,75×) |
-| S2 pelota y 1v1 | tiro contra último hombre, 1v1 ataque/defensa, pelota dividida, 1v1 completo | 0,5B | + Φ_access | duelos ≥ 0,85×L5; 1v1 contra L3 ≥ 55% |
+| S2 pelota y 1v1 | tiro contra último hombre, 1v1 ataque/defensa, pelota dividida, 1v1 completo | 0,5B | + Φ_access | duelos ≥ 0,85×L5; 1v1 contra L5 ≥ 55% (IC90 > 50%) |
 | S3 tiro, pase, rebotes | 2v1, pared, profundidad, desvío, 2v2 ofensivo (2 aprendices) | 0,7B | idem | pases ≥ 0,80×L5 |
 | S4 defensa | 2v2, 4v4 y saques en contra; 2v2 completo | 0,8B | Φ_access → 0 | defensa ≥ 0,80×L5, goles recibidos ≤ 1,1×L5; detectores 2v2 |
-| S5 cooperación 4v4 | 4v4 contra la escalera, 4v3, 4v2, 3v4, estados humanos, saques, transiciones; 30% espejo | 2,5B | + resultado ±0,3; Φ_threat → 0 | ≥60% contra L5 (IC90 >50%), ≥50% contra el estilo reservado, saques vencidos ≤2%, detectores 4v4 |
-| S6 liga | espejo 45%, PFSP 25%, RS-Pro 20%, exploiters 10%; 15% compañeros scripted | 7,5B | sólo goles y resultado | ≥75% contra L5, ≥65% contra el reservado |
-| S7 robustez | latencia de cliente 70%, compañeros ad-hoc, variantes | 1,0B | idem | pérdida ≤10 pp con 8 ticks de latencia |
+| S5 cooperación 4v4 | 4v4 contra la escalera, 4v3, 4v2, 3v4, estados humanos, saques, transiciones; 30% espejo | 2,5B | + resultado ±0,3; Φ_threat → 0 | ≥60% contra L5 (IC90 >50%), ≥50% contra el estilo reservado; saques propios: ≤2% tardan ≥600 ticks y la mediana de cada tipo ≤2× la humana; detectores 4v4 |
+| S6 liga | espejo 45%, PFSP 25%, RS-Pro 20%, exploiters 10%; 15% compañeros scripted | 7,5B | sólo goles y resultado | ≥75% contra L5, ≥65% contra el reservado, brecha visto−reservado ≤10 pp, detectores 4v4 en banda |
+| S7 robustez | latencia de cliente 70%, compañeros ad-hoc, variantes | 1,0B | idem | ≥70% contra L5; pérdida ≤10 pp con 8 ticks de latencia (sólo el candidato) y ≤10 pp con la variante del mapa |
 
-- Repaso de etapas anteriores ≥10% (5% desde S6).
+- **Los pesos de cada etapa son fracciones del tiempo simulado.** La probabilidad de iniciar una tarea es peso / duración media de su episodio (medida en línea). Sin esto, un partido de 3–10 min dura 10–30 veces lo que un ejercicio y tapaba a los ejercicios y al repaso (ver §9).
+- Repaso de etapas anteriores ≥10% del tiempo (5% desde S6).
+- Desde S5 los partidos duran 3–10 min de reloj, uniforme (la sala juega ~10 min; el actor no ve el reloj, el crítico sí ve el tiempo restante). S2–S4 mantienen 2–3 min.
+- Un partido que pasa 2× su reloj + 1 min real sin terminar (reloj congelado porque nadie saca el inicial) se corta por truncación con bootstrap.
 - Dificultad adaptativa por tarea (éxito buscado 60%).
 - Una etapa sólo avanza por sus compuertas; si agota el presupuesto sin pasar, el entrenamiento se detiene para diagnóstico.
 - 3v3 queda como contingencia (no aporta en una cancha de 2300×1340).
@@ -129,7 +132,8 @@ Las compuertas sólo juzgan tareas donde la referencia resuelve ≥15%.
 - Las filas congeladas o scripted nunca entran a la pérdida (test).
 - **Liga** (`train/rs4z/league.py`):
   - instantáneas cada 250M muestras desde S5, con PFSP (1−p)²;
-  - exploiters marcados en su propia fracción: `train.rs4z.run --exploiter-of <checkpoint principal>` parte del principal, juega sólo contra él congelado y se suma a su liga en el siguiente guardado;
+  - exploiters marcados en su propia fracción. `tools/rs4z_supervisor.py` corre el principal y, en S6–S7, cada 1B muestras copia el principal y entrena un exploiter de 200M muestras contra esa copia congelada (sólo partidos 4v4 contra él). Al terminar, el exploiter juega 128 partidos contra el principal y entra a la liga sólo si saca ≥60% de los puntos; el historial queda en `exploiters.json`;
+  - los índices de miembro son estables: al superar 48 miembros, el más fácil se marca retirado en vez de borrarse (antes, borrarlo corría los índices de los partidos en curso);
   - RS-Pro L3–L5 con estilos de entrenamiento;
   - la región de estilos reservada (presión alta + directo + estrecho) nunca se muestrea al entrenar.
 - Compañeros ad-hoc (15–20% en S6–S7): RS-Pro competente que infiere los roles de los compañeros que no controla.
@@ -142,9 +146,42 @@ Las compuertas sólo juzgan tareas donde la referencia resuelve ≥15%.
   - detectores de aglomeración, colgado, flotación junto al arco, quietud y oscilación;
   - duración de saques.
 - **Baterías reproducibles** (`eval/rs4z/batteries.py`): mismas semillas para el candidato y la referencia. Las compuertas viven en `eval/rs4z/gates.py` y la calibración congelada en `reports/rs4z/gates.json` (huella de código `d7b610936c5cf1de`).
-- **Tests**: suite completa 859 aprobados, 44 omitidos (793 anteriores + 66 RS4-Z en `tests/rs4z`: paridad del árbitro, reglas v2, obs y simetría, ejercicios, rewards y tramposos, RS-Pro, entrenador).
+- **Tests**: suite completa 876 aprobados, 44 omitidos (793 anteriores + 83 RS4-Z en `tests/rs4z`: paridad del árbitro, reglas v2, obs y simetría, ejercicios, rewards y tramposos, RS-Pro, entrenador, liga, mezcla del curriculum y compuertas).
 - **Tramposos contra RS-Pro L5** (128 partidos cada uno): quieto 1,00; oscilar 1,00; todos persiguen 0,95; pelotazos 0,99; sacarla afuera 0,81; bloque en el arco 0,98; delantero colgado 0,98; trabar saques 0,95; azar 0,99 (puntos de L5).
-- **Humo en Pod** (RTX 3090, S1, 1024 partidos): ver el bloque de resultados al final.
+- **Humo en Pod** (RTX 3090, 1024 partidos, pesos aleatorios, `runs/rs4z/smoke_s1_gpu`):
+  - **Corrección previa**: con minilotes de 32k (6 pasos por iteración) y Φ_ball = 0,05 la política no se movía (KL ~3e-4 a los 8,5M). Con minilotes de 8192 × 4 épocas y Φ_ball = 0,5 (PBRS, no cambia el óptimo) aprende.
+  - Prueba aislada "tocar la pelota": éxito de 7% a 82–84% en 6M muestras; entropía de 2,89 a 0,66; KL 0,002–0,01.
+  - **S1 completa**: a los 18,7M muestras (dificultad adaptativa) tocar 0,77, arco vacío 0,67, conducir y definir 0,81, recibir y definir 0,82.
+  - **Compuerta S1 a los 20,05M**: batería de control a dificultad máxima 0,855 contra la referencia RS-Pro L5 de 0,832, con cada tarea por encima del 75% de L5 (tocar 0,84; arco vacío 0,71; conducir 0,95; recibir 0,92). **Aprobada**: el curriculum pasó solo a S2.
+  - **S2** (17M muestras más, hasta que se detuvo a mano): 1v1 de ataque de 0,02 a 0,5–0,8; tiro contra el último hombre de 0,08 a 0,50; pelota dividida de 0,44 a ~0,6; los partidos 1v1 contra RS-Pro a la dificultad vigente los gana casi todos.
+  - **Rendimiento**: 50–60k muestras/s en S1 (un aprendiz por partido) y 75–90k/s en S2.
+
+### 9.1 Humo de liga, exploiters y compuertas (2026-10-04)
+
+Tres corridas de infraestructura en el Pod desde pesos aleatorios (prueban la maquinaria, no el aprendizaje), con la liga llena, exploiters y las compuertas de S2–S7 sobre el checkpoint de humo S1/S2. Encontraron doce fallos, todos corregidos y con test de regresión salvo donde se indica:
+
+| # | Fallo | Cómo apareció | Corrección |
+|---|---|---|---|
+| I1 | Los pesos de etapa se aplicaban por episodio; un partido dura 10–30 veces un ejercicio | En S6 no terminó ningún ejercicio después de la iteración 5; el repaso de S5 quedaba en ~1% del tiempo | Probabilidad de inicio ∝ peso / duración media; los pesos son fracciones del tiempo simulado |
+| I2 | El estimador de duración se sesgaba: los partidos de 3 min terminan primero | Partidos al 76% del tiempo contra 63% buscado | En partidos se estima la razón ticks reales / ticks de reloj y se multiplica por la duración conocida |
+| I3 | Los partidos de entrenamiento duraban fijo 2–3 min (el plan decía 3–10) | Revisión del código | Duración uniforme 3–10 min desde S5 |
+| I4 | Un partido con el reloj congelado (nadie saca el inicial) no terminaba nunca | 0 partidos terminados en S6 con redes al azar | Corte por truncación a 2× el reloj + 1 min real |
+| I5 | La compuerta de saques no podía fallar: la evaluación no tiene plazo y contaba los vencimientos de ambos equipos | Revisión del código | Mide los saques propios del candidato: ≤2% tardan ≥600 ticks y la mediana por tipo ≤2× la humana; un candidato quieto la reprueba (test) |
+| I6 | S7 (robustez) la aprobaba una política débil (sólo medía caída) y la latencia se aplicaba también a RS-Pro | El checkpoint de S2 la aprobó | Piso ≥70% contra L5; latencia sólo en el candidato; variante del mapa |
+| I7 | La compuerta 1v1 contra L3 no informaba (RS-Pro ataca mal en 1v1) | El checkpoint de S2 sacó 0,97 | Contra L5 |
+| I8 | Retirar un miembro de la liga corría los índices de los partidos en curso | Revisión del código | Índices estables; el miembro se marca retirado |
+| I9 | La liga guardaba 4 redes en memoria y releía del disco en cada paso; además hacía una pasada de red por rival | S6 cayó de ~170k a 14k muestras/s con ~11 miembros; con caché, 119k/s con 35 miembros | Todas las redes en el dispositivo (0,4M parámetros cada una); grupo activo de 8 rivales sorteado por PFSP y renovado cada 1000 partidos; todos los rivales en una sola llamada (vmap sobre los parámetros apilados, igualdad de logits verificada por test): 152k/s con 35 miembros |
+| I10 | Nada lanzaba exploiters durante el entrenamiento largo | Revisión del plan | `tools/rs4z_supervisor.py` (§8) |
+| I11 | La evaluación del exploiter fallaba si ninguna red sacaba el inicial | Excepción en el Pod | Los partidos trabados entre redes se cierran con el marcador vigente |
+| I12 | Compuertas cada 50M fijos: ~150 evaluaciones en S5–S6 (~6 h en pausa y muchas oportunidades de aprobar por ruido); la huella de la calibración no se verificaba | Cálculo de costo | Cada 10% del presupuesto de la etapa (≥25M), aprobación confirmada con otra semilla, y la evaluación se niega a correr si la huella del código no coincide con `gates.json` (sin test: revisión) |
+
+Resultados después de corregir:
+
+- **Mezcla por tiempo** (S5, 1024 partidos, 80M muestras), objetivo partidos/situaciones/repaso 0,63/0,27/0,10. Último tercio: 0,646/0,258/0,096. El primer tercio sobrerrepresenta ejercicios porque al arrancar ningún partido largo terminó todavía (transitorio de ~35M muestras sobre 2,5B).
+- **Rendimiento** (RTX 3090, 12 CPU): S5 157k muestras/s (1024 partidos); S6 152k/s con una liga de 35 miembros (512 partidos) y ~95–100k/s mientras entrena un exploiter en paralelo (el exploiter, ~60k/s).
+- **Exploiters**: el supervisor lanzó tres, cada uno se evaluó contra su principal y se descartó (0,500: con redes al azar nadie saca el inicial y todos los partidos quedan 0-0 trabados). El circuito completo (copia del principal, entrenamiento, evaluación, `exploiters.json`, incorporación) funciona.
+- **Compuertas nuevas sobre el checkpoint de humo S1/S2**: S2 no aprobada (duelos 0,542; 1v1 contra L5 0,891, así que el 1v1 de RS-Pro es débil incluso en L5 y la batería de duelos es la que decide); S5 no aprobada (0,328 contra L5; saques propios tarde 8,2% de 110, medianas dentro de la banda humana; detectores fuera de banda); S6 y S7 no aprobadas (0,328, piso 0,70). Antes de las correcciones, S7 y la compuerta de saques lo aprobaban.
+- **Calibración** recalculada con la huella nueva: las referencias de RS-Pro son idénticas a las anteriores (los cambios no tocaron las baterías).
 
 ## 10. Riesgos e incertidumbres abiertas
 
@@ -153,7 +190,7 @@ Las compuertas sólo juzgan tareas donde la referencia resuelve ≥15%.
 2. **Aprendizaje desde cero en S1**: la señal inicial es escasa (un aprendiz al azar toca la pelota en ~5% de los episodios). Ver el humo; si es lento, se sube Φ_ball (PBRS, seguro) sólo en S1.
 3. **Latencia**: es un modelo aproximado del cliente. Falta medirla en sala con el bot nuevo.
 4. **Competencia con humanos**: no queda demostrada hasta jugar con humanos. El modo rs4z de `deploy/bot.js` está pendiente (el contrato ya está portado y probado).
-5. **Presupuesto**: a ~55–65k muestras/s en S1, el plan completo (13,3B) lleva ~60–70 h de GPU. Las etapas con 4–8 aprendices por partido deberían rendir más por muestra; se mide al llegar.
+5. **Presupuesto** (medido): S1 ~55k muestras/s, S2 ~80k, S5 ~157k, S6 ~150k con la liga llena (≈100k mientras corre un exploiter); S3–S4 estimadas en ~100–120k. El plan completo (13,3B) lleva ~27 h de GPU sin evaluaciones; con exploiters (~9 de 200M) y ~56 evaluaciones de compuertas, ~32–36 h, dentro de las 50–100 h disponibles. Sobra margen para 2 semillas en S1–S3 (~+5 h).
 6. **Ruido entre semillas**: S1–S3 están previstas con 2 semillas; las compuertas usan IC.
 7. **Grabaciones**: la xT y las situaciones usan 45 grabaciones de entrenamiento. La partición de prueba no se usó para nada.
 
@@ -176,6 +213,10 @@ Las compuertas sólo juzgan tareas donde la referencia resuelve ≥15%.
 ## Cómo lanzar el entrenamiento largo (requiere aprobación)
 
 ```bash
-python -m tools.pod_sync --extra reports/rs4z
-ssh -p 40900 <pod> "cd /workspace/HaxballRL && nohup .venv/bin/python -u -m train.rs4z.run --run rs4z_main --envs 1024 --device cuda > pod_logs/rs4z_main.log 2>&1 &"
+python -m tools.pod_sync --extra reports/rs4z/gates.json reports/rs4z/xt.json
+ssh -p 40900 <pod> "cd /workspace/HaxballRL && nohup .venv/bin/python -u -m tools.rs4z_supervisor --run rs4z_main --envs 1024 > pod_logs/rs4z_main_supervisor.log 2>&1 &"
 ```
+
+- El supervisor corre el principal (`pod_logs/rs4z_main.log`, reanudable con `--resume`) y, en S6–S7, un exploiter cada 1B muestras (`pod_logs/rs4z_main_exploiter_KK.log`).
+- Las compuertas se evalúan cada 10% del presupuesto de cada etapa y quedan en `runs/rs4z/rs4z_main/gates.jsonl`; la evaluación se niega a correr si el código no coincide con la calibración congelada.
+- Si una etapa agota su presupuesto sin aprobar, el principal se detiene con el motivo en el log (no avanza a la fuerza).

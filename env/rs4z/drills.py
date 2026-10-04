@@ -21,6 +21,8 @@ from . import kernel as K
 GOAL_X = 1162.0
 REGAIN_TICKS = 60          # posesión recuperada: toque propio sin toque rival durante 1 s
 LOSS_TICKS = 30            # posesión perdida: toque rival sin respuesta propia durante 0,5 s
+MATCH_STALL_FACTOR = 2     # un partido que dura más de 2× su reloj + 1 min real se corta (truncación)
+MATCH_STALL_EXTRA = 3600
 
 
 @dataclass(frozen=True)
@@ -149,12 +151,14 @@ class Drills:
         self.st = DrillState(env.N)
 
     # ------------------------------------------------------------------ inicio
-    def start(self, rows, task_names, difficulty, learner_team=None):
+    def start(self, rows, task_names, difficulty, learner_team=None, match_ticks=None):
+        """match_ticks: duración de reloj de los partidos (por fila); por defecto, la de la tarea."""
         env, rng = self.env, self.rng
         rows = np.atleast_1d(np.asarray(rows, dtype=np.int64))
         if np.isscalar(task_names) or isinstance(task_names, str):
             task_names = [task_names] * len(rows)
         difficulty = np.broadcast_to(np.asarray(difficulty, dtype=np.float64), rows.shape)
+        length = None if match_ticks is None else np.broadcast_to(np.asarray(match_ticks, dtype=np.int64), rows.shape)
         teams = rng.integers(0, 2, len(rows)) if learner_team is None else np.broadcast_to(learner_team, rows.shape)
         for i, n in enumerate(rows):
             task = TASKS[task_names[i]]
@@ -164,8 +168,9 @@ class Drills:
             active[team_slots(1 - lt, task.n_opp)] = True
             lo, hi = task.opp_levels
             level = int(np.clip(np.round(lo + difficulty[i] * (hi - lo) + rng.normal(0, 0.6)), lo, hi))
+            ticks = task.match_ticks if length is None or not task.match_ticks else int(length[i])
             env.start_match([n], active=active[None], kickoff_team=lt if task.start == "kickoff" else 0,
-                            match_ticks=task.match_ticks if task.match_ticks else 10 ** 9)
+                            match_ticks=ticks if ticks else 10 ** 9)
             if task.start != "kickoff":
                 PLACERS[task.start](self, n, lt, float(difficulty[i]))
             st = self.st
@@ -204,7 +209,8 @@ class Drills:
         """Después de cada `env.step`: devuelve (done, outcome, truncated) por fila (sólo ejercicios).
 
         done: el episodio de ejercicio terminó; outcome: +1/0/-1; truncated: corte por tiempo con bootstrap.
-        Para partidos, done=False siempre (el fin lo marca ev['match_end']). Vectorizado.
+        Para partidos, el fin lo marca ev['match_end']; aquí sólo aparece el corte por partido trabado
+        (truncación). Vectorizado.
         """
         env, st = self.env, self.st
         N = env.N
@@ -260,6 +266,10 @@ class Drills:
         tr = timeout & (code == 2) & open_
         done[tr] = True
         truncated[tr] = True
+        # partidos trabados (reloj congelado porque nadie saca el inicial): corte con bootstrap
+        stalled = ~drill & (st.ticks >= MATCH_STALL_FACTOR * env.ri[:, K.RI_LEN] + MATCH_STALL_EXTRA)
+        done[stalled] = True
+        truncated[stalled] = True
         return done, outcome, truncated
 
     def controllers(self, rows=None):

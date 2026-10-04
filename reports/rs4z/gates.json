@@ -1,6 +1,6 @@
 {
- "version": "RS4-Z-gates-1",
- "code_hash": "d7b610936c5cf1de",
+ "version": "RS4-Z-gates-2",
+ "code_hash": "570ac84b5d5f3496",
  "episodes": 512,
  "seed": 0,
  "rules": {
@@ -22,9 +22,9 @@
    "task_frac": 0.6,
    "conceded_slack": 1.1
   },
-  "match_1v1_vs_l3": {
+  "match_1v1_vs_l5": {
    "points": 0.55,
-   "level": 3,
+   "level": 5,
    "active": [
     1,
     1
@@ -49,7 +49,9 @@
    "level": 5
   },
   "restart_battery": {
-   "max_forfeit_rate": 0.02
+   "max_late_rate": 0.02,
+   "late_ticks": 600,
+   "median_factor": 2.0
   },
   "detectors_4v4": {
    "parked": 0.05,
@@ -58,11 +60,16 @@
   },
   "league_milestone": {
    "points_l5": 0.75,
-   "points_reserved": 0.65
+   "points_reserved": 0.65,
+   "max_style_gap": 0.1,
+   "parked": 0.05,
+   "goal_hug": 0.05,
+   "clump": 0.1
   },
   "robustness": {
    "max_drop": 0.1,
-   "latency": 8
+   "latency": 8,
+   "floor_l5": 0.7
   }
  },
  "stage_gates": {
@@ -71,7 +78,7 @@
   ],
   "S2": [
    "duel_battery",
-   "match_1v1_vs_l3"
+   "match_1v1_vs_l5"
   ],
   "S3": [
    "passing_battery"
@@ -307,5 +314,5 @@
    }
   }
  },
- "seconds": 89.99046635627747
+ "seconds": 110.0129873752594
 }

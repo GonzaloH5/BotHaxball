@@ -47,7 +47,7 @@ STAGES = [
           tasks=dict(shot_vs_last=0.25, attack_1v1=0.2, defend_1v1=0.2, loose_ball=0.15, match_1v1=0.2),
           coefs=dict(goal=1.0, drill=1.0, threat=0.25, access=0.05),
           latency=LATENCY_LIGHT,
-          gates=("duel_battery", "match_1v1_vs_l3"),
+          gates=("duel_battery", "match_1v1_vs_l5"),
           notes="duelos, tiro contra el último hombre, pelotas divididas, 1v1 a cancha completa"),
     Stage("S3", 0.7e9,
           tasks=dict(attack_2v1=0.25, one_two=0.2, through_ball=0.2, redirect=0.15, attack_2v2=0.2),
