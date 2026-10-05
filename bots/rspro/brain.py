@@ -103,6 +103,12 @@ def move_action(px, py, vx, vy, tx, ty, arrive_speed, speed_factor, kicking):
         sp = min(vmax, brake)
         dvx = dx / max(d, 1e-9) * sp
         dvy = dy / max(d, 1e-9) * sp
+    return vel_action(vx, vy, dvx, dvy, kicking)
+
+
+@njit(cache=True)
+def vel_action(vx, vy, dvx, dvy, kicking):
+    """Acción 0..8 cuya velocidad al cabo de la decisión (3 ticks) más se acerca a la deseada."""
     a = A_KICK if kicking else A_P
     best = 0
     best_e = 1e18
@@ -176,6 +182,85 @@ def approach_point(px, py, bx, by, ux, uy, vx=0.0, vy=0.0):
     step = min(abs(delta), 0.9)
     theta_t = theta_p - (step if delta > 0.0 else -step)
     return bx + radius * math.cos(theta_t), by + radius * math.sin(theta_t), 1.2
+
+
+@njit(cache=True, inline="always")
+def _wrap(a):
+    while a > math.pi:
+        a -= 2.0 * math.pi
+    while a < -math.pi:
+        a += 2.0 * math.pi
+    return a
+
+
+ORBIT_R = R_P + R_B + 15.0     # radio de la órbita alrededor de una pelota en movimiento (sin tocarla)
+
+
+@njit(cache=True)
+def orbit_action(px, py, vx, vy, bx, by, bvx, bvy, ux, uy, speed_factor):
+    """Rodear una pelota en movimiento hasta su lado de atrás respecto de u, sin tocarla.
+
+    Control de velocidad en el marco de la pelota: tangencial hacia el lado de atrás + corrección al radio
+    ORBIT_R, más la velocidad de la pelota. Con puntos de paso alrededor de la posición predicha, el jugador
+    que venía detrás de una pelota que se alejaba la chocaba una y otra vez en la dirección en que iba.
+    """
+    rx = px - bx
+    ry = py - by
+    d = math.sqrt(rx * rx + ry * ry) + 1e-9
+    delta = _wrap(math.atan2(ry, rx) - math.atan2(-uy, -ux))
+    if abs(delta) > math.pi - 0.2:
+        # justo delante: girar hacia el lado al que ya se mueve respecto de la pelota
+        cross = rx * (vy - bvy) - ry * (vx - bvx)
+        delta = -(math.pi - 0.2) if cross > 0.0 else math.pi - 0.2
+    rux = rx / d
+    ruy = ry / d
+    if delta > 0.0:
+        tx = ruy            # sentido horario (el ángulo decrece)
+        ty = -rux
+    else:
+        tx = -ruy
+        ty = rux
+    vt = 2.4 * min(1.0, 0.4 + abs(delta))
+    vr = _clip(0.2 * (ORBIT_R - d), -2.6, 1.6)
+    dvx = bvx + tx * vt + rux * vr
+    dvy = bvy + ty * vt + ruy * vr
+    vmax = VMAX * speed_factor
+    m = math.sqrt(dvx * dvx + dvy * dvy)
+    if m > vmax:
+        dvx *= vmax / m
+        dvy *= vmax / m
+    return vel_action(vx, vy, dvx, dvy, False)
+
+
+@njit(cache=True)
+def approach_move(px, py, vx, vy, bx, by, bvx, bvy, cbx, cby, ux, uy, speed_factor, dribble):
+    """Acción para quedar detrás de la pelota respecto de u (patear o conducir en dirección u).
+
+    (bx, by): pelota ahora; (cbx, cby): donde estará al llegar. Pelota quieta o lenta: puntos de paso de
+    `approach_point` (validados en saques). Pelota en movimiento y jugador fuera de línea: `orbit_action`
+    alrededor de la posición actual (S5, 2026-10-04: el portador que venía detrás de una pelota que iba hacia
+    su arco la empujaba con el cuerpo durante segundos; 38 de 41 goles de la red contra L5 fueron así).
+    dribble: alineado, empujarla en la dirección u en vez de frenar en el punto de contacto.
+    """
+    if bvx * bvx + bvy * bvy > 0.36:
+        delta = _wrap(math.atan2(py - by, px - bx) - math.atan2(-uy, -ux))
+        if abs(delta) >= 0.45:
+            return orbit_action(px, py, vx, vy, bx, by, bvx, bvy, ux, uy, speed_factor)
+    ax, ay, sp = approach_point(px, py, cbx, cby, ux, uy, vx, vy)
+    if dribble and sp > 1.3:
+        return move_action(px, py, vx, vy, ax + ux * 30.0, ay + uy * 30.0, 2.6, speed_factor, False)
+    return move_action(px, py, vx, vy, ax, ay, sp, speed_factor, False)
+
+
+@njit(cache=True)
+def setup_ticks(table, px, py, vx, vy, bx, by, ux, uy):
+    """Ticks para quedar en posición de patear o conducir en dirección u: directo si ya está detrás de la
+    pelota; si no, llegar al radio de órbita y recorrer el arco hasta el lado de atrás."""
+    contact = R_P + R_B - 1.0
+    delta = _wrap(math.atan2(py - by, px - bx) - math.atan2(-uy, -ux))
+    if abs(delta) < 0.45:
+        return ttr(table, px, py, vx, vy, bx - ux * contact, by - uy * contact, 4.0)
+    return ttr(table, px, py, vx, vy, bx, by, ORBIT_R) + (abs(delta) - 0.45) * ORBIT_R / 2.2
 
 
 @njit(cache=True)
@@ -673,14 +758,34 @@ def decide(n, team, seed, table, pos, vel, active, kick_cancel, ctrl, ri_team, r
             if tt < best_tt:
                 best_tt = tt
                 best_s = p
-        if best_s >= 0 and ctrl[best_s]:
+        vb = math.hypot(bvx, bvy) + 1e-9
+        ubx = bvx / vb
+        uby = bvy / vb
+        trailing = False
+        if best_s >= 0:
+            rxs = px[best_s] - bx
+            rys = py[best_s] - by
+            lat = -rxs * uby + rys * ubx           # lado del jugador respecto de la marcha (+: izquierda)
+            trailing = rxs * ubx + rys * uby < 0.0 and abs(lat) < R_P + R_B + 12.0
+        if best_s >= 0 and ctrl[best_s] and trailing:
+            # viene detrás de la pelota: ponerse delante exige atravesarla y la empujaba adentro (S5,
+            # 2026-10-04). Rodearla por su lado y desviarla hacia el otro, afuera del arco
+            nx_, ny_, ok = deflect_dir(px[best_s], py[best_s], bx, by, bvx, bvy)
+            if not ok:
+                sgn = 1.0 if lat >= 0.0 else -1.0
+                nx_, ny_ = kick_normal(sgn * uby, -sgn * ubx, bvx, bvy)
+            mv = approach_move(px[best_s], py[best_s], pvx[best_s], pvy[best_s], bx, by, bvx, bvy, bx, by, nx_, ny_,
+                               spd, False)
+            out[best_s] = mv
+            mem_i[M_ROLE + best_s] = R_LAST
+            mem_i[M_PLAN + best_s] = P_NONE
+            if not kick_cancel[best_s] and math.hypot(bx - px[best_s], by - py[best_s]) < REACH + 3.0:
+                if safe_deflect(px[best_s], py[best_s], bx, by, bvx, bvy):
+                    out[best_s] = mv + 9
+        elif best_s >= 0 and ctrl[best_s]:
             # punto de bloqueo: sobre la trayectoria, del lado del arco, alcanzable antes del cruce
             tx = sx_
             ty = save_y
-            # dirección de la pelota (para pararse delante, del lado del arco)
-            vb = math.hypot(bvx, bvy) + 1e-9
-            ubx = bvx / vb
-            uby = bvy / vb
             for t in range(2, save_t, 2):
                 qx = traj[t, 0] + ubx * (R_P + R_B)
                 qy = traj[t, 1] + uby * (R_P + R_B)
@@ -725,6 +830,53 @@ def safe_clear(px, py, bx, by, own_gx):
         if abs(y_at) < 124.0 + 60.0:
             return False
     return True
+
+
+@njit(cache=True)
+def safe_deflect(px, py, bx, by, bvx, bvy):
+    """¿Patear ahora (dirección jugador→pelota) deja la pelota fuera del arco propio? Suma la velocidad que
+    trae la pelota (desvío de una pelota que va hacia el arco)."""
+    dx = bx - px
+    dy = by - py
+    d = math.hypot(dx, dy)
+    if d < 1e-6:
+        return False
+    rvx = bvx + KICK_SPEED * dx / d
+    rvy = bvy + KICK_SPEED * dy / d
+    rv = math.hypot(rvx, rvy) + 1e-9
+    return not crosses_own_goal(bx, by, rvx / rv, rvy / rv, 25.0)
+
+
+@njit(cache=True)
+def deflect_dir(px, py, bx, by, bvx, bvy):
+    """Dirección de contacto (jugador→pelota) para despejar de primera: la de menor giro respecto de la actual
+    cuya pelota resultante (velocidad que trae + patada) no va al arco propio; a igual giro, la que la manda
+    hacia el lateral más cercano. Devuelve (nx, ny, encontrada)."""
+    base = math.atan2(by - py, bx - px)
+    side = 1.0 if by >= 0.0 else -1.0
+    for k in range(9):
+        best_s = -1e9
+        bnx = 0.0
+        bny = 0.0
+        for sg in range(2):
+            if k == 0 and sg == 1:
+                continue
+            ang = base + 0.2 * k * (1.0 if sg == 0 else -1.0)
+            nx = math.cos(ang)
+            ny = math.sin(ang)
+            rvx = bvx + KICK_SPEED * nx
+            rvy = bvy + KICK_SPEED * ny
+            rv = math.hypot(rvx, rvy) + 1e-9
+            if crosses_own_goal(bx, by, rvx / rv, rvy / rv, 40.0):
+                continue
+            sc = rvy * side / rv
+            if sc > best_s:
+                best_s = sc
+                bnx = nx
+                bny = ny
+        if best_s > -1e8:
+            return bnx, bny, True
+    return 0.0, 0.0, False
 
 
 @njit(cache=True)
@@ -1029,6 +1181,42 @@ def _options(n, team, seed, dec, table, me, px, py, bx, by, bvx, bvy, own_idx, n
             tgt_y[k] = cy
             partner[k] = -1
             k += 1
+    # ---- despeje al costado (L1+): presionado cerca del arco propio, sacarla por el lateral (cuesta un lateral
+    # rival lejos del arco). Con la pelota viniendo hacia el arco es la salida que menos rodeo exige
+    if opts >= 1 and bx < -450.0 and pressure < 9.0:
+        for j in range(2):
+            sg = -1.0 if j == 0 else 1.0
+            tx = bx + 220.0
+            ty = sg * (LINE_H + 80.0)
+            dx = tx - bx
+            dy = ty - by
+            d = math.hypot(dx, dy)
+            vals[k] = -0.6 * loss_cost(tx, sg * LINE_H)
+            ux_o[k] = dx / d
+            uy_o[k] = dy / d
+            kinds[k] = 5
+            tgt_x[k] = tx
+            tgt_y[k] = ty
+            partner[k] = -1
+            k += 1
+    # ---- despeje de primera (L1+): en campo propio con presión, la patada de menor giro respecto de cómo llega
+    # el portador (ver deflect_dir); vale como un despeje según dónde cae
+    if opts >= 1 and bx < -200.0 and pressure < 12.0:
+        nx_, ny_, ok = deflect_dir(px[me], py[me], bx, by, bvx, bvy)
+        if ok:
+            rvx = bvx + KICK_SPEED * nx_
+            rvy = bvy + KICK_SPEED * ny_
+            rv = math.hypot(rvx, rvy) + 1e-9
+            tx = _clip(bx + 420.0 * rvx / rv, -LINE_W + 20.0, LINE_W - 20.0)
+            ty = _clip(by + 420.0 * rvy / rv, -LINE_H + 20.0, LINE_H - 20.0)
+            vals[k] = 0.5 * possession_value(tx, ty) - 0.5 * loss_cost(tx, ty)
+            ux_o[k] = rvx / rv
+            uy_o[k] = rvy / rv
+            kinds[k] = 5
+            tgt_x[k] = bx + 420.0 * rvx / rv
+            tgt_y[k] = by + 420.0 * rvy / rv
+            partner[k] = -1
+            k += 1
     # ---- costo de preparación: para patear o conducir en dirección u hay que estar detrás de la pelota;
     # mientras el portador se acomoda, el rival llega (probabilidad de ejecutar antes de la presión)
     for j in range(k):
@@ -1041,7 +1229,11 @@ def _options(n, team, seed, dec, table, me, px, py, bx, by, bvx, bvy, own_idx, n
         if cx_ < -GOAL_X + 25.0 or ax < -GOAL_X + 25.0:
             vals[j] = -10.0
             continue
-        setup = ttr(table, px[me], py[me], mvx, mvy, ax, ay, 4.0)
+        if kinds[j] == 3:
+            setup = setup_ticks(table, px[me], py[me], mvx, mvy, bx, by, ux_o[j], uy_o[j])
+        else:
+            knx, kny = kick_normal(ux_o[j], uy_o[j], bvx, bvy)
+            setup = setup_ticks(table, px[me], py[me], mvx, mvy, bx, by, knx, kny)
         p_exec = _sigmoid((pressure - setup - 2.0) / 3.0)
         vals[j] = p_exec * vals[j] - (1.0 - p_exec) * 0.6 * lose_here
     return k
@@ -1073,6 +1265,32 @@ def _carrier(n, team, seed, dec, table, me, px, py, pvx, pvy, bx, by, bvx, bvy, 
     spd = lvl[L_SPEED]
     if t_me > 9.0:
         mem_i[M_PLAN + me] = P_NONE
+        rx = px[me] - bx
+        ry = py[me] - by
+        d2 = rx * rx + ry * ry
+        moving = bvx * bvx + bvy * bvy > 0.36
+        if moving and d2 < 200.0 * 200.0:
+            pressure = 1e9
+            for o in range(n_opp):
+                to = ttr(table, opp_x[o], opp_y[o], opp_vx[o], opp_vy[o], bx, by, R_P + R_B)
+                if to < pressure:
+                    pressure = to
+            pressed = pressure < t_me + 12.0
+            if pressed and d2 < 90.0 * 90.0 and rx * bvx + ry * bvy < 0.0:
+                # viene detrás de una pelota que se aleja con un rival cerca: despejarla de primera con el menor
+                # giro seguro (ir derecho la chocaba en la dirección en que iba, a menudo hacia el arco propio)
+                nx_, ny_, ok = deflect_dir(px[me], py[me], bx, by, bvx, bvy)
+                if ok:
+                    mv = approach_move(px[me], py[me], pvx[me], pvy[me], bx, by, bvx, bvy, ix, iy, nx_, ny_, spd, False)
+                    if not kick_cancel[me] and math.hypot(bx - px[me], by - py[me]) < REACH + 3.0:
+                        if safe_deflect(px[me], py[me], bx, by, bvx, bvy):
+                            return mv + 9
+                    return mv
+            if not pressed and bvx < -0.5 and rx > -10.0:
+                # sin presión, pelota hacia nuestro arco y el portador no está del lado del arco: rodearla hasta
+                # quedar en su camino, del lado del arco, y recibirla de frente (S5, 2026-10-04: perseguirla
+                # desde atrás le daba tiempo al delantero rival y la empujaba hacia el arco)
+                return approach_move(px[me], py[me], pvx[me], pvy[me], bx, by, bvx, bvy, ix, iy, 1.0, 0.0, spd, False)
         return move_action(px[me], py[me], pvx[me], pvy[me], ix, iy, 1.0, spd, False)
     plan = mem_i[M_PLAN + me]
     until = mem_i[M_PLAN_UNTIL + me]
@@ -1152,16 +1370,12 @@ def _carrier(n, team, seed, dec, table, me, px, py, pvx, pvy, bx, by, bvx, bvy, 
         ux, uy = dribble_dir(table, bx, by, ux, uy, px[me], py[me], opp_x, opp_y, opp_vx, opp_vy, n_opp, lvl[L_REACT])
         mem_f[F_PLAN_U + 2 * me] = ux
         mem_f[F_PLAN_U + 2 * me + 1] = uy
-        ax, ay, sp = approach_point(px[me], py[me], cbx, cby, ux, uy, pvx[me], pvy[me])
-        if sp > 1.3:
-            # alineado detrás de la pelota: empujarla en la dirección de conducción
-            return move_action(px[me], py[me], pvx[me], pvy[me], ax + ux * 30.0, ay + uy * 30.0, 2.6, spd, False)
-        return move_action(px[me], py[me], pvx[me], pvy[me], ax, ay, sp, spd, False)
+        # alineado detrás de la pelota: empujarla en la dirección de conducción
+        return approach_move(px[me], py[me], pvx[me], pvy[me], bx, by, bvx, bvy, cbx, cby, ux, uy, spd, True)
     # la patada se suma a la velocidad que trae la pelota: apuntar con la normal que la compensa
     q = Q_B ** max(t_me, 0.0)
     ux, uy = kick_normal(ux, uy, bvx * q, bvy * q)
-    ax, ay, sp = approach_point(px[me], py[me], cbx, cby, ux, uy, pvx[me], pvy[me])
-    mv = move_action(px[me], py[me], pvx[me], pvy[me], ax, ay, sp, spd, False)
+    mv = approach_move(px[me], py[me], pvx[me], pvy[me], bx, by, bvx, bvy, cbx, cby, ux, uy, spd, False)
     tol_deg = lvl[L_AIM_TOL]
     if plan == P_SHOT:
         # al tirar, la tolerancia no puede exceder el ángulo libre (visto desde la pelota) hasta el palo más cercano

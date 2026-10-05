@@ -257,6 +257,42 @@ Quinta revisión: cambio de Pod y avance manual a S5 (2026-10-04).
   - Las pelotas paradas en contra siguen en el repaso.
 - **Vigilar en S5**: entropía alta (2,7 sobre un máximo de 2,89, subiendo al empezar la etapa). Si no baja con el aprendizaje del 4v4, bajar el coeficiente de entropía.
 
+Sexta revisión: S5 terminó sin aprobar y se corrigió RS-Pro (2026-10-04/05).
+
+- **Correcciones durante S5** (commits 178c80d y d1510d9):
+  - `restart_attack` contaba el gol en contra como −1, así que dejar vencer el saque era "óptimo". Ahora cuenta 0, y se sumó el ejercicio `restart_take4`.
+  - Costo `behind_goal` de 0,0005 por jugador y decisión detrás de la línea propia en juego abierto (S5–S7): esconderse bajó de 29% a 6%.
+  - Coeficiente de entropía 0,003→0,001.
+- **Resultado**: S5 agotó su presupuesto (3,63B muestras) sin aprobar.
+  - Aprobó puntos contra L5 (0,91), estilo reservado (0,93) y saques (0,98).
+  - Reprobó detectores: colgado 54%, rangos de distancia a la pelota 157/867/1155/1302 px (humanos 96/203/283/392), 0,2 pases/min.
+  - La red jugaba con 3 atrás lejos de la pelota y 1 delantero solo, y así le ganaba a L5 (0,94 de los puntos, 2 goles por partido).
+- **Causa principal** (trazas de 41 goles): el portador de RS-Pro que venía detrás de una pelota lenta rumbo a su arco la chocaba con el cuerpo una y otra vez hacia el arco. Los puntos de paso de `approach_point` se calculaban alrededor de la posición predicha, no de la actual. En 38 de 41 goles el último toque azul fue ese empujón; el delantero sólo la seguía.
+- **RS-Pro R** (`bots/rspro/brain.py`):
+  - órbita en el marco de la pelota (`orbit_action`, `approach_move`) para pelotas en movimiento;
+  - costo de preparación que cuenta el arco de la órbita y la normal de patada (`setup_ticks`);
+  - despeje de primera con el menor giro seguro bajo presión (`deflect_dir`), también como opción del portador;
+  - la atajada del que viene detrás desvía por el costado en vez de atravesar la pelota;
+  - sin presión, el portador rodea la pelota que va hacia su arco para recibirla de frente, del lado del arco;
+  - despeje lateral en el tercio propio.
+- **Variantes descartadas con datos** (512 partidos por red en el Pod): dos atrás contra un delantero colgado ("cuadrado"), receptor del lado del arco, piso de conducción menor, más aversión a perder en el tercio propio, despeje estricto. Ninguna bajó los goles en contra más allá del ruido, y el cuadrado le quitaba goles propios.
+- **Efecto**:
+
+  | Red rival | Original | R | Cambio en goles de la red |
+  |---|---|---|---|
+  | Final de S5 | 1024–25, 0,94 pts | 395–43, 0,75 pts | −61% |
+  | Mitad de S5 (2647M) | 632–72, 0,82 pts | 221–104, 0,58 pts | −65% |
+
+  - Pelota lenta rodando hacia el arco con el defensor detrás: autogol de RS-Pro en 12 de 12 escenas antes, 0 de 12 ahora (test de regresión).
+- **Validación de R**:
+  - escalera L1>L0 0,58, L2>L1 0,67, L3>L2 0,62, L4>L3 0,55, L5>L4 0,57;
+  - los 9 tramposos con ≥0,67 para L5;
+  - espejo L5 con estructura cercana a la humana pero más conservador: 0,036 goles/min contra 0,071 humanos, 80% de 0-0;
+  - calibración `313eeb2461feb46b`, con referencias L5 casi iguales a las anteriores;
+  - 99 tests.
+- **Decisión del usuario**: rehacer S5 desde `stage_S4_manual.pt` con R; no repetir S4 ni seguir desde la red final, que ya estaba convergida en el búnker.
+- **Riesgo abierto**: la red final todavía le gana a R con el delantero solo (0,75). Durante S5 se vigilan los detectores, los rangos de distancia y los pases; si reaparece el búnker, sus repeticiones guían la próxima corrección de RS-Pro.
+
 ## 10. Riesgos e incertidumbres abiertas
 
 1. **RS-Pro no es "profesional" en todo** (sección 5): su posesión y su 1v1 ofensivo son débiles. Riesgo: en S5 el agente podría sobreajustarse a explotar esas debilidades.

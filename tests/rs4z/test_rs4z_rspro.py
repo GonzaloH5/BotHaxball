@@ -127,3 +127,79 @@ def test_beaten_presser_is_relieved_by_the_goal_side_defender():
     assert roles[5] == B.R_PRESS, roles
     assert roles[4] != B.R_PRESS, roles
 
+
+
+def test_orbit_around_moving_ball_reaches_the_back_without_touching_it():
+    """Portador detrás de una pelota que va hacia su arco y quiere jugar hacia adelante: la rodea (la
+    adelanta por el costado) sin tocarla. Con los puntos de paso alrededor de la posición predicha la chocaba
+    una y otra vez hacia su arco (regresión del 2026-10-04)."""
+    px, py, vx, vy = 30.0, 5.0, -1.2, 0.0
+    bx, by, bvx, bvy = 0.0, 0.0, -1.5, 0.0
+    ux, uy = 1.0, 0.0
+    closest = 1e9
+    reached = False
+    for _ in range(80):
+        delta = B._wrap(math.atan2(py - by, px - bx) - math.atan2(-uy, -ux))
+        if abs(delta) < 0.45:
+            reached = True
+            break
+        m = B.orbit_action(px, py, vx, vy, bx, by, bvx, bvy, ux, uy, 1.0)
+        for _ in range(3):
+            vx += 0.12 * B.MOVE_U[m, 0]
+            vy += 0.12 * B.MOVE_U[m, 1]
+            px += vx
+            py += vy
+            vx *= 0.96
+            vy *= 0.96
+            bx += bvx
+            by += bvy
+            bvx *= 0.99
+            bvy *= 0.99
+            closest = min(closest, math.hypot(px - bx, py - by))
+    assert reached
+    assert closest > 15.0 + 8.325, closest
+
+
+def _rolling_scene(defender, ball, ball_vel, decisions=200, level=5):
+    """Pelota rodando hacia el arco azul (x = +1162) con un defensor RS-Pro azul; el rojo está lejos y quieto.
+    Devuelve el resultado: 1 gol rojo, 0 si no entró."""
+    from bots.rspro.policy import RSPro, STYLE_BALANCED
+    env = RS4ZEnv(1, seed=0, deadline=0)
+    active = np.zeros(8, dtype=bool)
+    active[0] = True
+    active[4] = True
+    pos = np.zeros((8, 2))
+    pos[0] = (-600.0, 0.0)
+    pos[4] = defender
+    vel = np.zeros((8, 2))
+    vel[4] = (ball_vel[0] * 0.8, ball_vel[1] * 0.8)
+    env.start_match([0], active=active[None], kickoff_team=0, match_ticks=10 ** 9)
+    env.place(0, ball_pos=ball, ball_vel=ball_vel, player_pos=pos, player_vel=vel, last_touch=0)
+    bot = RSPro(env, seed=1)
+    bot.configure([0], 1, level, STYLE_BALANCED)
+    bot.sync(env, [0])
+    out = np.zeros((1, 8), dtype=np.int64)
+    ctrl = np.zeros((1, 8), dtype=bool)
+    ctrl[0, 4] = True
+    for _ in range(decisions):
+        out[:] = 0
+        bot.act(env, ctrl, out)
+        ev = env.step(out)
+        bot.push(env)
+        if ev["goal"][0] != 0:
+            return int(ev["goal"][0])
+        if env.ri[0, 0] >= 0:
+            return 0
+    return 0
+
+
+def test_trailing_defender_does_not_push_a_slow_ball_into_his_goal():
+    """Pelota lenta rodando hacia el arco propio (sola, se frena antes o justo en la línea) y el defensor viene
+    detrás: no la mete él. Antes la perseguía chocándola con el cuerpo y la empujaba adentro en 12 de 12
+    escenas (regresión del 2026-10-04)."""
+    goals = 0
+    for y in (-50.0, 0.0, 50.0):
+        for lag, side in ((32.0, 4.0), (40.0, -6.0)):
+            for vx in (2.3, 2.9):
+                goals += _rolling_scene((900.0 - lag, y + side), (900.0, y), (vx, -y * 0.002)) == 1
+    assert goals == 0, goals
