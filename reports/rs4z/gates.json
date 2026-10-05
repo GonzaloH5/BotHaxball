@@ -1,6 +1,6 @@
 {
  "version": "RS4-Z-gates-2",
- "code_hash": "313eeb2461feb46b",
+ "code_hash": "217d507d1c4fafd9",
  "episodes": 512,
  "seed": 0,
  "rules": {
@@ -234,18 +234,18 @@
     "pass_share": 0.9354838709677419
    },
    "restart_attack": {
-    "success": 0.1171875,
+    "success": 0.146484375,
     "conceded": 0.0,
     "episodes": 512,
-    "successes": 60,
-    "pass_share": 0.8833333333333333
+    "successes": 75,
+    "pass_share": 0.8933333333333333
    },
    "transition": {
-    "success": 0.5,
-    "conceded": 0.5,
-    "episodes": 2,
-    "successes": 1,
-    "pass_share": 1.0
+    "success": NaN,
+    "conceded": NaN,
+    "episodes": 0,
+    "successes": 0,
+    "pass_share": NaN
    }
   }
  },
@@ -394,5 +394,5 @@
    }
   }
  },
- "seconds": 41.90314173698425
+ "seconds": 28.173636198043823
 }

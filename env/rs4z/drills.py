@@ -43,6 +43,7 @@ class Task:
     match_ticks: int = 0           # duración de reloj (sólo partidos)
     scripted_mates: int = 0        # compañeros del aprendiz controlados por RS-Pro
     require_pass: bool = False     # el gol cuenta sólo después de un pase entre aprendices (la tarea ES un pase)
+    expire_outcome: float = float("nan")   # si vence el saque propio (pasa al rival): termina con este resultado
     notes: str = ""
 
 
@@ -98,8 +99,12 @@ TASKS = {t.name: t for t in [
          end_on_own_out=False, concede_outcome=-1.0, opp_levels=(2, 5), notes="estado humano de ataque"),
     # gol en contra = 0 (no −1): con −1, dejar vencer el saque (0 sin riesgo) le ganaba a sacar y perder la
     # pelota; la red ejecutaba el 5% de los saques (2026-10-04). Es un ejercicio de ataque.
+    # dejar vencer el saque = −0,3: con 0 daba igual sacar que no, y como todavía no convertía de córner, no lo
+    # sacaba nunca (14% de córners ejecutados contra 97% de RS-Pro, que convierte 34–38%; S5, 2026-10-05). Vencido,
+    # en el juego la pelota pasa al rival; sacar y no convertir sigue valiendo 0, así que intentar siempre conviene
     Task("restart_attack", "S5", 4, 4, "restart_attack", timeout=720, timeout_outcome="fail", success="goal",
-         end_on_own_out=False, concede_outcome=0.0, opp_levels=(2, 5), notes="saque propio en campo rival"),
+         end_on_own_out=False, concede_outcome=0.0, opp_levels=(2, 5), expire_outcome=-0.3,
+         notes="saque propio en campo rival"),
     Task("transition", "S5", 4, 4, "transition", timeout=600, timeout_outcome="truncate", success="goal",
          end_on_own_out=False, concede_outcome=-1.0, opp_levels=(2, 5), notes="pelota recién recuperada"),
     # ------------------------------------------------------------- S6 liga (rivales del pool, no RS-Pro sólo)
@@ -153,6 +158,7 @@ _TASK_PARAMS = dict(
     rival_end=np.array([TASKS[t].end_on_rival_touch for t in TASK_NAMES]),
     own_out_end=np.array([TASKS[t].end_on_own_out for t in TASK_NAMES]),
     concede=np.array([TASKS[t].concede_outcome for t in TASK_NAMES], dtype=np.float64),
+    expire=np.array([TASKS[t].expire_outcome for t in TASK_NAMES], dtype=np.float64),
     timeout_code=np.array([{"fail": 0, "success": 1, "truncate": 2}[TASKS[t].timeout_outcome] for t in TASK_NAMES]),
 )
 
@@ -276,6 +282,10 @@ class Drills:
 
         resolve(scored, np.where(P["success_goal"][task] & (~P["require_pass"][task] | st.passed), 1.0, 0.0))
         resolve(conceded, P["concede"][task])
+        # saque propio vencido (plazo de entrenamiento): la pelota pasa al rival
+        expire = P["expire"][task]
+        lost_restart = np.asarray(ev.get("forfeit", np.full(N, -1))) == lt
+        resolve(~np.isnan(expire) & lost_restart, np.nan_to_num(expire))
         resolve(P["success_touch"][task] & own_touch, 1.0)
         executed = (np.asarray(ev.get("restart_exec", 0)) > 0) | np.asarray(ev.get("kickoff_taken", False))
         resolve(P["success_exec"][task] & executed, 1.0)

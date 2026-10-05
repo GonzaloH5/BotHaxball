@@ -130,3 +130,29 @@ def test_restart_take_succeeds_when_the_own_restart_is_executed():
     done, out, tr = d.check(ev)
     assert done[3] and out[3] == 1.0 and done[5] and out[5] == 1.0
     assert done.sum() == 2
+
+
+def test_restart_attack_ends_with_a_cost_when_the_own_restart_expires():
+    """Ataque desde saque propio: dejarlo vencer (pasa al rival) termina con −0,3; sacar y no convertir sigue
+    abierto (regresión del 2026-10-05: con 0 la red no sacaba los córners)."""
+    env = RS4ZEnv(8, seed=0)
+    d = Drills(env, np.random.default_rng(1))
+    d.start(np.arange(8), "restart_attack", 0.5, learner_team=1)
+    assert (env.ri[:, K.RI_TEAM] == 1).all()
+    ev = _ev(8)
+    ev["forfeit"] = np.full(8, -1, dtype=np.int64)
+    ev["forfeit"][2] = 1            # venció el saque propio
+    ev["forfeit"][4] = 0            # venció uno del rival: no termina
+    done, out, tr = d.check(ev)
+    assert done[2] and out[2] == -0.3 and not tr[2]
+    assert done.sum() == 1
+
+
+def test_expire_outcome_is_off_for_other_tasks():
+    env = RS4ZEnv(4, seed=0)
+    d = Drills(env, np.random.default_rng(1))
+    d.start(np.arange(4), "restart_take4", 0.5, learner_team=0)
+    ev = _ev(4)
+    ev["forfeit"] = np.zeros(4, dtype=np.int64)
+    done, out, tr = d.check(ev)
+    assert not done.any()

@@ -291,6 +291,10 @@ Sexta revisión: S5 terminó sin aprobar y se corrigió RS-Pro (2026-10-04/05).
   - calibración `313eeb2461feb46b`, con referencias L5 casi iguales a las anteriores;
   - 99 tests.
 - **Decisión del usuario**: rehacer S5 desde `stage_S4_manual.pt` con R; no repetir S4 ni seguir desde la red final, que ya estaba convergida en el búnker.
+- **Córners que no se sacaban** (S5 nuevo al 15%, 2026-10-05): en `restart_attack` la red ejecutaba el 88–90% de los laterales pero sólo el 14% de los córners (RS-Pro L5 en su lugar: 97–98%, y convierte 34–38%). En partidos contra L5, el 84% de sus córners superaba los 10 s.
+  - Causa: sacar y no convertir valía 0, igual que dejarlo vencer. Como todavía no convertía de córner, no había nada que aprender.
+  - Corrección: dejar vencer el saque propio en ese ejercicio termina con −0,3 (`Task.expire_outcome`); en el juego la pelota pasa al rival.
+  - Calibración nueva; S5 se reanuda desde el último checkpoint (1,64B).
 - **Riesgo abierto**: la red final todavía le gana a R con el delantero solo (0,75). Durante S5 se vigilan los detectores, los rangos de distancia y los pases; si reaparece el búnker, sus repeticiones guían la próxima corrección de RS-Pro.
 
 ## 10. Riesgos e incertidumbres abiertas
