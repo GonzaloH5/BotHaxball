@@ -423,7 +423,10 @@ function BotPlugin(session, managed = false) {
     tick++;
     if (pendingInput && room.currentFrameNo - pendingInput.frame > 120) pendingInput = null;
     if (tick % META.frame_skip !== 0 || busy) return;
+    // X4: el retardo que ve la red es D del simulador (lag − 1); por defecto el medido en sala (META.default_delay,
+    // 10 = lag de 9–12 ticks entre el frame observado y el aplicado, reports/room_latency/).
     const delayTicks = DELAY_ARG !== "auto" ? parseFloat(DELAY_ARG)
+      : X4 ? (META.default_delay ?? 10)
       : room.isHost ? 0 : Math.min(inputDelayTicks() + Math.max(0, VIEW_LAG - (ext ? EXTRAP_MS * 0.06 : 0)),
         META.max_delay || 24);
     const built = rs4z.build(frame, me.id, delayTicks);

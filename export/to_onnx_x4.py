@@ -35,7 +35,7 @@ def main():
     torch.onnx.export(model, (x,), str(out), input_names=["obs"], output_names=["logits"],
                       dynamic_axes={"obs": {0: "n"}, "logits": {0: "n"}}, opset_version=17, dynamo=False)
     meta = dict(obs_version=obs_v3.OBS_VERSION, obs_dim=obs_v3.OBS_DIM, n_actions=18, frame_skip=3,
-                max_delay=int(obs_v3.MAX_DELAY), ball_radii=[8.0, 9.0], kick_strengths=[5.65, 5.85],
+                max_delay=int(obs_v3.MAX_DELAY), default_delay=10, ball_radii=[8.0, 9.0], kick_strengths=[5.65, 5.85],
                 maps=list(ck.get("maps") or obs_v3.MAP_NAMES), stage=a.stage or Path(a.ckpt).parent.name,
                 source=str(a.ckpt), step=ck.get("step") or ck.get("update"), delay=ck.get("delay"))
     out.with_suffix(".json").write_text(json.dumps(meta, indent=1), encoding="utf-8")
