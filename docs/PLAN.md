@@ -122,7 +122,11 @@ Fuentes: HR-PPO, VPT, AlphaStar, DiL-piKL, MAPPO. **Implementado:** `learn/x4_pp
 - **Recompensa** (GRF, MARLadona, OpenAI Five 1912.06680):
   - gol ±1, suma cero;
   - shaping CHECKPOINT: 10 franjas del campo rival, +0,1 la primera vez por punto, el resto al marcar, suma cero. Se retira cuando le gana a la BC el 75% de los partidos;
-  - team spirit 1,0 (todas las recompensas son de equipo).
+  - team spirit 1,0 (todas las recompensas son de equipo);
+  - **[inferencia, agregado]** −0,1 de suma cero al equipo que deja vencer un saque o el saque inicial (plazo de entrenamiento de 600 ticks).
+    - Motivo: con el reloj congelado y el saque pasando al rival, que en self-play es la misma política, quedarse quieto vale exactamente 0.
+    - Una corrida chica en CPU desde la BC dejó de sacar a las 50 actualizaciones; el ancla con λ=0,06 no lo impidió.
+    - En la sala, quedarse quieto no es una opción.
   - El pase no se premia por defecto (Liu 2022). Si a 100–300M decisiones el pase cae por debajo del criterio, se prueba **como brazo pre-registrado** el término de TiZero (+0,05 por pase exitoso antes de un gol).
 - **Oponentes** (TiZero, AlphaStar):
   - 80% self-play y 20% contra el pool con PFSP (1−x)², incluida la BC; snapshots cada 100 actualizaciones;
@@ -177,3 +181,4 @@ Fuentes: HR-PPO, VPT, AlphaStar, DiL-piKL, MAPPO. **Implementado:** `learn/x4_pp
 | Scripted en el pool de evaluación | Referencia de fuerza independiente de los datos humanos |
 | Métricas de imitación en cambios de tecla | Riesgo de copycat (de Haan 2019, Wen 2020): "repetir la tecla" ya acierta el 84% |
 | Correcciones del script de Sanguchito (córner en y, dirección al patear) | Conformidad en 498 grabaciones |
+| Penalización por dejar vencer saques en el RL | Equilibrio degenerado observado: el RL dejó de sacar a las 50 actualizaciones |
