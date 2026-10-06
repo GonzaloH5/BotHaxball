@@ -455,6 +455,9 @@ class Trainer:
                 raise SystemExit(f"falta la referencia humana {HUMAN_SAMPLES}: correr `python -m tools.x4_metrics "
                                  "--map sanguchito_rs_x4 --out reports/x4/human_metrics_sanguchito.json` (runbook §1); "
                                  "sin ella best.pt nunca se guarda")
+        if not a.resume and (self.out / "last.pt").exists():
+            # empezar de cero en una carpeta usada pisaría su best.pt con la primera evaluación
+            raise SystemExit(f"{self.out / 'last.pt'} ya existe: usar --resume para seguir esa corrida u otro --out")
         if a.resume and (self.out / "stopped.json").exists() and not a.continue_after_stop:
             # un relanzamiento automático (bucle de reintentos del runbook) no debe seguir una corrida cortada por deriva
             raise SystemExit(f"{self.out / 'stopped.json'} existe: la corrida se cortó por deriva. Para seguir igual, "

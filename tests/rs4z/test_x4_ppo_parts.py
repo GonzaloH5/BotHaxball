@@ -154,6 +154,9 @@ def test_resume_continues_from_last_checkpoint(tmp_path):
         assert torch.equal(p_old.detach().cpu(), p_new.detach().cpu())
     t2.train()
     assert torch.load(tmp_path / "last.pt", map_location="cpu")["update"] == 3
+    import pytest
+    with pytest.raises(SystemExit):          # sin --resume no se reusa la carpeta (pisaría best.pt)
+        Trainer(parse_args(common + ["--updates", "3"]))
 
 
 def _tiny_trainer(tmp_path, extra=()):

@@ -151,7 +151,10 @@ def scale_test(tr, a, check):
         detail = dict(muestras=info["samples"], learn_s=round(dt, 1),
                       ram_pico_gb=round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 2**20, 2),
                       gpu_pico_gb=round(torch.cuda.max_memory_allocated() / 2**30, 2) if a.device.startswith("cuda") else None)
-        check("escala_real", np.isfinite(info["kl_bc"]), detail)
+        frac = (torch.cuda.max_memory_allocated() / torch.cuda.get_device_properties(0).total_memory
+                if a.device.startswith("cuda") else 0.0)
+        detail["gpu_fraccion"] = round(frac, 2)
+        check("escala_real", np.isfinite(info["kl_bc"]) and frac < 0.85, detail)
     except Exception as e:  # noqa: BLE001  (p. ej. falta de memoria: bajar --rollout a 32)
         check("escala_real", False, f"{type(e).__name__}: {e} (probar --rollout 32 en la corrida real)")
 

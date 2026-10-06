@@ -62,21 +62,25 @@ python -m learn.x4_preflight --bc runs/x4_bc/final_sangu_rsone/best.pt --device 
 
 En GPU el preflight también corre una actualización sintética con el buffer de la corrida real (1024 partidos × 64 pasos, `escala_real`) y reporta el pico de RAM y de memoria de GPU. Si esa prueba falla por memoria, usar `--rollout 32`.
 
-Si termina en `PREFLIGHT OK`, lanzar dentro de `tmux` (o con `nohup`) con un bucle que reintenta si el proceso muere:
+Si termina en `PREFLIGHT OK`, lanzar dentro de `tmux` (sobrevive a que se corte el SSH) con un bucle de hasta 5 intentos que reanuda si el proceso muere:
 
 ```bash
 tmux new -s rl
-OUT=runs/x4_ppo/lam02
-until python -m learn.x4_ppo --bc runs/x4_bc/final_sangu_rsone/best.pt --out $OUT --device cuda \
-    --envs 1024 --rollout 64 --updates 3000 --lambda-dist 0.2 --lambda-decay 0.9995 --lambda-min 0.05 \
-    --critic-warmup 20 --human-starts 0.4 --pool-frac 0.2 --eval-every 25 --resume; do
-  [ -f $OUT/stopped.json ] && break; echo "reintento en 60 s"; sleep 60
+OUT=runs/x4_ppo/lam02; mkdir -p runs/x4_ppo
+for i in 1 2 3 4 5; do
+  python -m learn.x4_ppo --bc runs/x4_bc/final_sangu_rsone/best.pt --out $OUT --device cuda \
+      --envs 1024 --rollout 64 --updates 3000 --lambda-dist 0.2 --lambda-decay 0.9995 --lambda-min 0.05 \
+      --critic-warmup 20 --human-starts 0.4 --pool-frac 0.2 --eval-every 25 --resume && break
+  [ -f $OUT/stopped.json ] && break
+  echo "intento $i falló; reintento en 60 s"; sleep 60
 done 2>&1 | tee -a $OUT.console.log
 ```
 
+Para salir de tmux sin cortar la corrida: `Ctrl-b d`. Para volver: `tmux attach -t rl`. Con `--resume`, la primera vez arranca de cero. Sin `--resume`, el trainer se niega a usar una carpeta que ya tiene `last.pt`, para no pisar su `best.pt`.
+
 - **Reanudación:** `--resume` continúa desde `<out>/last.pt` con optimizadores, normalización del valor, pool de snapshots, `best.pt` y contadores. `last.pt` se guarda cada 10 actualizaciones y después de cada evaluación, de forma atómica (un corte durante la escritura no lo rompe; si igual no se puede leer, se reanuda desde el snapshot más reciente). Si la corrida se corta, el bucle la relanza.
 - Una corrida cortada por deriva no se reanuda sola: con `stopped.json` presente, `--resume` termina con un mensaje. Para seguirla igual: `--continue-after-stop`.
-- **Seguir desde otra corrida:** `--init runs/x4_ppo/<otra>/best.pt` toma política, crítico y normalización de ese checkpoint; el ancla KL sigue siendo `--bc`.
+- **Seguir desde otra corrida:** `--init runs/x4_ppo/<otra>/best.pt` toma política, crítico y normalización de ese checkpoint; el ancla KL, el rival de `vs_bc` y el pool siguen siendo `--bc`. Después de un corte por deriva: otro `--out` con `--init runs/x4_ppo/lam02/best.pt` y `--lambda-dist 0.4` (o `--lr` menor).
 - **Corte automático** (criterio pre-registrado, `--stop-on-drift 2`): la corrida se detiene sola cuando dos evaluaciones seguidas cumplen cualquiera de:
   - `vs_bc.score` < 0,4;
   - `human_w1_mean` > 1,0;
