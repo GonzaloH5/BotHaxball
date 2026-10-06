@@ -8,7 +8,8 @@ Parecido humano: los mismos partidos se graban con `tools.x4_metrics.EpisodeReco
 referencia humana (`data/human_metrics_sanguchito.samples.npz` de `tools.x4_metrics`, split de entrenamiento) con W1 normalizada. El
 techo es la distancia test-vs-train de los propios humanos (`reports/x4/human_metrics_sanguchito.json`).
 
-Políticas: ruta a checkpoint (`learn.x4_bc` / `learn.x4_ppo`), `still` (no se mueve) o `random`.
+Políticas: ruta a checkpoint (`learn.x4_bc` / `learn.x4_ppo`), `scripted` (`learn.x4_scripted`), `still` (no se
+mueve) o `random`.
 Modo: `--greedy` toma la acción más probable; por defecto se muestrea (temperatura 1).
 
   python -m learn.x4_eval --policies runs/x4_bc/best.pt,still,random --matches 32 --out reports/x4/eval_bc.json
@@ -32,6 +33,12 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 class Policy:
+    def __new__(cls, spec, *args, **kw):
+        if spec == "scripted":
+            from learn.x4_scripted import ScriptedPolicy
+            return ScriptedPolicy()
+        return super().__new__(cls)
+
     def __init__(self, spec, device="cpu", greedy=False, temperature=1.0):
         self.name = Path(spec).stem if spec not in ("still", "random") else spec
         self.spec, self.greedy, self.temperature = spec, greedy, temperature
@@ -56,6 +63,20 @@ class Policy:
         if self.greedy:
             return logits.argmax(-1).cpu().numpy()
         return torch.distributions.Categorical(logits=logits / self.temperature).sample().cpu().numpy()
+
+
+class ModelPolicy:
+    """Adaptador de un SetPolicy en memoria a la interfaz de `Policy` (muestreado o greedy)."""
+
+    def __init__(self, model, device="cpu", name="modelo", greedy=False):
+        self.model, self.device, self.name, self.greedy, self.spec = model, device, name, greedy, name
+
+    @torch.no_grad()
+    def __call__(self, obs, rng):
+        logits = self.model(torch.from_numpy(obs).to(self.device))
+        if self.greedy:
+            return logits.argmax(-1).cpu().numpy()
+        return torch.distributions.Categorical(logits=logits).sample().cpu().numpy()
 
 
 def play(red, blue, *, map_name="sanguchito_rs_x4", matches=16, minutes=3.0, delays=(9, 10, 11, 12), seed=0,

@@ -667,10 +667,15 @@ def post_tick(goal, kicked, contact, pos, vel, group, radius, inv, kick_cancel, 
         dead_ball = kind != LATERAL and (any_kick or moved)
         sangu_kick = -1
         if (flags & FIX_SANGU) and kind != LATERAL:
-            # sólo cuenta la patada del ejecutor que manda la pelota hacia la cancha (en x)
+            # sólo cuenta la patada del ejecutor que manda la pelota hacia la cancha: en x siempre; en el córner
+            # también en y (498 grabaciones: las 1524 patadas que liberan tienen la componente y hacia adentro,
+            # las 12 ignoradas con x hacia adentro la tienen hacia afuera; `reports/x4/conformance_x4.md`)
             sx_spot = 1.0 if rf[RF_SPOT_X] >= 0.0 else -1.0
+            sy_spot = 1.0 if rf[RF_SPOT_Y] >= 0.0 else -1.0
             for p in range(P):
                 if kicked[p] and team[p] == owner and (pos[0, 0] - pos[fp + p, 0]) * sx_spot < 0.0:
+                    if kind == CORNER and (pos[0, 1] - pos[fp + p, 1]) * sy_spot > 0.0:
+                        continue
                     sangu_kick = p
                     break
             dead_ball = sangu_kick >= 0

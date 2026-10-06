@@ -168,7 +168,9 @@ def execute_restart(env, ticks_by_frame, r, phase, order, kind, next_start=None)
     end_kind, end_fr = r["end"]
     t_end = end_fr + (AFTER if end_kind == "released" else 2)
     if next_start is not None:
-        t_end = min(t_end, next_start - 1)   # el saque siguiente teletransporta la pelota
+        # el saque siguiente teletransporta la pelota en el registro next_start: se simula hasta el paso que lo
+        # produce (ahí el simulador cede el lateral si corresponde) y no se compara la pelota desde ese registro
+        t_end = min(t_end, next_start)
     if not _window_ok(ticks_by_frame, range(s, t_end + 1), order):
         return None
     # en córner y saque de arco la masa del script puede ser la de pieza (None); start_restart la fija
@@ -189,7 +191,7 @@ def execute_restart(env, ticks_by_frame, r, phase, order, kind, next_start=None)
                 sim_end, sim_end_kind = f + 1, "reassigned"
             elif team_before >= 0 and env.ri[0, K.RI_TEAM] < 0:
                 sim_end, sim_end_kind = f + 1, "released"
-        if sim_end is not None and end_kind == "released" and f + 1 > end_fr:
+        if sim_end is not None and end_kind == "released" and f + 1 > end_fr and (next_start is None or f + 1 < next_start):
             k = f + 1 - end_fr
             if k in (1, 5, 10, 30, 59):
                 rb = ticks_by_frame[f + 1]["ball"]

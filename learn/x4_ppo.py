@@ -246,7 +246,12 @@ def parse_args(argv=None):
     ap.add_argument("--splits", default=str(ROOT / "reports" / "x4" / "splits.json"))
     ap.add_argument("--bank-recordings", type=int, default=200, help="grabaciones para estados humanos (0 = ninguna)")
     ap.add_argument("--eval-every", type=int, default=25)
-    ap.add_argument("--eval-matches", type=int, default=64)
+    ap.add_argument("--eval-matches", type=int, default=32, help="partidos por lado contra la BC en cada evaluación")
+    ap.add_argument("--eval-minutes", type=float, default=2.0)
+    ap.add_argument("--shaping-retire", type=float, default=0.75,
+                    help="victorias contra la BC a partir de las cuales el shaping se retira para siempre (0 = nunca)")
+    ap.add_argument("--human-gate", type=float, default=1.0,
+                    help="W1 normalizada media máxima (métricas clave) para que un checkpoint cuente como mejor")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--threads", type=int, default=4)
     a = ap.parse_args(argv)
@@ -296,6 +301,7 @@ class Trainer:
             self.arenas.append(Arena(m, n, a, self.rng, bank if m == "sanguchito_rs_x4" else None, len(self.pool)))
         self.decisions = 0
         self.update = 0
+        self.best_score = -1.0
         self.log = open(self.out / "log.jsonl", "a", encoding="utf-8")
 
     # -------------------------------------------------------------- inferencia
@@ -470,6 +476,39 @@ class Trainer:
         info["ret_mean"] = float(ret.mean())
         return info
 
+    @torch.no_grad()
+    def evaluate(self):
+        """Fuerza contra la BC (latencia de sala, ambos lados, muestreado) y parecido humano en self-play."""
+        from learn.x4_eval import ModelPolicy, human_compare, play
+        a = self.a
+        delays = tuple(int(d) for d in a.delay_values)
+        me = ModelPolicy(self.policy, self.dev, "aprendiz")
+        bc = ModelPolicy(self.bc, self.dev, "bc")
+        self.policy.eval()
+        w = dr = l = gf = ga = 0
+        for side, (red, blue) in enumerate(((me, bc), (bc, me))):
+            r = play(red, blue, map_name="sanguchito_rs_x4", matches=a.eval_matches, minutes=a.eval_minutes,
+                     delays=delays, seed=1000 + self.update * 2 + side, record=0)
+            g = r["goals"] if side == 0 else r["goals"][:, ::-1]
+            d = g[:, 0] - g[:, 1]
+            w += int((d > 0).sum()); dr += int((d == 0).sum()); l += int((d < 0).sum())
+            gf += int(g[:, 0].sum()); ga += int(g[:, 1].sum())
+        selfplay = play(me, me, map_name="sanguchito_rs_x4", matches=4, minutes=a.eval_minutes, delays=delays,
+                        seed=77 + self.update, record=4)
+        hum = human_compare(selfplay["episodes"]) or {}
+        self.policy.train()
+        n = max(1, w + dr + l)
+        key = ("passes_per_min", "possession_s", "pass_length", "depth", "width", "dist_ball_2", "still_frac",
+               "key_changes_per_s", "kickoff_wait_s", "restart_s_lateral")
+        w1 = hum.get("w1_norm", {})
+        vals = [w1[k] for k in key if w1.get(k) is not None]
+        out = dict(vs_bc=dict(wins=w, draws=dr, losses=l, score=round((w + 0.5 * dr) / n, 3),
+                              goal_diff=round((gf - ga) / n, 3)),
+                   selfplay_safety=float(selfplay["safety"].mean()),
+                   human_w1_mean=round(float(np.mean(vals)), 3) if vals else None,
+                   human_w1={k: (round(w1[k], 3) if w1.get(k) is not None else None) for k in key})
+        return out
+
     def save(self, name="last.pt"):
         torch.save(dict(model=self.policy.state_dict(), critic=self.critic.state_dict(), hidden=self.hidden,
                         obs_version=obs_v3.OBS_VERSION, update=self.update, decisions=self.decisions,
@@ -510,6 +549,20 @@ class Trainer:
                 self.save()
             if a.snapshot_every and self.update % a.snapshot_every == 0:
                 self.snapshot()
+            if a.eval_every and self.update % a.eval_every == 0 and u >= a.critic_warmup:
+                ev = self.evaluate()
+                ev.update(update=self.update, decisions=self.decisions, shaping=a.shaping)
+                if a.shaping > 0 and a.shaping_retire > 0 and ev["vs_bc"]["score"] >= a.shaping_retire:
+                    a.shaping = 0.0                       # MARLadona: se retira para siempre
+                    ev["shaping_retired"] = True
+                hw = ev["human_w1_mean"]
+                if hw is not None and hw <= a.human_gate and ev["vs_bc"]["score"] > self.best_score:
+                    self.best_score = ev["vs_bc"]["score"]
+                    self.save("best.pt")
+                    ev["new_best"] = True
+                with open(self.out / "eval.jsonl", "a", encoding="utf-8") as fh:
+                    fh.write(json.dumps(ev) + "\n")
+                print("EVAL " + json.dumps(ev), flush=True)
         self.save()
         return time.time() - t0
 

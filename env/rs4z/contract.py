@@ -111,7 +111,8 @@ FLAGS["v2_lateral"] = FLAGS["v2"] | FIX_LATERAL
 # * córner (±1138,325, ±658,325) y saque de arco (±1023,325, ±123,95): la pelota queda fija (invMass 0).
 #   Córner: disco de radio 361,71 en el punto que sólo choca con el equipo que defiende. Saque de arco:
 #   rivales con c0 (área 840/353,11) y los que están adentro van a ±825 (sólo x).
-#   Sale con una patada del ejecutor hacia adentro (componente x hacia la cancha; hacia afuera se ignora):
+#   Sale con una patada del ejecutor hacia adentro (componente x hacia la cancha y, en el córner, también la y;
+#   hacia afuera se ignora; verificado en 498 grabaciones, `reports/x4/conformance_x4.md`):
 #   v = S·(pelota − pateador después del tick)/|pelota − pateador antes|, S = 10,35124 (córner) o
 #   13,96832 (saque de arco); curva córner (−vx/35, ∓0,05 hacia la cancha), saque de arco (0, −0,02505·vy)
 #   con la velocidad del pateador antes del tick; se mantiene 5 ticks, luego ×0,97 por tick y vale 0 a los

@@ -1,19 +1,22 @@
 // Observación v3 de X4 en Node: misma función que env/rs4z/obs_v3.py (_featurize), feature por feature.
 // Respecto de v2: 5 decisiones propias (latencia de sala de 9–12 ticks), geometría del mapa (lateral y
-// línea de gol) y el mapa como one-hot. La paridad con Python se prueba en deploy/test_obs_v3.js.
+// línea de gol), el mapa como one-hot y el margen de contacto con la pelota (propio y de cada entidad). La paridad con Python se prueba en deploy/test_obs_v3.js.
 "use strict";
 
 const SX = 1150, SY = 670, SR = 600, SVP = 3, SVB = 6, N_HIST = 5, MAX_DELAY = 15;
+const PLAYER_R = 15, KICK_REACH = 4, GAP_SCALE = 8;
 const MAP_NAMES = ["rs_one", "sanguchito_rs_x4", "haxarg_2k23"];
 const N_MAPS = MAP_NAMES.length;
 // línea lateral y línea de gol de cada mapa (env/rs4z/contract.py)
 const MAP_GEOMETRY = { rs_one: [670, 1150], sanguchito_rs_x4: [670, 1150], haxarg_2k23: [600, 1150] };
-const SELF_DIM = 27 + 9 * N_HIST + N_HIST + 16 + N_MAPS;
-const ENT_DIM = 9, N_ENT = 7, N_MATES = 3;
+const SELF_DIM = 27 + 9 * N_HIST + N_HIST + 16 + N_MAPS + 2;
+const ENT_DIM = 10, N_ENT = 7, N_MATES = 3;
 const OBS_DIM = SELF_DIM + N_ENT * ENT_DIM;
 const MIRROR_MOVE = [0, 1, 8, 7, 6, 5, 4, 3, 2];
 
 function clip1(v) { return v > 1 ? 1 : (v < 0 ? 0 : v); }
+// margen de contacto con la pelota (distancia − radios) / 8 px, recortado a [−1, 4]
+function gapFeat(g) { const v = g / GAP_SCALE; return v < -1 ? -1 : (v > 4 ? 4 : v); }
 
 /**
  * state = obs v2 (deploy/rs4z/obs_v2.js) con actHist de 5 decisiones por lugar y además
@@ -71,6 +74,9 @@ function buildObs(state, p) {
     row[j + 13] = 1; row[j + 14] = ko.team === me.team ? 1 : 0; row[j + 15] = clip1(ko.ticks / 600);
   }
   if (mapIdx >= 0) row[j + 16 + mapIdx] = 1;
+  const gap = Math.sqrt(dx * dx + dy * dy) - PLAYER_R - b.r;
+  row[j + 16 + N_MAPS] = gapFeat(gap);
+  row[j + 17 + N_MAPS] = gap < KICK_REACH ? 1 : 0;
   let eMate = 0, eRiv = 0;
   for (let q = 0; q < pl.length; q++) {
     const o = pl[q];
@@ -88,8 +94,10 @@ function buildObs(state, p) {
     row[base + 1] = (qx - px) / SR; row[base + 2] = (qy - py) / SR;
     row[base + 3] = o.vx * s / SVP; row[base + 4] = o.vy / SVP;
     row[base + 5] = (bx - qx) / SR; row[base + 6] = (by - qy) / SR;
-    row[base + 7] = Math.sqrt((bx - qx) ** 2 + (by - qy) ** 2) / SR;
+    const dq = Math.sqrt((bx - qx) ** 2 + (by - qy) ** 2);
+    row[base + 7] = dq / SR;
     row[base + 8] = kicking(o) ? 1 : 0;
+    row[base + 9] = gapFeat(dq - PLAYER_R - b.r);
   }
   return row;
 }

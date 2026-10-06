@@ -90,6 +90,25 @@ def test_outward_kick_does_not_release_the_corner():
     assert np.allclose(env.ball_pos[0], CORNER_SPOT) and np.allclose(env.ball_vel[0], 0.0)
 
 
+def test_corner_kick_outward_in_y_does_not_release():
+    """En el córner la sala ignora la patada que manda la pelota hacia afuera en y aunque vaya hacia adentro en x."""
+    env = _env()
+    players = list(FAR)
+    sy = np.sign(CORNER_SPOT[1])
+    players[0] = (CORNER_SPOT[0] + 16.0, CORNER_SPOT[1] - sy * 16.0)   # detrás en x pero del lado de la cancha en y
+    _place(env, players)
+    env.start_restart(0, C.CORNER, 0, CORNER_SPOT)
+    env.step(_act(p0=9))
+    assert env.ri[0, K.RI_TEAM] == 0, "la patada hacia afuera en y no libera el córner"
+    assert np.allclose(env.ball_pos[0], CORNER_SPOT) and np.allclose(env.ball_vel[0], 0.0)
+    env2 = _env()
+    players[0] = (CORNER_SPOT[0] + 16.0, CORNER_SPOT[1] + sy * 16.0)   # detrás en x y en y: libera
+    _place(env2, players)
+    env2.start_restart(0, C.CORNER, 0, CORNER_SPOT)
+    env2.step(_act(p0=9))
+    assert env2.ri[0, K.RI_TEAM] == -1
+
+
 def test_goal_kick_velocity_uses_goal_kick_speed():
     env = _env()
     spot = (PRM["goal_kick_x"], PRM["goal_kick_y"])

@@ -31,8 +31,24 @@ def test_shared_features_match_v2_on_rs_one():
     # n_mates.. restart/kickoff (sin delay ni masa, que cambian de escala o de definición)
     np.testing.assert_allclose(b[..., V3_HIST + 1:V3_HIST + 5], a[..., V2_HIST + 1:V2_HIST + 5], atol=1e-6)
     np.testing.assert_allclose(b[..., V3_HIST + 6:V3_HIST + 16], a[..., V2_HIST + 6:V2_HIST + 16], atol=1e-6)
-    # entidades
-    np.testing.assert_allclose(b[..., obs_v3.SELF_DIM:], a[..., obs_v2.SELF_DIM:], atol=1e-6)
+    # entidades (v3 agrega el margen de contacto al final de cada una)
+    eb = b[..., obs_v3.SELF_DIM:].reshape(8, 8, obs_v3.N_ENT, obs_v3.ENT_DIM)[..., :obs_v2.ENT_DIM]
+    ea = a[..., obs_v2.SELF_DIM:].reshape(8, 8, obs_v2.N_ENT, obs_v2.ENT_DIM)
+    np.testing.assert_allclose(eb, ea, atol=1e-6)
+
+
+def test_ball_gap_and_reach():
+    env = RS4ZEnv(1, map="sanguchito_rs_x4", seed=5, max_delay=15)
+    pp = np.array([[-300.0, 0], [-600, 200], [-600, -200], [-900, 0], [300, 0], [600, 200], [600, -200], [900, 0]])
+    pp[0] = (-15.0 - 8.325 - 2.0, 0.0)                    # 2 px de margen: al alcance de patada
+    env.place(0, ball_pos=(0.0, 0.0), ball_vel=(0.0, 0.0), player_pos=pp, player_vel=np.zeros((8, 2)))
+    o = obs_v3.observe(env)[0]
+    i = obs_v3.SELF_FEATURES.index("ball_gap")
+    assert np.isclose(o[0, i], 2.0 / obs_v3.GAP_SCALE, atol=1e-5) and o[0, i + 1] == 1.0
+    assert o[3, i + 1] == 0.0 and o[3, i] == 4.0           # lejos: recortado
+    # el compañero 0 visto desde el jugador 1: su margen en el bloque de entidades
+    e0 = o[1, obs_v3.SELF_DIM:obs_v3.SELF_DIM + obs_v3.ENT_DIM]
+    assert np.isclose(e0[9], 2.0 / obs_v3.GAP_SCALE, atol=1e-5)
 
 
 @pytest.mark.parametrize("map_name", obs_v3.MAP_NAMES)

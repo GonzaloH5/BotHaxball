@@ -7,6 +7,9 @@ Cambios respecto de v2 (`env/rs4z/obs_v2.py`), con su motivo:
 * Geometría del mapa (línea lateral, línea de gol) tomada del contrato del mapa, no fija: 2K23 tiene la
   lateral en 600 y Sanguchito/RS ONE en 670 (revisión §6: observación relativa a la geometría).
 * Mapa como condición (one-hot rs_one / sanguchito_rs_x4 / haxarg_2k23; revisión §6, plan E1).
+* Margen de contacto con la pelota (distancia − radios, /8 px) y "al alcance de patada" (margen < KICK_REACH = 4 px)
+  para el jugador y cada entidad: con la distancia escalada a 600 px la zona donde se decide la patada ocupa
+  0,007 de rango; la imitación con v2+ pateaba la mitad que los humanos en lazo cerrado.
 
 Una sola función por muestra (`_featurize`) arma la observación tanto desde `RS4ZEnv` como desde las
 grabaciones (`build_samples`, caché `tools.x4_ticks`): la paridad sim/datos es por construcción. Las
@@ -31,6 +34,9 @@ SX = 1150.0                  # escala de x (línea de gol de RS ONE / Sanguchito
 SY = 670.0                   # escala de y (lateral más ancha de los mapas soportados)
 SR = 600.0                   # escala de vectores relativos
 SVP, SVB = 3.0, 6.0          # velocidad de jugador / pelota
+PLAYER_R = 15.0
+KICK_REACH = 4.0             # sim/physics.KICK_REACH
+GAP_SCALE = 8.0
 N_HIST = 5                   # decisiones propias en la obs (15 ticks con frame_skip 3)
 MAX_DELAY = 15.0
 MAP_NAMES = ("rs_one", "sanguchito_rs_x4", "haxarg_2k23")
@@ -48,8 +54,9 @@ SELF_FEATURES = (
        "restart_active", "restart_own", "restart_rival", "restart_lateral", "restart_corner",
        "restart_goal_kick", "restart_age", "kickoff", "kickoff_own", "kickoff_age"]
     + [f"map_{m}" for m in MAP_NAMES]
+    + ["ball_gap", "ball_in_reach"]
 )
-ENT_FEATURES = ("present", "dx", "dy", "vx", "vy", "ball_dx", "ball_dy", "ball_dist", "kicking")
+ENT_FEATURES = ("present", "dx", "dy", "vx", "vy", "ball_dx", "ball_dy", "ball_dist", "kicking", "ball_gap")
 SELF_DIM = len(SELF_FEATURES)
 ENT_DIM = len(ENT_FEATURES)
 N_ENT = 7
@@ -70,6 +77,12 @@ def map_geometry(map_name):
 @njit(cache=True, inline="always")
 def _clip1(v):
     return 1.0 if v > 1.0 else (0.0 if v < 0.0 else v)
+
+
+@njit(cache=True, inline="always")
+def _gap(g):
+    v = g / GAP_SCALE
+    return -1.0 if v < -1.0 else (4.0 if v > 4.0 else v)
 
 
 @njit(cache=True)
@@ -165,7 +178,10 @@ def _featurize(row, p, ball, ball_r, ppos, pvel, active, kcancel, kicking_now, h
         row[j + 15] = _clip1(ko_age / 600.0)
     if map_idx >= 0:
         row[j + 16 + map_idx] = 1.0
-    S = j + 16 + N_MAPS
+    gap = math.sqrt(dx * dx + dy * dy) - PLAYER_R - ball_r
+    row[j + 16 + N_MAPS] = _gap(gap)
+    row[j + 17 + N_MAPS] = 1.0 if gap < KICK_REACH else 0.0
+    S = j + 18 + N_MAPS
     e_mate = 0
     e_riv = 0
     for q in range(8):
@@ -175,12 +191,12 @@ def _featurize(row, p, ball, ball_r, ppos, pvel, active, kcancel, kicking_now, h
         if tq == tp:
             if e_mate >= N_MATES:
                 continue
-            base = S + e_mate * 9
+            base = S + e_mate * 10
             e_mate += 1
         else:
             if e_riv >= 4:
                 continue
-            base = S + (N_MATES + e_riv) * 9
+            base = S + (N_MATES + e_riv) * 10
             e_riv += 1
         qx = ppos[q, 0] * s
         qy = ppos[q, 1]
@@ -191,8 +207,10 @@ def _featurize(row, p, ball, ball_r, ppos, pvel, active, kcancel, kicking_now, h
         row[base + 4] = pvel[q, 1] / SVP
         row[base + 5] = (bx - qx) / SR
         row[base + 6] = (by - qy) / SR
-        row[base + 7] = math.sqrt((bx - qx) ** 2 + (by - qy) ** 2) / SR
+        dq = math.sqrt((bx - qx) ** 2 + (by - qy) ** 2)
+        row[base + 7] = dq / SR
         row[base + 8] = 1.0 if kicking_now[q] else 0.0
+        row[base + 9] = _gap(dq - PLAYER_R - ball_r)
 
 
 # ------------------------------------------------------------------------------------- simulador
