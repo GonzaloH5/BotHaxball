@@ -12,7 +12,7 @@ Los jugadores se fuerzan a su estado grabado en cada tick, así que el error que
 | Córner | 1.480 | 1.480 | 1.479 / 1.479 | 0 | **1.463 / 1.463 (100%)** (antes de corregir el kernel: 1.449) | +1 en 1.455, 0 en 8 | 0,008 px / 0,39 px |
 | Saque de arco | 1.155 | 1.155 | 1.151 / 1.155 | 0 | **1.146 / 1.146 (100%)** | +1 en 1.143, 0 en 3 | 0,097 px / 91 px |
 
-- Los 18 laterales que no coinciden tienen la liberación desfasada 1 tick (o pocos), con pelotas en contacto con varios jugadores en la línea.
+- Quedan 18 laterales (0,3%) en los que el fin no coincide: no se investigaron todavía.
 
 - La liberación de córner y saque de arco sale con desfase +1: es la convención del evento de patada (se graba un frame antes), no un error de dinámica.
 - La cesión del lateral sale con desfase 0.
