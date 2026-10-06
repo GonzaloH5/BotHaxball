@@ -98,6 +98,9 @@ def main():
     ap.add_argument("--delay-scan", default="", help="retardos a evaluar al final, p. ej. 0,3,6,9,12,15")
     ap.add_argument("--threads", type=int, default=3)
     ap.add_argument("--init", default="", help="checkpoint para continuar")
+    ap.add_argument("--closed-loop-every", type=int, default=0,
+                    help="cada N pasos, cadena de pase en self-play contra humanos (best_cadena.pt; 0 = no)")
+    ap.add_argument("--closed-loop-matches", type=int, default=16)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     a = ap.parse_args()
@@ -131,6 +134,7 @@ def main():
     print(f"modelo {param_count(model) / 1e3:.0f}k parámetros; líneas base dev {json.dumps(base)}", flush=True)
     log = dict(args=vars(a), baseline=base, train_recordings=train.names, dev_recordings=dev.names, evals=[])
     best = None
+    best_cl = -1.0
     t0 = time.time()
     seen = 0
     for step in range(1, a.steps + 1):
@@ -156,6 +160,15 @@ def main():
             if best is None or ev["nll"] < best:
                 best = ev["nll"]
                 torch.save(ckpt, out / "best.pt")
+            if a.closed_loop_every and (step % a.closed_loop_every == 0 or step == a.steps):
+                # la NLL no ve el control en lazo cerrado (la BC está calibrada en estados humanos pero suelta la
+                # pelota en sus propios partidos): se elige también por la cadena de pase en self-play
+                cl = closed_loop(model, device, a.closed_loop_matches, step)
+                ev["cadena_pase"] = cl
+                print("LAZO CERRADO " + json.dumps(cl), flush=True)
+                if cl.get("indice") is not None and cl["indice"] > best_cl:
+                    best_cl = cl["indice"]
+                    torch.save(ckpt, out / "best_cadena.pt")
             (out / "log.json").write_text(json.dumps(log, indent=1, ensure_ascii=False), encoding="utf-8")
     if a.delay_scan:
         scan = {}
@@ -164,6 +177,30 @@ def main():
             print(f"retardo {d:2d}: nll {scan[d]['nll']:.4f} acc {scan[d]['acc']:.4f}", flush=True)
         log["delay_scan"] = scan
         (out / "log.json").write_text(json.dumps(log, indent=1, ensure_ascii=False), encoding="utf-8")
+
+
+def closed_loop(model, device, matches, step):
+    """Índice de la cadena de pase de la política en self-play (latencia de sala, retardo informado 10)."""
+    from learn.x4_epv import EPV
+    from learn.x4_eval import ModelPolicy
+    from tools import x4_pass_chain as PC
+    ref_path = ROOT / "reports" / "x4" / "pass_chain_human.json"
+    if not ref_path.exists():
+        return {}
+    ref = json.loads(ref_path.read_text(encoding="utf-8"))["sanguchito_test"]
+    epv = EPV(ROOT / "runs" / "x4_epv" / "epv.pt", device)
+    gen = torch.Generator(device=device)
+    gen.manual_seed(step)
+    was_training = model.training
+    model.eval()
+    pol = ModelPolicy(model, device, "bc", generator=gen)
+    units, r = PC.policy_units(pol, None, matches, 3.0, seed=step, epv=epv, delays=(6, 7, 8, 9, 10, 11, 14), obs_delay=10)
+    model.train(was_training)
+    idx, lo, hi = PC.index_ci(units, ref["metricas"], n=200)
+    rates = PC.rates(units)
+    return dict(indice=idx, ic90=[lo, hi], pases_por_min=round(rates["pases_por_min"], 3),
+                precision_pase=round(rates["precision_pase"], 3),
+                retencion_tras_recibir=round(rates["retencion_tras_recibir"], 3))
 
 
 if __name__ == "__main__":

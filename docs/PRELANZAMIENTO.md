@@ -116,7 +116,53 @@ una escala 30 veces menor.
 
 ## 5. Problemas encontrados y corregidos
 
-(se completa con la revisión)
+Ninguno de estos estaba a la vista con "el comando corre". Cada uno tiene test o evidencia en el repo.
+
+**Simulador**
+- **Lateral que rebota sin fin** (`env/rs4z/kernel.py`). Un arranque desde un estado humano grabado en el primer tick de un
+  lateral, con la pelota todavía adentro de la línea, disparaba "entrada sin patada" en cada decisión: el lateral pasaba de
+  un equipo al otro todo el partido. Afectaba a ~12% de los arranques humanos con lateral. Ahora "entrada sin patada" exige
+  que la pelota haya estado colocada afuera, y el StateBank coloca la pelota donde la pone el script
+  (`test_lateral_started_with_ball_inside_does_not_ping_pong`).
+- **Causa de cada saque perdido** (`EV_FWHY`): la penalización por saque vencido caía en un 97% sobre laterales mal
+  ejecutados (regla de la sala), no sobre esperas. Ahora sólo se penalizan las esperas; el mal lateral ya cuesta la pelota.
+
+**Medición**
+- **No había forma de medir la cadena de pase contra humanos.** Ahora: `tools/x4_pass_chain.py`, el EPV y las dos
+  referencias humanas.
+- **El gate reprobaba a humanos reales.** La primera versión ("≥ promedio en cada métrica" o "ninguna significativamente
+  peor") reprobaba a 29 de 30 muestras humanas de 150 min. Recalibrado con humanos (`tools/x4_gate_calibration.py`,
+  `reports/x4/gate_calibracion_humanos.json`): aprueba al 95% de las muestras humanas del tamaño de la certificación y al
+  87% de las del entrenamiento; la BC (índice ~0,5) queda lejos.
+- **Índice ruidoso con evaluaciones chicas.** Una métrica rara con 0 eventos hundía el índice y disparaba cortes en falso
+  (lo mostró el A/B de CPU). Ahora cada métrica exige datos suficientes y el corte por pases exige que todo el IC90 del índice
+  quede por debajo del valor inicial.
+- **Grabador de simulación desalineado.** Tomaba el estado después del paso, con la pelota ya fuera del pie; las
+  grabaciones toman el estado antes. Ahora están alineados.
+- **El self-play podía inflar los pases con una defensa blanda.** Se agregaron la presión sobre el portador (banda humana y
+  corte por deriva) y la cadena de pase contra la BC como rival fijo.
+
+**Entrenamiento**
+- **Retardo informado:** el bot de la sala le informa siempre 10 a la política, pero en el entrenamiento veía el retardo
+  verdadero. Ahora la mitad de los partidos ven 10 y el resto el verdadero ± 2; el retardo sorteado incluye 6–7.
+- **Crítico:** la "acción próxima" que veía era la de una decisión antes (corregido, con test); ahora ve el tipo de rival y
+  el λ efectivo.
+- **Shaping:** el CHECKPOINT no era Markov para el crítico (franjas cobradas invisibles) y en una corrida de CPU vino con la
+  defensa sin presión. Por defecto, shaping de potencial con el EPV.
+- **Guardas de no finitos:** una actualización con NaN se descarta y vuelven los pesos anteriores; nunca se guarda un
+  checkpoint no finito.
+
+**Operación**
+- **Decisiones que esperaban a una persona** (brazo de pases "a mano entre 100 y 300M", qué hacer tras un corte, cuándo
+  extender, qué checkpoint exportar): ahora todo lo decide la cola con reglas escritas.
+- **Reanudación:** `best.pt` podía quedar pisado por uno peor al reanudar; los checkpoints no eran atómicos; el pool no
+  tenía tope; nada relanzaba el proceso. Corregido (guardado atómico después de cada evaluación, pool con reindexado, bucle
+  de reintentos en la cola).
+- **Trazabilidad:** `run_meta.jsonl` (versión del código, GPU, hilos), `evals/` con la política y los partidos de cada
+  evaluación, `log.jsonl` con varianza explicada, normas de gradiente y conducta (distancia a la pelota, quietos, patadas,
+  saques iniciales).
+- **Cortes relativos a la evaluación 0** (antes eran absolutos y calibrados con otra BC) y nuevos: "nadie saca", defensa
+  que deja de presionar, caída de la cadena de pase.
 
 ## 6. Riesgos que siguen
 

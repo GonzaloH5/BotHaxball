@@ -1,0 +1,701 @@
+{
+ "runs/x4_bc/final_sangu_rsone/best.pt": {
+  "indice": [
+   0.5748,
+   0.5477,
+   0.6233
+  ],
+  "indice_vs_bc": [
+   0.5484,
+   0.4952,
+   0.5988
+  ],
+  "vs_bc": {
+   "w": 1,
+   "d": 21,
+   "l": 2,
+   "score": 0.479
+  },
+  "etapas": {
+   "posicionamiento y líneas": 1.0675,
+   "desmarques y apoyo": 0.587,
+   "elección y ejecución": 0.4861,
+   "recepción y control": 0.8492,
+   "aprovechar la ventaja": 0.4356,
+   "posesión y valor": 0.3559,
+   "decisión": 0.4629
+  },
+  "checks": {
+   "indice_global": false,
+   "etapas": false,
+   "ninguna_muy_por_debajo": false,
+   "estilo_en_banda": false,
+   "datos": true
+  },
+  "datos": 0.949,
+  "metricas": {
+   "lineas_disponibles": [
+    1.2482,
+    1.0897,
+    true
+   ],
+   "linea_progresiva_frac": [
+    0.3114,
+    0.3039,
+    true
+   ],
+   "apoyo_frac": [
+    0.4178,
+    0.3711,
+    true
+   ],
+   "control_espacio": [
+    0.5046,
+    0.5134,
+    true
+   ],
+   "separacion_media": [
+    214.3761,
+    179.5614,
+    true
+   ],
+   "desmarques_por_min_posesion": [
+    8.1781,
+    9.7349,
+    true
+   ],
+   "desmarques_utiles_frac": [
+    0.0253,
+    0.1006,
+    false
+   ],
+   "reofrece_tras_pasar_frac": [
+    0.6655,
+    0.6952,
+    true
+   ],
+   "pases_por_min": [
+    6.5172,
+    12.7574,
+    false
+   ],
+   "precision_pase": [
+    0.5221,
+    0.6862,
+    true
+   ],
+   "precision_bajo_presion": [
+    0.6918,
+    0.7132,
+    true
+   ],
+   "progresivos_por_min": [
+    0.9868,
+    1.8931,
+    false
+   ],
+   "rompe_lineas_por_min": [
+    2.2948,
+    4.5538,
+    false
+   ],
+   "al_espacio_por_min": [
+    2.5702,
+    5.4987,
+    false
+   ],
+   "cambios_orientacion_por_min": [
+    0.7802,
+    1.2109,
+    false
+   ],
+   "paredes_por_min": [
+    0.1836,
+    0.7675,
+    false
+   ],
+   "salidas_presion_por_min": [
+    1.2162,
+    3.0802,
+    false
+   ],
+   "asistencias_por_min": [
+    0.1147,
+    0.249,
+    false
+   ],
+   "epv_por_intento": [
+    0.0044,
+    0.0221,
+    false
+   ],
+   "atras_frac": [
+    0.4296,
+    0.3861,
+    true
+   ],
+   "largo_pase_p50": [
+    310.6692,
+    312.6392,
+    true
+   ],
+   "velocidad_pase_p50": [
+    6.2507,
+    6.5721,
+    false
+   ],
+   "retencion_tras_recibir": [
+    0.4261,
+    0.5829,
+    true
+   ],
+   "retencion_bajo_presion": [
+    0.4091,
+    0.4758,
+    true
+   ],
+   "control_orientado_frac": [
+    0.3908,
+    0.493,
+    true
+   ],
+   "anticipacion_receptor": [
+    0.6133,
+    0.5877,
+    true
+   ],
+   "de_primera_frac": [
+    0.2958,
+    0.3005,
+    true
+   ],
+   "tiempo_con_pelota_p50": [
+    0.05,
+    0.4,
+    false
+   ],
+   "progreso_tras_pase_avance": [
+    157.5343,
+    231.962,
+    true
+   ],
+   "tiro_tras_pase_avance_frac": [
+    0.0472,
+    0.1689,
+    false
+   ],
+   "devolucion_inmediata_frac": [
+    0.3378,
+    0.2347,
+    false
+   ],
+   "epv_por_posesion": [
+    0.0016,
+    0.0447,
+    false
+   ],
+   "pases_por_posesion": [
+    0.2539,
+    0.5846,
+    false
+   ],
+   "circulacion_inutil_frac": [
+    0.125,
+    0.1455,
+    false
+   ],
+   "tiros_por_min": [
+    0.5737,
+    1.3815,
+    false
+   ],
+   "epv_por_decision": [
+    -0.0071,
+    0.0176,
+    false
+   ],
+   "perdida_sin_pase_bajo_presion": [
+    0.6047,
+    0.5184,
+    true
+   ],
+   "pase_con_linea_progresiva": [
+    0.3848,
+    0.6038,
+    false
+   ],
+   "presion_al_portador_p50": [
+    103.644,
+    98.4806,
+    true
+   ]
+  },
+  "safety_kickoff": 0
+ },
+ "runs/x4_ppo_ab/epv/evals/pi_00150.pt": {
+  "indice": [
+   0.583,
+   0.5524,
+   0.6292
+  ],
+  "indice_vs_bc": [
+   0.5389,
+   0.5028,
+   0.5757
+  ],
+  "vs_bc": {
+   "w": 3,
+   "d": 18,
+   "l": 3,
+   "score": 0.5
+  },
+  "etapas": {
+   "posicionamiento y líneas": 1.0061,
+   "desmarques y apoyo": 0.7605,
+   "elección y ejecución": 0.4458,
+   "recepción y control": 0.8783,
+   "aprovechar la ventaja": 0.723,
+   "posesión y valor": 0.3139,
+   "decisión": 0.4518
+  },
+  "checks": {
+   "indice_global": false,
+   "etapas": false,
+   "ninguna_muy_por_debajo": false,
+   "estilo_en_banda": false,
+   "datos": true
+  },
+  "datos": 0.949,
+  "metricas": {
+   "lineas_disponibles": [
+    1.265,
+    1.0897,
+    true
+   ],
+   "linea_progresiva_frac": [
+    0.289,
+    0.3039,
+    true
+   ],
+   "apoyo_frac": [
+    0.3533,
+    0.3711,
+    true
+   ],
+   "control_espacio": [
+    0.5005,
+    0.5134,
+    true
+   ],
+   "separacion_media": [
+    265.3883,
+    179.5614,
+    false
+   ],
+   "desmarques_por_min_posesion": [
+    6.6014,
+    9.7349,
+    true
+   ],
+   "desmarques_utiles_frac": [
+    0.08,
+    0.1006,
+    true
+   ],
+   "reofrece_tras_pasar_frac": [
+    0.567,
+    0.6952,
+    true
+   ],
+   "pases_por_min": [
+    5.6376,
+    12.7574,
+    false
+   ],
+   "precision_pase": [
+    0.4956,
+    0.6862,
+    true
+   ],
+   "precision_bajo_presion": [
+    0.7429,
+    0.7132,
+    true
+   ],
+   "progresivos_por_min": [
+    0.7299,
+    1.8931,
+    false
+   ],
+   "rompe_lineas_por_min": [
+    1.9631,
+    4.5538,
+    false
+   ],
+   "al_espacio_por_min": [
+    2.2651,
+    5.4987,
+    false
+   ],
+   "cambios_orientacion_por_min": [
+    1.0067,
+    1.2109,
+    true
+   ],
+   "paredes_por_min": [
+    0.2013,
+    0.7675,
+    false
+   ],
+   "salidas_presion_por_min": [
+    0.7047,
+    3.0802,
+    false
+   ],
+   "asistencias_por_min": [
+    0.0,
+    0.249,
+    false
+   ],
+   "epv_por_intento": [
+    0.0055,
+    0.0221,
+    false
+   ],
+   "atras_frac": [
+    0.4464,
+    0.3861,
+    true
+   ],
+   "largo_pase_p50": [
+    347.1006,
+    312.6392,
+    true
+   ],
+   "velocidad_pase_p50": [
+    6.4295,
+    6.5721,
+    true
+   ],
+   "retencion_tras_recibir": [
+    0.4107,
+    0.5829,
+    true
+   ],
+   "retencion_bajo_presion": [
+    0.5397,
+    0.4758,
+    true
+   ],
+   "control_orientado_frac": [
+    0.3705,
+    0.493,
+    true
+   ],
+   "anticipacion_receptor": [
+    0.5824,
+    0.5877,
+    true
+   ],
+   "de_primera_frac": [
+    0.2366,
+    0.3005,
+    true
+   ],
+   "tiempo_con_pelota_p50": [
+    0.05,
+    0.4,
+    false
+   ],
+   "progreso_tras_pase_avance": [
+    209.8519,
+    231.962,
+    true
+   ],
+   "tiro_tras_pase_avance_frac": [
+    0.0976,
+    0.1689,
+    false
+   ],
+   "devolucion_inmediata_frac": [
+    0.3261,
+    0.2347,
+    false
+   ],
+   "epv_por_posesion": [
+    0.0029,
+    0.0447,
+    false
+   ],
+   "pases_por_posesion": [
+    0.1985,
+    0.5846,
+    false
+   ],
+   "circulacion_inutil_frac": [
+    0.375,
+    0.1455,
+    false
+   ],
+   "tiros_por_min": [
+    0.5034,
+    1.3815,
+    false
+   ],
+   "epv_por_decision": [
+    -0.0033,
+    0.0176,
+    false
+   ],
+   "perdida_sin_pase_bajo_presion": [
+    0.6348,
+    0.5184,
+    true
+   ],
+   "pase_con_linea_progresiva": [
+    0.4013,
+    0.6038,
+    false
+   ],
+   "presion_al_portador_p50": [
+    123.2325,
+    98.4806,
+    true
+   ]
+  },
+  "safety_kickoff": 0
+ },
+ "runs/x4_ppo_ab/checkpoint/evals/pi_00150.pt": {
+  "indice": [
+   0.6401,
+   0.5824,
+   0.6894
+  ],
+  "indice_vs_bc": [
+   0.5307,
+   0.495,
+   0.5701
+  ],
+  "vs_bc": {
+   "w": 4,
+   "d": 13,
+   "l": 7,
+   "score": 0.438
+  },
+  "etapas": {
+   "posicionamiento y líneas": 1.0598,
+   "desmarques y apoyo": 0.7111,
+   "elección y ejecución": 0.5712,
+   "recepción y control": 0.9151,
+   "aprovechar la ventaja": 0.6988,
+   "posesión y valor": 0.3154,
+   "decisión": 0.456
+  },
+  "checks": {
+   "indice_global": false,
+   "etapas": false,
+   "ninguna_muy_por_debajo": false,
+   "estilo_en_banda": false,
+   "datos": true
+  },
+  "datos": 0.949,
+  "metricas": {
+   "lineas_disponibles": [
+    1.2379,
+    1.0897,
+    true
+   ],
+   "linea_progresiva_frac": [
+    0.3381,
+    0.3039,
+    true
+   ],
+   "apoyo_frac": [
+    0.384,
+    0.3711,
+    true
+   ],
+   "control_espacio": [
+    0.4952,
+    0.5134,
+    true
+   ],
+   "separacion_media": [
+    211.3531,
+    179.5614,
+    true
+   ],
+   "desmarques_por_min_posesion": [
+    7.8038,
+    9.7349,
+    true
+   ],
+   "desmarques_utiles_frac": [
+    0.0492,
+    0.1006,
+    false
+   ],
+   "reofrece_tras_pasar_frac": [
+    0.6376,
+    0.6952,
+    true
+   ],
+   "pases_por_min": [
+    5.7799,
+    12.7574,
+    false
+   ],
+   "precision_pase": [
+    0.4749,
+    0.6862,
+    true
+   ],
+   "precision_bajo_presion": [
+    0.7132,
+    0.7132,
+    true
+   ],
+   "progresivos_por_min": [
+    1.4317,
+    1.8931,
+    true
+   ],
+   "rompe_lineas_por_min": [
+    2.0415,
+    4.5538,
+    false
+   ],
+   "al_espacio_por_min": [
+    2.7044,
+    5.4987,
+    false
+   ],
+   "cambios_orientacion_por_min": [
+    1.0075,
+    1.2109,
+    true
+   ],
+   "paredes_por_min": [
+    0.1326,
+    0.7675,
+    false
+   ],
+   "salidas_presion_por_min": [
+    1.034,
+    3.0802,
+    false
+   ],
+   "asistencias_por_min": [
+    0.1591,
+    0.249,
+    false
+   ],
+   "epv_por_intento": [
+    0.0224,
+    0.0221,
+    true
+   ],
+   "atras_frac": [
+    0.3853,
+    0.3861,
+    true
+   ],
+   "largo_pase_p50": [
+    370.1093,
+    312.6392,
+    false
+   ],
+   "velocidad_pase_p50": [
+    6.6043,
+    6.5721,
+    true
+   ],
+   "retencion_tras_recibir": [
+    0.4358,
+    0.5829,
+    true
+   ],
+   "retencion_bajo_presion": [
+    0.451,
+    0.4758,
+    true
+   ],
+   "control_orientado_frac": [
+    0.4404,
+    0.493,
+    true
+   ],
+   "anticipacion_receptor": [
+    0.6509,
+    0.5877,
+    true
+   ],
+   "de_primera_frac": [
+    0.2018,
+    0.3005,
+    true
+   ],
+   "tiempo_con_pelota_p50": [
+    0.1,
+    0.4,
+    false
+   ],
+   "progreso_tras_pase_avance": [
+    219.9193,
+    231.962,
+    true
+   ],
+   "tiro_tras_pase_avance_frac": [
+    0.087,
+    0.1689,
+    false
+   ],
+   "devolucion_inmediata_frac": [
+    0.1957,
+    0.2347,
+    true
+   ],
+   "epv_por_posesion": [
+    0.0039,
+    0.0447,
+    false
+   ],
+   "pases_por_posesion": [
+    0.2125,
+    0.5846,
+    false
+   ],
+   "circulacion_inutil_frac": [
+    0.0,
+    0.1455,
+    false
+   ],
+   "tiros_por_min": [
+    0.4772,
+    1.3815,
+    false
+   ],
+   "epv_por_decision": [
+    -0.0057,
+    0.0176,
+    false
+   ],
+   "perdida_sin_pase_bajo_presion": [
+    0.6232,
+    0.5184,
+    true
+   ],
+   "pase_con_linea_progresiva": [
+    0.4098,
+    0.6038,
+    false
+   ],
+   "presion_al_portador_p50": [
+    114.7848,
+    98.4806,
+    true
+   ]
+  },
+  "safety_kickoff": 0
+ }
+}

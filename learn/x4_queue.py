@@ -7,13 +7,18 @@ curso con `--resume`. Cada proceso tiene su bucle de reintentos acotado.
 
 Pasos:
 1. preflight (learn/x4_preflight.py). Si falla, la cola se detiene: no se gasta GPU con un sistema roto.
-2. `principal`: RL con shaping de valor (EPV), λ 0,2 → 0,05, `--updates` (3000). El brazo de pases se decide adentro,
+2. Selección temprana del shaping (A/B a escala real, ~10% del cómputo): `rl_epv` (shaping de potencial con el valor de
+   posesión) y `rl_checkpoint` (franjas de GRF) en paralelo hasta la actualización `--ab-updates` (300) con la mitad de
+   partidos y de hilos cada uno. Gana el de mayor índice de la cadena de pase en su última evaluación, salvo que pierda
+   contra la BC (< 0,45) o tenga deriva; con diferencia menor a 0,03, el EPV (no cambia la política óptima). En CPU, a una
+   escala 200 veces menor, los dos quedaron dentro del ruido (reports/x4/ab_cpu_reeval.json).
+3. `principal` = el ganador, reanudado con todos los partidos hasta `--updates` (3000). El brazo de pases se decide adentro,
    en la actualización 1000 (`--auto-pass-arm-update`).
-3. Si `principal` se cortó por deriva (stopped.json): `recuperacion` desde su best_pase.pt / best.pt (o la BC) con
+4. Si `principal` se cortó por deriva (stopped.json): `recuperacion` desde su best_pase.pt / best.pt (o la BC) con
    λ 0,4 y lr 1e-4, `--updates` (3000). Si también se corta, la cola termina en "revisar" sin más cómputo.
-4. Si la corrida terminó sin corte y ningún checkpoint aprobó el gate de pases pero el índice de la cadena sigue
+5. Si la corrida terminó sin corte y ningún checkpoint aprobó el gate de pases pero el índice de la cadena sigue
    subiendo (pendiente positiva en las últimas 8 evaluaciones), una sola extensión hasta `--extend-to` (6000).
-5. Certificación (learn/x4_certify.py) de los candidatos: los `pase_aprobado_*.pt` (el último), best_pase.pt y best.pt.
+6. Certificación (learn/x4_certify.py) de los candidatos: los `pase_aprobado_*.pt` (el último), best_pase.pt y best.pt.
    El primero que aprueba se exporta a ONNX como `deploy/rs4z/x4_rl.onnx`; si ninguno aprueba, se exporta igual el de
    mayor índice de la cadena para pruebas, marcado como NO competitivo en `queue_state.json`.
 
@@ -65,20 +70,85 @@ class Queue:
             code = subprocess.run([sys.executable, "-m", *map(str, cmd)], cwd=ROOT).returncode
             if code in ok_codes:
                 break
-            if name.startswith("rl_") and (self.root / name / "stopped.json").exists():
-                break
+            out = Path(str(cmd[cmd.index("--out") + 1])) if "--out" in cmd else None
+            if out is not None and (out / "stopped.json").exists():
+                break                       # cortada por deriva: no se reintenta (el trainer no reanuda)
             self.note(f"{name} terminó con código {code}; reintento en 60 s")
             time.sleep(60)
         self.state["done"][name] = code
         self.save()
         return code
 
-    def rl_cmd(self, name, extra):
+    def rl_cmd(self, name, extra, envs=None, updates=None):
         a = self.a
-        return ["learn.x4_ppo", "--bc", a.bc, "--out", self.root / name, "--device", a.device, "--envs", a.envs,
-                "--rollout", a.rollout, "--updates", a.updates, "--lambda-dist", "0.2", "--lambda-decay", "0.9995",
-                "--lambda-min", "0.05", "--critic-warmup", "20", "--human-starts", "0.4", "--pool-frac", "0.2",
-                "--eval-every", "50", "--resume", *extra]
+        cmd = ["learn.x4_ppo", "--bc", a.bc, "--out", self.root / name, "--device", a.device, "--envs", envs or a.envs,
+               "--rollout", a.rollout, "--updates", updates or a.updates, "--lambda-dist", "0.2", "--lambda-decay",
+               "0.9995", "--lambda-min", "0.05", "--critic-warmup", "20", "--human-starts", "0.4", "--pool-frac", "0.2",
+               "--eval-every", "50", "--resume"]
+        # los extras pisan a los valores por defecto (p. ej. --lambda-dist 0.4 en la recuperación)
+        for i in range(0, len(extra), 2):
+            k = extra[i]
+            if k in cmd and i + 1 < len(extra) and not str(extra[i + 1]).startswith("--"):
+                cmd[cmd.index(k) + 1] = extra[i + 1]
+            else:
+                cmd += extra[i:i + 2]
+        return cmd
+
+    def run_parallel(self, jobs):
+        """Corre varios entrenamientos a la vez, cada uno con su parte de los hilos de numba, con reintentos."""
+        import os
+        pending = [(n, c) for n, c in jobs if n not in self.state["done"]]
+        if not pending:
+            return
+        total = int(os.environ.get("NUMBA_NUM_THREADS", "8"))
+        env = dict(os.environ, NUMBA_NUM_THREADS=str(max(1, total // len(pending))))
+        tries = {n: 0 for n, _ in pending}
+        procs = {}
+        while pending or procs:
+            for n, c in list(pending):
+                self.note(f"inicia {n} en paralelo (intento {tries[n] + 1})", cmd=" ".join(map(str, c)))
+                procs[n] = (subprocess.Popen([sys.executable, "-m", *map(str, c)], cwd=ROOT, env=env), c)
+                pending.remove((n, c))
+            time.sleep(30)
+            for n, (p, c) in list(procs.items()):
+                code = p.poll()
+                if code is None:
+                    continue
+                del procs[n]
+                tries[n] += 1
+                if code == 0 or (self.root / n / "stopped.json").exists() or tries[n] >= 5:
+                    self.state["done"][n] = code
+                    self.save()
+                else:
+                    self.note(f"{n} terminó con código {code}; reintento")
+                    pending.append((n, c))
+
+    def last_eval(self, name):
+        ev = [e for e in self.evals(name) if not e.get("baseline")]
+        return ev[-1] if ev else None
+
+    def choose_shaping(self):
+        """Regla pre-registrada del A/B temprano (paso 2)."""
+        if "shaping_elegido" in self.state:
+            return self.state["shaping_elegido"]
+        rows = {}
+        for kind in ("epv", "checkpoint"):
+            e = self.last_eval(f"rl_{kind}")
+            ok = e is not None and not e.get("drift") and e["vs_bc"]["score"] >= 0.45 \
+                and not (self.root / f"rl_{kind}" / "stopped.json").exists()
+            idx = (e or {}).get("cadena_pase", {}).get("indice")
+            rows[kind] = dict(valido=bool(ok), indice=idx, vs_bc=(e or {}).get("vs_bc", {}).get("score"))
+        valid = {k: v for k, v in rows.items() if v["valido"] and v["indice"] is not None}
+        if not valid:
+            pick = "epv" if not (self.root / "rl_epv" / "stopped.json").exists() else "checkpoint"
+        elif len(valid) == 1:
+            pick = next(iter(valid))
+        else:
+            pick = "checkpoint" if valid["checkpoint"]["indice"] > valid["epv"]["indice"] + 0.03 else "epv"
+        self.state["shaping_elegido"] = pick
+        self.state["ab_temprano"] = rows
+        self.note("A/B temprano del shaping", elegido=pick, brazos=rows)
+        return pick
 
     def evals(self, name):
         p = self.root / name / "eval.jsonl"
@@ -92,14 +162,22 @@ class Queue:
         if code != 0:
             self.note("preflight con FALLA: la cola se detiene (ver preflight.json)")
             return 1
-        # 2. principal
-        main = "rl_principal"
-        self.run(main, self.rl_cmd(main, []))
+        # 2. A/B temprano del shaping, en paralelo con la mitad de los partidos cada uno
+        half = max(64, a.envs // 2)
+        self.run_parallel([(f"rl_{k}", self.rl_cmd(f"rl_{k}", ["--shaping-kind", k], envs=half, updates=a.ab_updates))
+                           for k in ("epv", "checkpoint")])
+        pick = self.choose_shaping()
+        # 3. principal: el ganador sigue con todos los partidos (misma carpeta, --resume)
+        main = f"rl_{pick}"
+        if (self.root / main / "stopped.json").exists():
+            self.note(f"el ganador {main} quedó cortado por deriva en el A/B: va a la recuperación")
+        else:
+            self.run(main + "_full", self.rl_cmd(main, ["--shaping-kind", pick]))
         chosen = [main]
         if (self.root / main / "stopped.json").exists():
             # 3. recuperación pre-registrada
             init = next((p for p in (self.root / main / "best_pase.pt", self.root / main / "best.pt") if p.exists()), None)
-            extra = ["--lambda-dist", "0.4", "--lr", "1e-4"] + (["--init", init] if init else [])
+            extra = ["--lambda-dist", "0.4", "--lr", "1e-4", "--shaping-kind", pick] + (["--init", init] if init else [])
             rec = "rl_recuperacion"
             self.note("principal cortado por deriva: recuperación", init=str(init))
             self.run(rec, self.rl_cmd(rec, extra))
@@ -121,10 +199,7 @@ class Queue:
                 self.save()
                 if slope > 0:
                     self.note("sin aprobado y con el índice subiendo: extensión", pendiente=slope)
-                    self.state["done"].pop(last, None)
-                    cmd = self.rl_cmd(last, [])
-                    cmd[cmd.index("--updates") + 1] = a.extend_to
-                    self.run(last + "_ext", cmd)
+                    self.run(last + "_ext", self.rl_cmd(last, ["--shaping-kind", pick], updates=a.extend_to))
         return self.certify(chosen)
 
     def certify(self, runs):
@@ -170,6 +245,7 @@ def main():
     ap.add_argument("--rollout", type=int, default=64)
     ap.add_argument("--updates", type=int, default=3000)
     ap.add_argument("--extend-to", type=int, default=6000)
+    ap.add_argument("--ab-updates", type=int, default=300, help="actualizaciones del A/B temprano del shaping")
     a = ap.parse_args()
     sys.exit(Queue(a).main())
 
