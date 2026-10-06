@@ -111,6 +111,19 @@ def test_gate_directions():
     assert not PC.gate(agent, human, band, strict=True)["aprobado"]
 
 
+def test_index_without_value_metrics_ignores_epv():
+    """`indice_sin_valor` deja afuera las métricas de valor (las que el shaping EPV optimiza directamente)."""
+    names = [m for m, _, _ in PC.METRICS]
+    human = {m: dict(valor=1.0, ic90=[0.9, 1.1]) for m in names}
+    band = {m: [0.5, 1.5] for m in names}
+    agent = {m: dict(valor=1.0, ic90=[0.9, 1.1]) for m in names}
+    for m in PC.VALUE_METRICS:
+        agent[m] = dict(valor=2.0, ic90=[1.9, 2.1])       # valor inflado: sube el índice, no el que lo excluye
+    g = PC.gate(agent, human, band)
+    assert g["indice_cadena"] > 1.0 and abs(g["indice_sin_valor"] - 1.0) < 1e-9
+    assert set(PC.VALUE_METRICS) <= {m for m, _, k in PC.METRICS if k != "banda"}
+
+
 def test_epv_is_antisymmetric():
     from learn import x4_epv as E
     path = ROOT / "runs" / "x4_epv" / "epv.pt"

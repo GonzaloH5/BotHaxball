@@ -9,10 +9,13 @@ Receta y fuentes (docs/PLAN.md §2, revisión §8):
   ×0,9995 por iteración: `--lambda-decay`; AlphaStar).
   Con `--lambda-dist` λ se sortea por partido entre valores (DiL-piKL arXiv 2210.05492). El actor no ve λ:
   con varios valores, la política única aprende el promedio (DiL-piKL usa un tipo por λ); el crítico sí lo ve.
-* Recompensa: gol ±1 de suma cero + shaping de progreso con tope tipo CHECKPOINT de GRF (arXiv 1907.11180):
-  10 franjas del campo rival, +0,1 la primera vez por punto que el equipo (último toque) lleva la pelota a
-  cada franja, el resto al marcar; suma cero, escalado por `--shaping` y retirable (MARLadona arXiv
-  2409.20326). El pase NO se premia (Liu 2022, arXiv 2105.12196).
+* Recompensa: gol ±1 de suma cero + shaping. Por defecto (`--shaping-kind epv`) shaping basado en potencial con el
+  valor de posesión aprendido de humanos (`learn/x4_epv.py`): F = γ·φ(s') − φ(s) para el rojo y −F para el azul
+  (Ng 1999; en juegos, Devlin y Kudenko 2011), con φ(s') = 0 al terminar el partido. Alternativa (`checkpoint`):
+  progreso con tope tipo CHECKPOINT de GRF (arXiv 1907.11180), 10 franjas del campo rival, +0,1 la primera vez por
+  punto que el equipo (último toque) lleva la pelota a cada franja, el resto al marcar; suma cero, escalado por
+  `--shaping` y retirable (MARLadona arXiv 2409.20326). El pase no se premia salvo el brazo pre-registrado de TiZero
+  (`--auto-pass-arm-update`: una sola decisión; Liu 2022, arXiv 2105.12196).
 * Precalentar el crítico con el actor congelado (`--critic-warmup`; plan E2, motivado por Wołczyk 2024).
 * [inferencia] Penalización de suma cero `--forfeit-penalty` (0,1) al equipo que deja vencer un saque o el saque
   inicial (plazo de entrenamiento). Sin ella, en self-play quedarse quieto en el saque inicial vale exactamente 0
@@ -532,6 +535,9 @@ class Trainer:
         self.best_pass = -1.0
         self.pass_ok_streak = 0
         self.pass_arm_on = a.pass_bonus > 0
+        # el brazo de pases se decide una sola vez (en la primera evaluación desde --auto-pass-arm-update que tenga
+        # índice), se active o no; con --pass-bonus fijado a mano ya está decidido
+        self.pass_arm_decided = a.pass_bonus > 0
         self.n_fixed_pool = len(self.pool)     # BC + --pool; los snapshots se agregan después
         self.epv = None
         if Path(a.epv).exists():
@@ -651,10 +657,19 @@ class Trainer:
         self.a.shaping = float(ck.get("shaping", self.a.shaping))
         self.baseline = ck.get("baseline")
         self.best_pass = float(ck.get("best_pass", -1.0))
+        best_pase = self.out / "best_pase.pt"
+        if best_pase.exists():
+            # como con best.pt: si el proceso cayó entre guardar best_pase.pt y last.pt, last.pt tiene el récord viejo y
+            # una evaluación peor lo pisaría
+            try:
+                self.best_pass = max(self.best_pass, float(torch.load(best_pase, map_location="cpu").get("best_pass", -1.0)))
+            except Exception:  # noqa: BLE001
+                pass
         self.pass_ok_streak = int(ck.get("pass_ok_streak", 0))
         if ck.get("pass_arm_on"):
             self.pass_arm_on = True
             self.a.pass_bonus = float(ck.get("pass_bonus", self.a.pass_bonus))
+        self.pass_arm_decided = bool(ck.get("pass_arm_decided", self.pass_arm_on)) or self.pass_arm_decided
         for name in ck.get("pool_names", []):
             if (self.out / f"{name}.pt").exists():
                 self.pool.append((name, load_policy(self.out / f"{name}.pt", self.dev)))
@@ -1034,7 +1049,8 @@ class Trainer:
         sup = PC.support(units)
         g = PC.gate(m, self.pass_ref["metricas"], self.pass_ref["banda"], sup)
         idx, lo, hi = PC.index_ci(units, self.pass_ref["metricas"], n=200, seed=int(self.update))
-        return dict(indice=idx, indice_ic90=[lo, hi], aprobado=g["aprobado"], checks=g["checks"],
+        return dict(indice=idx, indice_ic90=[lo, hi], indice_sin_valor=g["indice_sin_valor"], aprobado=g["aprobado"],
+                    checks=g["checks"],
                     indice_por_etapa=g["indice_por_etapa"], fraccion_al_menos_humano=g["fraccion_al_menos_humano"],
                     fraccion_con_datos=g["fraccion_con_datos"], por_etapa=g["por_etapa"], pases=m["pases"]["valor"],
                     fallan=sorted(k for k, v in g["metricas"].items() if not v["ok"] and v["datos_suficientes"]),
@@ -1064,6 +1080,7 @@ class Trainer:
                         baseline=self.baseline, nonfinite_updates=int(self.nonfinite_updates),
                         best_pass=float(self.best_pass), pass_ok_streak=int(self.pass_ok_streak),
                         pass_arm_on=bool(self.pass_arm_on), pass_bonus=float(self.a.pass_bonus),
+                        pass_arm_decided=bool(self.pass_arm_decided),
                         pool_names=[n for n, _ in self.pool[self.n_fixed_pool:]],
                         args={k: plain(v) for k, v in vars(self.a).items()}),
                    tmp)
@@ -1116,13 +1133,17 @@ class Trainer:
             if self.pass_ok_streak >= 2:
                 self.save(f"pase_aprobado_{self.update:05d}.pt")
                 ev["pase_aprobado"] = True
-            # brazo de pases pre-registrado: una sola decisión, en --auto-pass-arm-update
-            if (a.auto_pass_arm_update and not self.pass_arm_on and self.update >= a.auto_pass_arm_update
-                    and pc["indice"] < a.auto_pass_arm_index):
-                self.pass_arm_on = True
-                a.pass_bonus = a.auto_pass_bonus
-                ev["brazo_pases_activado"] = dict(indice=pc["indice"], umbral=a.auto_pass_arm_index,
-                                                  pass_bonus=a.pass_bonus)
+            # brazo de pases pre-registrado: una sola decisión, en la primera evaluación desde --auto-pass-arm-update (si
+            # ahí el índice supera el umbral, no se vuelve a decidir aunque después baje)
+            if a.auto_pass_arm_update and not self.pass_arm_decided and self.update >= a.auto_pass_arm_update:
+                self.pass_arm_decided = True
+                if pc["indice"] < a.auto_pass_arm_index:
+                    self.pass_arm_on = True
+                    a.pass_bonus = a.auto_pass_bonus
+                    ev["brazo_pases_activado"] = dict(indice=pc["indice"], umbral=a.auto_pass_arm_index,
+                                                      pass_bonus=a.pass_bonus)
+                else:
+                    ev["brazo_pases_descartado"] = dict(indice=pc["indice"], umbral=a.auto_pass_arm_index)
         if a.shaping_kind == "checkpoint" and a.shaping > 0 and a.shaping_retire > 0:
             self.retire_count = self.retire_count + 1 if score >= a.shaping_retire else 0
             if self.retire_count >= max(1, a.retire_patience):

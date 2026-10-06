@@ -670,12 +670,17 @@ def _ratio(kind, a, h):
     return float(np.clip(r, 0.25, 2.0))
 
 
-def chain_index(values, human, sup=None):
+# Métricas que salen del valor de posesión (EPV). Con `--shaping-kind epv` el RL optimiza justamente Δφ, así que estas
+# métricas no son evidencia independiente de la recompensa: `indice_sin_valor` informa el índice sin ellas.
+VALUE_METRICS = ("epv_por_intento", "epv_por_posesion", "epv_por_decision")
+
+
+def chain_index(values, human, sup=None, exclude=()):
     """Índice de la cadena: media geométrica de agente/humano (invertida en las "menos") sobre las métricas de eficacia
-    con datos suficientes, cada razón en [0,25; 2]. 1 = promedio humano."""
+    con datos suficientes, cada razón en [0,25; 2]. 1 = promedio humano. `exclude`: métricas que no entran."""
     logs = []
     for m, _, kind in METRICS:
-        if kind == "banda" or not reliable(m, sup, human[m]["valor"]):
+        if kind == "banda" or m in exclude or not reliable(m, sup, human[m]["valor"]):
             continue
         r = _ratio(kind, values.get(m), human[m]["valor"])
         if r is not None:
@@ -701,8 +706,11 @@ def index_ci(units, human, n=300, seed=0):
 
 # Umbrales calibrados con humanos reales (reports/x4/gate_calibracion_humanos.json): muestras de grabaciones humanas de
 # entrenamiento del mismo tamaño que la evaluación, juzgadas contra la referencia de prueba, tienen que aprobar.
-# certificación (~150 min de juego abierto): índice ≥ 0,95, cada etapa ≥ 0,85, cada métrica ≥ 0,70 → aprueban el 96%;
-# evaluaciones del entrenamiento (~55 min): índice ≥ 0,93, etapa ≥ 0,80, métrica ≥ 0,65 → aprueban el 92%.
+# certificación (~150 min de juego abierto): índice ≥ 0,95, cada etapa ≥ 0,85, cada métrica ≥ 0,70 → aprueban 95 de 100;
+# evaluaciones del entrenamiento (~55 min): índice ≥ 0,93, etapa ≥ 0,80, métrica ≥ 0,65 → aprueban 87 de 100.
+# Lo que el gate certifica es "indistinguible del humano promedio con esta muestra", no "≥ promedio": un agente algo por
+# debajo (índice verdadero ~0,93–0,95) puede aprobar una certificación suelta; por eso la cola exige una confirmación
+# con otras semillas (learn/x4_queue.py).
 THRESHOLDS = dict(certificacion=dict(indice=0.95, etapa=0.85, metrica=0.70),
                   entrenamiento=dict(indice=0.93, etapa=0.80, metrica=0.65))
 
@@ -760,8 +768,11 @@ def gate(agent, human, spread, sup=None, strict=False):
                   estilo_en_banda=all(rows[m]["ok"] for m in judged if rows[m]["tipo"] == "banda"),
                   datos=frac_rel == 1.0 if strict else frac_rel >= 0.8)
     eff = [m for m, _, k in METRICS if k != "banda"]
+    idx_nv = chain_index({m: rows[m]["agente"] for m in rows}, human, sup, exclude=VALUE_METRICS)
     return dict(aprobado=bool(all(checks.values())), checks=checks,
-                indice_cadena=round(idx, 4) if idx is not None else None, indice_por_etapa=stages,
+                indice_cadena=round(idx, 4) if idx is not None else None,
+                # informativo (no entra en el veredicto): el índice sin las métricas de valor que el shaping EPV optimiza
+                indice_sin_valor=round(idx_nv, 4) if idx_nv is not None else None, indice_por_etapa=stages,
                 fraccion_al_menos_humano=round(sum(rows[m]["al_menos_humano"] for m in eff) / len(eff), 3),
                 fraccion_con_datos=round(frac_rel, 3),
                 por_etapa={k: f"{sum(rows[m]['ok'] for m in rows if rows[m]['etapa'] == k)}/"

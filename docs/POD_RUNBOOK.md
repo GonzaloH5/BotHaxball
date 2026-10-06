@@ -8,7 +8,7 @@ Comandos para correr en el pod (1× RTX 3060, unos 8 hilos útiles) el pipeline 
 git fetch origin claude/funny-franklin-iwtrqe && git checkout claude/funny-franklin-iwtrqe
 pip install numpy numba torch orjson onnx onnxruntime pytest
 (cd bridge && npm ci) && (cd deploy && npm ci)
-python -m pytest -q tests                 # 91 tests
+python -m pytest -q tests                 # 101 tests (1 se saltea sin el caché de §1)
 node deploy/test_x4_room_state.js         # paridad sala ↔ dataset de la obs v3
 export NUMBA_NUM_THREADS=8 OMP_NUM_THREADS=1
 ```
@@ -55,9 +55,18 @@ Criterio de avance:
 ## 4. RL con ancla KL (E2 + E3): la cola pre-registrada
 
 Todo el plan de la corrida (pasos, umbrales y qué hacer en cada caso) está en `docs/PRELANZAMIENTO.md` y lo ejecuta sola
-`learn/x4_queue.py`: preflight → RL principal → recuperación si se corta por deriva → una extensión si el índice de la cadena
-de pase sigue subiendo → certificación contra humanos → export a ONNX. Es idempotente: si el pod se reinicia, se relanza el
-mismo comando y sigue donde estaba (`runs/x4_cola/queue_state.json`).
+`learn/x4_queue.py`: preflight → A/B temprano del shaping (EPV contra franjas, 300 actualizaciones) → RL principal →
+recuperación si se corta por deriva → una extensión si el índice de la cadena de pase sigue subiendo → certificación contra
+humanos, con confirmación con otras semillas → export a ONNX. Es idempotente: si el pod se reinicia, se relanza el mismo
+comando y sigue donde estaba (`runs/x4_cola/queue_state.json`).
+
+- Veredictos en `queue_state.json`: "competitivo_en_pases" (un checkpoint aprobó la certificación y su confirmación),
+  "no_competitivo" (se midió y no llegó) o "revisar" (la recuperación también se cortó, o hubo un `fallo_tecnico` o una
+  certificación caída: no se llegó a medir lo planeado).
+- Duración: el preflight estima 3000 actualizaciones con sus evaluaciones (si pasan de 24 h, la cola no arranca). La
+  extensión o la recuperación pueden duplicarla.
+- No reentrenar la imitación (§3) mientras corre la cola: compiten por la GPU y por los hilos de numba que midió el
+  preflight.
 
 ```bash
 tmux new -s cola
@@ -75,9 +84,10 @@ Requisitos (los verifica el preflight, que es el primer paso de la cola y la det
 
 Qué mirar mientras corre (`runs/x4_cola/rl_principal/`):
 - `eval.jsonl` (cada 50 actualizaciones; la fila 0 es la BC): `cadena_pase.indice` (1 = promedio humano) con su `indice_ic90`,
-  `fallan` y `sin_datos`, `cadena_pase_vs_bc` (contra la BC como rival fijo), `vs_bc.score`, `human_w1_mean`, `humanos_dev`
+  `indice_sin_valor` (sin las métricas del valor de posesión, que el shaping EPV optimiza), `fallan` y `sin_datos`,
+  `cadena_pase_vs_bc` (contra la BC como rival fijo), `vs_bc.score`, `human_w1_mean`, `humanos_dev`
   (NLL y KL sobre estados humanos fijos), `selfplay_kickoff_safety`, `drift`, `new_best`, `new_best_pase`,
-  `pase_aprobado`, `brazo_pases_activado`.
+  `pase_aprobado`, `brazo_pases_activado` / `brazo_pases_descartado` (una sola decisión, desde la actualización 1000).
 - `log.jsonl` (cada actualización): `kl_bc`, `explained_var`, `grad_norm_pi`, `lambda_eff`, `dist_ball_1`, `still_frac`,
   `kick_frac`, `kickoff_frac`, `forfeits_by`, `epv_shaping_abs`, `nonfinite_skipped`.
 - `evals/`: la política y los partidos de self-play de cada evaluación (para reanalizar).
@@ -95,6 +105,8 @@ Uso manual del trainer (fuera de la cola): `python -m learn.x4_ppo --help`. `--r
 `--continue-after-stop`; `--init` arranca desde otro checkpoint de PPO manteniendo la BC como ancla.
 
 Certificación manual de un checkpoint: `python -m learn.x4_certify --ckpt <ckpt> --device cuda --out reports/x4/cert.json`.
+Sale con 0 si aprueba y con 3 si no aprueba; otro código es una falla de ejecución. Para confirmar un aprobado, repetirla
+con `--seed 20261007`.
 
 ## 5. Sala
 

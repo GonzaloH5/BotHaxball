@@ -235,6 +235,63 @@ def test_evaluation_is_reproducible_and_confirms_best(tmp_path):
     assert t.policy.training
 
 
+def _fake_eval(t, index_by_update):
+    def ev(seed_offset=0, strength_only=False):
+        idx = index_by_update[t.update]
+        return dict(vs_bc=dict(score=0.5), human_w1_mean=2.0, selfplay=dict(dist_ball_1=110.0),
+                    selfplay_kickoff_safety=0.0,
+                    cadena_pase=dict(indice=idx, indice_ic90=[idx - 0.05, idx + 0.05], aprobado=False, metricas={}))
+    return ev
+
+
+def test_pass_arm_is_decided_once(tmp_path):
+    """El brazo de pases pre-registrado es una sola decisión en la primera evaluación desde la actualización 1000: si
+    ahí el índice supera el umbral, no se activa después aunque el índice baje (antes se activaba en cualquier
+    evaluación posterior por debajo de 0,85)."""
+    import torch
+    t = _tiny_trainer(tmp_path, ["--updates", "1"])
+    t.baseline = dict(indice=0.5, w1=0.5, dist=110.0, kickoff=0.0, vs_bc=0.5)
+    t.evaluate = _fake_eval(t, {950: 0.5, 1000: 0.90, 1050: 0.80})
+    t.update = 950
+    t.eval_step()
+    assert not t.pass_arm_decided                       # antes de 1000 no se decide
+    t.update = 1000
+    t.eval_step()
+    assert t.pass_arm_decided and not t.pass_arm_on
+    t.update = 1050
+    t.eval_step()
+    assert not t.pass_arm_on and t.a.pass_bonus == 0.0
+    rows = [__import__("json").loads(l) for l in (tmp_path / "eval.jsonl").read_text().splitlines()]
+    assert "brazo_pases_descartado" in rows[1] and not any("brazo_pases_activado" in r for r in rows)
+    t.save()
+    t.log.close()
+    assert torch.load(tmp_path / "last.pt", map_location="cpu")["pass_arm_decided"]
+    # por debajo del umbral en la primera evaluación desde 1000: se activa y queda activo al reanudar
+    t2 = _tiny_trainer(tmp_path / "b", ["--updates", "1"])
+    t2.baseline = t.baseline
+    t2.evaluate = _fake_eval(t2, {1000: 0.70})
+    t2.update = 1000
+    t2.eval_step()
+    assert t2.pass_arm_on and t2.a.pass_bonus == 0.05
+    t2.save()
+    t2.log.close()
+    t3 = _tiny_trainer(tmp_path / "b", ["--updates", "2", "--resume"])
+    assert t3.pass_arm_on and t3.pass_arm_decided and t3.a.pass_bonus == 0.05
+    t3.log.close()
+
+
+def test_resume_keeps_the_best_pass_record(tmp_path):
+    """Si el proceso cae entre guardar best_pase.pt y last.pt, al reanudar no se pierde el récord del índice."""
+    t = _tiny_trainer(tmp_path, ["--updates", "1"])
+    t.save()                                            # last.pt con best_pass = -1
+    t.best_pass = 0.8
+    t.save("best_pase.pt")
+    t.log.close()
+    t2 = _tiny_trainer(tmp_path, ["--updates", "2", "--resume"])
+    assert t2.best_pass == 0.8
+    t2.log.close()
+
+
 def test_lateral_started_with_ball_inside_does_not_ping_pong():
     """Un lateral iniciado con la pelota ya adentro (estado grabado a mitad de la colocación) no puede perderse por
     "entrada sin patada" en cada decisión."""

@@ -4,7 +4,8 @@ Chequeos (cada uno OK / FALLA, código de salida ≠ 0 si alguno falla):
 1. dispositivo (CUDA disponible si se pidió, nombre y memoria de la GPU);
 2. datos: caché `data/x4_ticks`, particiones `reports/x4/splits.json`, grabaciones de entrenamiento de Sanguchito;
 3. referencia humana `data/human_metrics_sanguchito.samples.npz` (sin ella best.pt nunca se guarda);
-4. checkpoint de la imitación: carga con weights_only y la dimensión de la observación coincide con obs v3;
+4. checkpoint de la imitación: carga con weights_only y la dimensión de la observación coincide con obs v3; se exporta a
+   ONNX y se verifica con onnxruntime (el export es el último paso de la cola);
 5. mini-corrida del trainer en el dispositivo (StateBank, rollouts con shaping de valor, actualización, snapshot,
    evaluación 0 y periódica con la cadena de pase, reanudación),
    con throughput, RAM y memoria de GPU, y una estimación del tiempo por actualización con la configuración real.
@@ -123,6 +124,13 @@ def main():
               f"{a.bc}: obs {ck.get('obs_version')}, dim {ck.get('obs_dim')} (esperada {obs_v3.OBS_DIM})")
     except Exception as e:  # noqa: BLE001
         check("checkpoint_bc", False, f"{type(e).__name__}: {e}")
+
+    # 4b. export a ONNX: es el último paso de la cola; sin onnx u onnxruntime fallaría después de horas de corrida
+    with tempfile.TemporaryDirectory(prefix="x4-preflight-onnx-") as tmp:
+        r = subprocess.run([sys.executable, "-m", "export.to_onnx_x4", "--ckpt", a.bc, "--out", str(Path(tmp) / "bc.onnx")],
+                           cwd=ROOT, capture_output=True, text=True)
+        lines = (r.stdout if r.returncode == 0 else r.stderr).strip().splitlines()
+        check("export_onnx", r.returncode == 0, lines[-1] if lines else f"código {r.returncode}")
     if not ok:
         return finish(report, ok, a)
 

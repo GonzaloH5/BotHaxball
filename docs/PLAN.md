@@ -4,6 +4,12 @@ Borrador del 2026-10-06, revisado esa noche con el dataset ampliado y las medici
 
 **Objetivo:** bots que jueguen 4v4 Real Soccer en las salas reales (HAXARG 2K23 y SANGUCHITO RS X4). Tienen que hacerlo con juego colectivo (pases, apoyos, estructura) y a nivel competitivo contra humanos, con la latencia real de la sala, de unos 9–12 ticks (§1, B2).
 
+**Foco (decisión del usuario, 2026-10-06): SANGUCHITO RS X4.**
+- El RL, la evaluación, el gate de la cadena de pase y el despliegue del modelo RL son sólo de Sanguchito. Es el único mapa con física y script verificados de punta a punta, y el que más grabaciones tiene.
+- La imitación (el ancla del RL) sigue entrenándose también con RS ONE, con el mapa como condición: la física es la misma y sólo cambian los saques. [inferencia] Son la mitad de los datos y en su mayoría partidos de liga, con más juego colectivo.
+- 2K23 (B1) y los saques de RS ONE quedan postergados.
+- La vara del gate es el humano promedio de esa sala pública; la liga RS ONE queda como referencia informativa (`docs/PRELANZAMIENTO.md` §1).
+
 **Regla del plan:** cada decisión cita trabajos publicados.
 - Lo que es deducción nuestra va marcado **[inferencia]**.
 - Fuentes: la revisión bibliográfica del 2026-10-06, con unos 50 papers con el título comprobado en el PDF. Se citan por su arXiv ID.
@@ -122,14 +128,16 @@ Fuentes: HR-PPO, VPT, AlphaStar, DiL-piKL, MAPPO. **Implementado:** `learn/x4_pp
   - Opción DiL-piKL: λ muestreado por partido. El actor no ve λ, así que con varios valores aprende el promedio.
 - **Recompensa** (GRF, MARLadona, OpenAI Five 1912.06680):
   - gol ±1, suma cero;
-  - shaping CHECKPOINT: 10 franjas del campo rival, +0,1 la primera vez por punto, el resto al marcar, suma cero. Se retira cuando le gana a la BC el 75% de los partidos;
+  - **por defecto (desde la noche del 2026-10-06):** shaping basado en potencial con el valor de posesión aprendido de humanos (EPV, `learn/x4_epv.py`): F = γ·φ(s') − φ(s), suma cero (Ng 1999; Devlin y Kudenko 2011). La cola del pod lo compara al principio contra el CHECKPOINT en un A/B corto (`docs/PRELANZAMIENTO.md` §4);
+  - alternativa, shaping CHECKPOINT: 10 franjas del campo rival, +0,1 la primera vez por punto, el resto al marcar, suma cero. Se retira cuando le gana a la BC el 75% de los partidos;
   - team spirit 1,0 (todas las recompensas son de equipo);
   - **[inferencia, agregado]** −0,1 de suma cero al equipo que deja vencer un saque o el saque inicial (plazo de entrenamiento de 600 ticks).
     - Motivo: con el reloj congelado y el saque pasando al rival, que en self-play es la misma política, quedarse quieto vale exactamente 0.
     - Una corrida chica en CPU desde la BC dejó de sacar a las 50 actualizaciones; el ancla con λ=0,06 no lo impidió.
     - En la sala, quedarse quieto no es una opción.
-  - El pase no se premia por defecto (Liu 2022). Si a 100–300M decisiones el pase cae por debajo del criterio, se prueba **como brazo pre-registrado** el término de TiZero: +0,05 por pase de la posesión que termina en gol, de suma cero (`--pass-bonus 0.05`).
-  - **Criterio numérico de pase (agregado):** en self-play con latencia de sala, ≥ 6 pases/min y ≥ 0,28 de pases/(pases+pérdidas).
+  - El pase no se premia por defecto (Liu 2022). Brazo pre-registrado, el término de TiZero: +0,05 por pase de la posesión que termina en gol, de suma cero. Se decide una sola vez, en la primera evaluación desde la actualización 1000 (~56M decisiones): se activa si el índice de la cadena de pase es < 0,85 (`docs/PRELANZAMIENTO.md` §4). Reemplaza la decisión "a mano entre 100 y 300M".
+  - **Criterio de pase vigente:** el gate de la cadena de pase contra humanos (`docs/PRELANZAMIENTO.md` §1). El criterio numérico de abajo es el anterior y queda como referencia.
+  - **Criterio numérico de pase (agregado, reemplazado por el gate):** en self-play con latencia de sala, ≥ 6 pases/min y ≥ 0,28 de pases/(pases+pérdidas).
     - Referencia humana en Sanguchito: 9,2 y 0,36 (`reports/x4/pass_stats.json`).
     - La BC de partida está en 3,1 y 0,19.
     - Implicancia: hoy **el ancla no aporta por sí sola el pase humano**, solo un tercio. El pase va a tener que venir de una BC más fuerte (más entrenamiento en GPU), del RL o del brazo de TiZero.
@@ -169,11 +177,10 @@ Fuentes: HR-PPO, VPT, AlphaStar, DiL-piKL, MAPPO. **Implementado:** `learn/x4_pp
 
 ## 5. Próximos pasos concretos, en orden
 
-1. En el pod: rehacer el dataset (`docs/POD_RUNBOOK.md` §1) y entrenar la imitación final en GPU (§3). Criterio de E1.
-2. E2–E3 en el pod: barrido corto de λ con evaluación periódica (§4 del runbook).
-3. B1: grabar un partido humano en 2K23 y correr la conformidad de saques.
-4. Sondas de coordinación 2v1/3v2 desde estados humanos (E0).
-5. E4 cuando E3 pase sus criterios.
+1. En el pod: rehacer el dataset (`docs/POD_RUNBOOK.md` §1) y lanzar la cola pre-registrada (§4 del runbook; plan, gates y riesgos en `docs/PRELANZAMIENTO.md`). Reentrenar la imitación en GPU es opcional y no en paralelo con la cola.
+2. Antes de llamar competitivo a un checkpoint certificado: auditar a mano una muestra de pases detectados (`docs/PRELANZAMIENTO.md` §6, riesgo 4).
+3. E4 en Sanguchito cuando la cola dé "competitivo_en_pases", con `--trace` para volver a medir la latencia.
+4. Postergado por el foco en Sanguchito: B1 (2K23) y los saques de RS ONE.
 
 ## 6. Cambios respecto del borrador (2026-10-06, noche)
 
@@ -189,3 +196,6 @@ Fuentes: HR-PPO, VPT, AlphaStar, DiL-piKL, MAPPO. **Implementado:** `learn/x4_pp
 | Penalización por dejar vencer saques en el RL | Equilibrio degenerado observado: el RL dejó de sacar a las 50 actualizaciones |
 | RL solo en Sanguchito por defecto (antes: mezcla de 3 mapas) | Prioridad 1, fidelidad: los saques de 2K23 y RS ONE no coinciden con sus grabaciones |
 | λ = 0,2 por defecto (antes 0,06) | Dos corridas chicas de CPU: con 0,06 hay deriva hacia la pasividad desde la actualización 50 (VPT usa 0,2) |
+| Shaping de potencial con el EPV por defecto; CHECKPOINT como alternativa del A/B | El CHECKPOINT no era Markov para el crítico y en CPU vino con la defensa sin presión (`docs/PRELANZAMIENTO.md` §5) |
+| Gate de la cadena de pase contra humanos en lugar del criterio de pases/min | El objetivo es la cadena completa al nivel del humano promedio, medida con el mismo código en grabaciones y simulación |
+| Foco en Sanguchito (decisión del usuario) | Único mapa verificado de punta a punta; 2K23 y RS ONE quedan postergados para el RL |

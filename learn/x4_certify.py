@@ -1,16 +1,22 @@
 """Certificación de juego colectivo de un checkpoint contra humanos reales (gate final antes de llamarlo competitivo).
 
-Criterio pre-registrado (docs/PRELANZAMIENTO.md §Gates):
+Criterio pre-registrado (docs/PRELANZAMIENTO.md §1):
 1. Cadena de pase en self-play (`--matches` partidos de `--minutes`, latencia de sala) contra la referencia humana de
-   Sanguchito (partición de prueba, `reports/x4/pass_chain_human.json`): todas las métricas de eficacia ≥ promedio humano
-   y todas las de estilo dentro de p10–p90 humano (`tools.x4_pass_chain.gate`). Se informa también contra la liga
-   HAXARG de RS ONE (equipos de torneo, misma cancha y física), que es la vara de "jugador competente".
+   Sanguchito (partición de prueba, `reports/x4/pass_chain_human.json`) con el gate estricto de
+   `tools.x4_pass_chain.gate`, calibrado con humanos reales: índice ≥ 0,95, cada etapa ≥ 0,85, ninguna métrica de
+   eficacia por debajo de 0,70 veces la humana, las de estilo dentro de p10–p90 humano y datos suficientes en todas. Así
+   aprueban 95 de cada 100 muestras humanas del mismo tamaño: certifica "indistinguible del humano promedio de la sala",
+   no "≥ promedio". Se informa también contra la liga HAXARG de RS ONE (equipos de torneo, misma cancha y física), que
+   es la vara de "jugador competente".
 2. Fuerza: no pierde contra la imitación humana (`vs_bc.score` ≥ 0,5 con `--strength-matches` por lado).
 3. Parecido humano: W1 normalizada media ≤ 1 en las métricas clave (como en el trainer).
 4. Informativo: sondas 2v1 y 3v2 desde estados humanos (la política juega en inferioridad numérica reducida y los
-   humanos, desde el mismo estado, 4v4: no es una comparación directa) y el gate contra la liga.
+   humanos, desde el mismo estado, 4v4: no es una comparación directa), el gate contra la liga, la cadena de pase contra
+   la BC como rival fijo y el índice sin las métricas de valor (`indice_sin_valor`). Si una parte informativa falla, se
+   registra en `errores_informativos` y no cambia el veredicto.
 
-Sale con código 0 si aprueba todo, 1 si no. El reporte deja cada métrica con su intervalo y la razón agente/humano.
+Sale con código 0 si aprueba todo y 3 si no aprueba; cualquier otro código es una falla de ejecución (la cola la
+reintenta y no la cuenta como rechazo). El reporte deja cada métrica con su intervalo y la razón agente/humano.
 
   python -m learn.x4_certify --ckpt runs/x4_ppo/lam02/best_pase.pt --device cuda --out reports/x4/cert_best_pase.json
 """
@@ -25,6 +31,7 @@ import numpy as np
 import torch
 
 ROOT = Path(__file__).resolve().parent.parent
+NOT_APPROVED = 3          # código de salida de "no aprueba" (1 queda para las fallas de ejecución de Python)
 
 
 def main():
@@ -45,6 +52,9 @@ def main():
     a = ap.parse_args()
     a.obs_delay = None if a.obs_delay < 0 else a.obs_delay
     torch.set_num_threads(a.threads)
+    # las políticas muestrean con el generador global de torch: sin semilla, dos certificaciones del mismo checkpoint con
+    # el mismo --seed no daban lo mismo
+    torch.manual_seed(a.seed)
     from learn.x4_epv import EPV
     from learn.x4_eval import Policy, human_compare, play
     from tools import x4_pass_chain as PC
@@ -52,7 +62,18 @@ def main():
     ref = json.loads(Path(a.reference).read_text(encoding="utf-8"))
     me = Policy(a.ckpt, device=a.device)
     bc = Policy(a.bc, device=a.device)
-    report = dict(ckpt=a.ckpt, matches=a.matches, minutes=a.minutes)
+    report = dict(ckpt=a.ckpt, matches=a.matches, minutes=a.minutes, seed=a.seed)
+    errors = {}
+
+    def informative(name, fn):
+        """Parte informativa: si falla, queda registrada y no cambia el veredicto (antes una falla acá salía con el
+        mismo código que "no aprobó" y sin reporte)."""
+        try:
+            return fn()
+        except Exception as e:  # noqa: BLE001
+            errors[name] = f"{type(e).__name__}: {e}"
+            print(f"AVISO: falló la parte informativa {name}: {errors[name]}", flush=True)
+            return None
 
     # 1. cadena de pase en self-play
     units, r = PC.policy_units(me, None, a.matches, a.minutes, seed=a.seed, epv=epv, obs_delay=a.obs_delay)
@@ -63,7 +84,10 @@ def main():
                                         strict=True)
     report["indice_ic90"] = PC.index_ci(units, ref["sanguchito_test"]["metricas"], n=500, seed=a.seed)
     if "liga_rs_one" in ref:
-        report["gate_liga"] = PC.gate(m, ref["liga_rs_one"]["metricas"], ref["liga_rs_one"]["banda"], sup, strict=True)
+        g_liga = informative("gate_liga", lambda: PC.gate(m, ref["liga_rs_one"]["metricas"], ref["liga_rs_one"]["banda"],
+                                                          sup, strict=True))
+        if g_liga is not None:
+            report["gate_liga"] = g_liga
     hum = human_compare(r["episodes"]) or {}
     key = ("passes_per_min", "possession_s", "pass_length", "depth", "width", "dist_ball_2", "still_frac",
            "key_changes_per_s", "kickoff_wait_s", "restart_s_lateral")
@@ -73,30 +97,39 @@ def main():
 
     # 2. fuerza contra la BC (los dos lados) y cadena de pase del agente contra esa defensa humano-símil
     w = d = l = 0
-    units_bc = []
+    eps_bc = []
     for side, (red, blue) in enumerate(((me, bc), (bc, me))):
         rr = play(red, blue, matches=a.strength_matches, minutes=a.minutes, seed=a.seed + 1 + side,
                   record=a.strength_matches, obs_delay=a.obs_delay)
         g = rr["goals"] if side == 0 else rr["goals"][:, ::-1]
         diff = g[:, 0] - g[:, 1]
         w += int((diff > 0).sum()); d += int((diff == 0).sum()); l += int((diff < 0).sum())
-        units_bc += [PC.unit_counts([ep], epv, team=side) for ep in rr["episodes"]]
+        eps_bc += [(ep, side) for ep in rr["episodes"]]
     report["vs_bc"] = dict(wins=w, draws=d, losses=l, score=round((w + 0.5 * d) / max(1, w + d + l), 3))
-    mb = PC.bootstrap(units_bc, n=1000, seed=a.seed)
-    report["cadena_pase_vs_bc"] = dict(metricas=mb, gate=PC.gate(mb, ref["sanguchito_test"]["metricas"],
-                                                                 ref["sanguchito_test"]["banda"], PC.support(units_bc)))
+
+    def chain_vs_bc():
+        units_bc = [PC.unit_counts([ep], epv, team=side) for ep, side in eps_bc]
+        mb = PC.bootstrap(units_bc, n=1000, seed=a.seed)
+        return dict(metricas=mb, gate=PC.gate(mb, ref["sanguchito_test"]["metricas"], ref["sanguchito_test"]["banda"],
+                                              PC.support(units_bc)))
+    cvb = informative("cadena_pase_vs_bc", chain_vs_bc)
+    if cvb is not None:
+        report["cadena_pase_vs_bc"] = cvb
 
     # 4. sondas (informativas)
-    from learn import x4_data as XD
-    from learn import x4_probes as PR
-    names = XD.split_names(ROOT / "reports" / "x4" / "splits.json", "test", None, ("sanguchito_rs_x4",))
-    data = XD.load(names[:40], maps=("sanguchito_rs_x4",))
-    rng = np.random.default_rng(0)
-    probes = {}
-    for name, (na, nd) in (("2v1", (2, 1)), ("3v2", (3, 2))):
-        states = PR.pick_states(data, na, nd, a.probe_n, rng)
-        probes[name] = PR.run(me.model, data, states, seed=1 + na)
-        probes[name + "_humanos"] = PR.human_baseline(data, states)
+    def run_probes():
+        from learn import x4_data as XD
+        from learn import x4_probes as PR
+        names = XD.split_names(ROOT / "reports" / "x4" / "splits.json", "test", None, ("sanguchito_rs_x4",))
+        data = XD.load(names[:40], maps=("sanguchito_rs_x4",))
+        rng = np.random.default_rng(0)
+        out = {}
+        for name, (na, nd) in (("2v1", (2, 1)), ("3v2", (3, 2))):
+            states = PR.pick_states(data, na, nd, a.probe_n, rng)
+            out[name] = PR.run(me.model, data, states, seed=1 + na)
+            out[name + "_humanos"] = PR.human_baseline(data, states)
+        return out
+    probes = informative("sondas", run_probes) or {}
     report["sondas"] = probes
 
     checks = dict(
@@ -106,11 +139,14 @@ def main():
     )
     report["checks"] = checks
     # las sondas son informativas: la política juega 2v1/3v2 y los humanos, desde el mismo estado, 4v4
+    tasa = lambda k: (probes.get(k) or {}).get("tasa_pase")
     report["informativo"] = dict(cadena_pase_vs_liga=report.get("gate_liga", {}).get("aprobado"),
                                  indice_vs_liga=report.get("gate_liga", {}).get("indice_cadena"),
-                                 indice_vs_bc=report["cadena_pase_vs_bc"]["gate"]["indice_cadena"],
-                                 sonda_2v1=[probes["2v1"]["tasa_pase"], probes["2v1_humanos"]["tasa_pase"]],
-                                 sonda_3v2=[probes["3v2"]["tasa_pase"], probes["3v2_humanos"]["tasa_pase"]])
+                                 indice_vs_bc=((report.get("cadena_pase_vs_bc") or {}).get("gate") or {}).get("indice_cadena"),
+                                 indice_sin_valor=report["gate_sanguchito"].get("indice_sin_valor"),
+                                 sonda_2v1=[tasa("2v1"), tasa("2v1_humanos")],
+                                 sonda_3v2=[tasa("3v2"), tasa("3v2_humanos")])
+    report["errores_informativos"] = errors
     report["aprobado"] = all(checks.values())
     Path(a.out).parent.mkdir(parents=True, exist_ok=True)
     Path(a.out).write_text(json.dumps(report, indent=1, ensure_ascii=False), encoding="utf-8")
@@ -118,7 +154,7 @@ def main():
     print(json.dumps(dict(aprobado=report["aprobado"], checks=checks, indice_cadena=g["indice_cadena"],
                           por_etapa=g["por_etapa"], fallan=[k for k, v in g["metricas"].items() if not v["ok"]],
                           vs_bc=report["vs_bc"], **report["informativo"]), ensure_ascii=False, indent=1))
-    sys.exit(0 if report["aprobado"] else 1)
+    sys.exit(0 if report["aprobado"] else NOT_APPROVED)
 
 
 if __name__ == "__main__":
