@@ -42,7 +42,7 @@ def test_shaping_can_be_retired():
 def test_upcoming_actions_order_and_mirror():
     ar = _arena(n=1)
     env = ar.env
-    env.delay[:] = 0
+    env.delay[:] = 3                                   # h = 1: se aplica act_hist[0] de antes del paso
     env.act_hist[0, :, 0] = np.arange(8) + 2          # acción del mundo de cada lugar
     up = upcoming_actions(env).reshape(1, 8, 8, 18)
     for p in range(8):
@@ -77,6 +77,10 @@ def test_forfeit_penalty_is_zero_sum():
     from learn.x4_ppo import forfeit_reward
     r = forfeit_reward(np.array([-1, 0, 1]), 0.1)
     assert np.allclose(r, [[0, 0], [-0.1, 0.1], [0.1, -0.1]])
+    # sólo las causas pedidas: el lateral mal ejecutado (1) ya cuesta la pelota y no se penaliza aparte
+    r = forfeit_reward(np.array([0, 1, 0]), 0.1, why=np.array([K.FW_BAD_THROW, K.FW_KICKOFF, K.FW_LAT_TIME]),
+                       reasons=(2, 3, 4))
+    assert np.allclose(r, [[0, 0], [0.1, -0.1], [-0.1, 0.1]])
 
 
 def test_kickoff_deadline_reports_the_forfeiting_team():
@@ -91,6 +95,28 @@ def test_kickoff_deadline_reports_the_forfeiting_team():
             lost = int(ev["forfeit"][0])
             break
     assert lost == team and env.ri[0, K.RI_KO_TEAM] == 1 - team
+    assert ev["forfeit_why"][0] == K.FW_KICKOFF
+
+
+def test_upcoming_actions_is_what_the_kernel_applies_next():
+    """Con retardo D, el primer tick del próximo paso aplica act_hist[⌈D/3⌉ − 1] de antes de `step`."""
+    ar = _arena(n=1)
+    env = ar.env
+    rng = np.random.default_rng(3)
+    for D in (8, 9, 10, 11, 14):
+        env.delay[:] = D
+        env.act_hist[0] = rng.integers(0, 18, size=env.act_hist.shape[1:])
+        up = upcoming_actions(env).reshape(1, 8, 8, 18)
+        h = (D + 2) // 3
+        expected = env.act_hist[0, :, h - 1].copy()
+        env.step(rng.integers(0, 18, size=(1, 8)))
+        assert np.array_equal(env.act_hist[0, :, h], expected)      # lo que leyó el kernel en el tick 0
+        for p in range(8):
+            q = ORDER[p][0]
+            a = expected[q] if TEAM[p] == 0 else MIRROR_ACTION[expected[q]]
+            assert up[0, p, 0, a] == 1.0
+    env.delay[:] = 0
+    assert upcoming_actions(env).sum() == 0          # D = 0: la acción del próximo tick todavía no se decidió
 
 
 def _touch(n, *slots):
@@ -207,3 +233,20 @@ def test_evaluation_is_reproducible_and_confirms_best(tmp_path):
     b = t.evaluate(strength_only=True)
     assert a == b
     assert t.policy.training
+
+
+def test_lateral_started_with_ball_inside_does_not_ping_pong():
+    """Un lateral iniciado con la pelota ya adentro (estado grabado a mitad de la colocación) no puede perderse por
+    "entrada sin patada" en cada decisión."""
+    from learn.x4_ppo import restart_spot
+    ar = _arena(n=1)
+    env = ar.env
+    env.place(0, ball_pos=np.array([577.1, 678.1]), ball_vel=np.zeros(2), player_pos=FAR, player_vel=np.zeros((8, 2)))
+    env.start_restart(0, K.LATERAL, 1, (577.1, 678.1))       # spot adentro: antes rebotaba en cada paso
+    forfeits = 0
+    for _ in range(20):
+        ev = env.step(np.zeros((1, 8), np.int64))
+        forfeits += int(ev["forfeit"][0] >= 0)
+    assert forfeits <= 1
+    x, y = restart_spot(env, K.LATERAL, (577.1, 678.1))
+    assert x == 577.1 and y > 678.325                         # el StateBank coloca la pelota afuera, como el script

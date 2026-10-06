@@ -51,7 +51,7 @@ TEAM = np.array([0, 0, 0, 0, 1, 1, 1, 1])
 # orden de los 8 jugadores visto desde cada lugar: él, compañeros, rivales (por lugar)
 ORDER = np.array([[p] + [q for q in range(8) if q != p and TEAM[q] == TEAM[p]] + [q for q in range(8) if TEAM[q] != TEAM[p]]
                   for p in range(8)])
-CRITIC_IN = obs_v3.OBS_DIM + obs_v2.CRITIC_DIM + 8 * 18 + 1
+CRITIC_IN = obs_v3.OBS_DIM + obs_v2.CRITIC_DIM + 8 * 18 + 1 + 3     # + λ efectivo + tipo de rival
 N_REGIONS = 10
 
 
@@ -91,13 +91,16 @@ class RunningNorm:
 
 
 def upcoming_actions(env):
-    """(N, 8, 8*18) acción que cada jugador aplicará en el próximo tick, en el orden y marco de cada lugar."""
+    """(N, 8, 8*18) acción que cada jugador aplicará en el primer tick del próximo paso, en el orden y marco de cada
+    lugar. Se llama antes de `env.step`, que corre `act_hist` una posición antes de que el kernel lea
+    act_hist[h] con h = ⌈D/3⌉: la acción aplicada es la que hoy está en act_hist[h − 1]. Con D = 0 se aplica la
+    decisión nueva, que todavía no se conoce (fila en cero)."""
     N = env.N
     lag = env.delay
     h = np.where(lag > 0, (lag + env.frame_skip - 1) // env.frame_skip, 0)
     h = np.minimum(h, env.H - 1)
-    world = np.take_along_axis(env.act_hist, h[..., None], axis=2)[..., 0]     # (N, 8)
-    world = np.where(env.active, world, -1)
+    world = np.take_along_axis(env.act_hist, np.maximum(h - 1, 0)[..., None], axis=2)[..., 0]     # (N, 8)
+    world = np.where(env.active & (h > 0), world, -1)
     out = np.zeros((N, 8, 8, 18), np.float32)
     for p in range(8):
         acts = world[:, ORDER[p]]                                             # (N, 8)
@@ -132,8 +135,23 @@ class StateBank:
         env.place(row, ball_pos=d.ball[t, :2], ball_vel=d.ball[t, 2:4], player_pos=d.pos[t], player_vel=d.vel[t],
                   kick_held=held, last_touch=-1, mass_phase=0 if abs(d.mass[t] - 0.5) < 1e-6 else 1)
         if use_restart:
-            env.start_restart(row, int(d.rkind[t]), int(d.rteam[t]), (float(d.ball[t, 0]), float(d.ball[t, 1])))
+            env.start_restart(row, int(d.rkind[t]), int(d.rteam[t]), restart_spot(env, int(d.rkind[t]), d.ball[t, :2]))
         return t
+
+
+def restart_spot(env, kind, ball_xy):
+    """Lugar donde el script coloca la pelota para un saque del lado de `ball_xy`: en el primer tick del saque de una
+    grabación la pelota puede no estar colocada todavía (p. ej. un lateral con la pelota aún adentro de la línea)."""
+    from env.rs4z import contract as C
+    prm = env.prm
+    bx, by = float(ball_xy[0]), float(ball_xy[1])
+    sx = 1.0 if bx >= 0 else -1.0
+    sy = 1.0 if by >= 0 else -1.0
+    if kind == K.LATERAL:
+        return bx, sy * float(prm[C.PI["lateral_ball_y"]])
+    if kind == K.CORNER:
+        return sx * float(prm[C.PI["corner_x"]]), sy * float(prm[C.PI["corner_y"]])
+    return sx * float(prm[C.PI["goal_kick_x"]]), sy * float(prm[C.PI["goal_kick_y"]])
 
 
 # ------------------------------------------------------------------------------------- arena
@@ -153,6 +171,7 @@ class Arena:
         self.learner = np.ones((n, 8), bool)      # lugares que controla el aprendiz
         self.opp = np.full(n, -1)                 # índice del rival del pool (-1 self-play)
         self.lam = np.zeros(n)
+        self.delay_obs = np.zeros((n, 8), np.int64)   # retardo que ve la política (ver --delay-feature)
         self.regions = np.zeros((n, 2, N_REGIONS), bool)
         self.pool_size = pool_size
         self.ep_goals = np.zeros((n, 2))
@@ -171,6 +190,17 @@ class Arena:
         lo, hi = self.a.match_minutes
         ticks = (self.rng.uniform(lo, hi, len(rows)) * 3600).astype(np.int64)
         env.start_match(rows, delay=self._delays(len(rows)), match_ticks=ticks)
+        # el bot de la sala informa siempre --delay-feature-fixed (10): la mitad de los partidos lo ven así y el resto
+        # ve el retardo verdadero ± 2, para que la política no dependa de conocerlo con exactitud
+        D = env.delay[rows]
+        mode = getattr(self.a, "delay_feature", "true")
+        if mode == "true":
+            self.delay_obs[rows] = D
+        else:
+            fixed = np.full_like(D, self.a.delay_feature_fixed)
+            noisy = np.clip(D + self.rng.integers(-2, 3, size=D.shape), 0, 15)
+            pick = self.rng.random((len(rows), 1)) < 0.5 if mode == "mixed" else np.ones((len(rows), 1), bool)
+            self.delay_obs[rows] = np.where(pick, fixed, noisy)
         for r in rows:
             if self.bank is not None and self.rng.random() < self.a.human_starts:
                 self.bank.apply(env, r, self.a.human_restart_frac)
@@ -291,24 +321,47 @@ def pass_bonus_reward(goal, scored_passes, bonus):
     return out
 
 
-def drift_reasons(ev, a):
-    """Criterio de corte pre-registrado (docs/POD_RUNBOOK.md §4) aplicado a una evaluación."""
+def drift_reasons(ev, a, base=None, defense_hi=None):
+    """Criterio de corte pre-registrado (docs/PRELANZAMIENTO.md) aplicado a una evaluación. `base`: evaluación 0
+    (política inicial) para los umbrales relativos; `defense_hi`: p90 humano de la presión sobre el portador."""
     out = []
+    base = base or {}
     if ev["vs_bc"]["score"] < a.drift_min_score:
         out.append(f"vs_bc.score {ev['vs_bc']['score']} < {a.drift_min_score}")
     hw = ev.get("human_w1_mean")
-    if hw is not None and hw > a.drift_max_w1:
-        out.append(f"human_w1_mean {hw} > {a.drift_max_w1}")
+    lim_w1 = max(a.drift_max_w1, base["w1"] + 0.5) if base.get("w1") is not None else a.drift_max_w1
+    if hw is not None and hw > lim_w1:
+        out.append(f"human_w1_mean {hw} > {round(lim_w1, 3)}")
     d = (ev.get("selfplay") or {}).get("dist_ball_1")
-    if d is not None and d > a.drift_max_dist:
-        out.append(f"selfplay.dist_ball_1 {d} > {a.drift_max_dist}")
+    lim_d = max(a.drift_max_dist, 1.6 * base["dist"]) if base.get("dist") is not None else a.drift_max_dist
+    if d is not None and d > lim_d:
+        out.append(f"selfplay.dist_ball_1 {d} > {round(lim_d, 1)}")
+    ko = ev.get("selfplay_kickoff_safety")
+    lim_ko = max(1.0, 3.0 * base.get("kickoff", 0.0))
+    if ko is not None and ko > lim_ko:
+        out.append(f"saques iniciales sin ejecutar por partido {ko} > {round(lim_ko, 2)} (equilibrio 'nadie saca')")
+    pc = ev.get("cadena_pase") or {}
+    if base.get("indice") and pc.get("indice") is not None and pc["indice"] < a.drift_pass_ratio * base["indice"]:
+        out.append(f"cadena_pase.indice {pc['indice']} < {a.drift_pass_ratio} × {round(base['indice'], 3)} (inicial)")
+    press = (pc.get("metricas") or {}).get("presion_al_portador_p50", [None])[0]
+    if defense_hi and press is not None and press > 1.3 * defense_hi:
+        out.append(f"presión al portador p50 {press} px > 1,3 × p90 humano {defense_hi} (la defensa dejó de presionar)")
     return out
 
 
-def forfeit_reward(forfeit, penalty):
-    """(N, 2) suma cero: −penalty al equipo que perdió un saque por plazo (forfeit = equipo, −1 ninguno)."""
+FORFEIT_NAMES = {K.FW_BAD_THROW: "lateral_mal_ejecutado", K.FW_LAT_TIME: "lateral_por_tiempo",
+                 K.FW_LATE: "plazo_entrenamiento", K.FW_KICKOFF: "saque_inicial"}
+
+
+def forfeit_reward(forfeit, penalty, why=None, reasons=None):
+    """(N, 2) suma cero: −penalty al equipo que perdió un saque (forfeit = equipo, −1 ninguno). Con `why` y
+    `reasons`, sólo las causas listadas (por defecto, las esperas: lateral por tiempo, plazo y saque inicial; el
+    lateral mal ejecutado ya cuesta la pelota, como en la sala)."""
     out = np.zeros((len(forfeit), 2))
-    rows = np.flatnonzero(forfeit >= 0)
+    ok = forfeit >= 0
+    if why is not None and reasons is not None:
+        ok &= np.isin(why, list(reasons))
+    rows = np.flatnonzero(ok)
     out[rows, forfeit[rows]] -= penalty
     out[rows, 1 - forfeit[rows]] += penalty
     return out
@@ -349,9 +402,17 @@ def parse_args(argv=None):
     ap.add_argument("--lambda-decay", type=float, default=1.0,
                     help="factor por actualización sobre λ (VPT: 0,9995); 1 = sin decaimiento")
     ap.add_argument("--lambda-min", type=float, default=0.0, help="piso de λ con decaimiento")
-    ap.add_argument("--shaping", type=float, default=1.0)
+    ap.add_argument("--shaping-kind", choices=("epv", "checkpoint", "none"), default="epv",
+                    help="epv: shaping basado en potencial con el valor de posesión aprendido de humanos "
+                         "(learn/x4_epv.py); checkpoint: franjas de GRF (versión anterior)")
+    ap.add_argument("--epv", default=str(ROOT / "runs" / "x4_epv" / "epv.pt"))
+    ap.add_argument("--epv-coef", type=float, default=1.0, help="escala de F = γ·φ(s') − φ(s) (φ en unidades de gol)")
+    ap.add_argument("--shaping", type=float, default=1.0, help="escala del shaping checkpoint")
     ap.add_argument("--forfeit-penalty", type=float, default=0.1,
-                    help="penalización (suma cero) por dejar vencer un saque o el saque inicial")
+                    help="penalización (suma cero) por perder un saque por espera (ver --forfeit-reasons)")
+    ap.add_argument("--forfeit-reasons", default="2,3,4",
+                    help="causas penalizadas (kernel FW_*): 1 lateral mal ejecutado, 2 lateral por tiempo, "
+                         "3 plazo de entrenamiento, 4 saque inicial")
     ap.add_argument("--pass-bonus", type=float, default=0.0,
                     help="brazo pre-registrado de TiZero: +x por pase de la posesión que termina en gol (0 = apagado)")
     ap.add_argument("--shaping-anneal", type=float, default=0.0, help="decisiones hasta llevar el shaping a 0 (0 = fijo)")
@@ -361,9 +422,13 @@ def parse_args(argv=None):
     ap.add_argument("--pool-frac", type=float, default=0.2)
     ap.add_argument("--pool", default="", help="checkpoints extra del pool, separados por coma (la BC siempre está)")
     ap.add_argument("--snapshot-every", type=int, default=100, help="actualizaciones entre snapshots al pool")
-    ap.add_argument("--delays", default="8:0.2,9:0.25,10:0.25,11:0.2,14:0.1",
-                    help="retardo D en ticks:peso. En sala se midió un lag (frame aplicado − observado) de 9–12 ticks; "
-                         "en la convención del kernel D = lag − 1 (decisión en S_t aplicada desde S_{t+D+1})")
+    ap.add_argument("--delays", default="6:0.05,7:0.1,8:0.15,9:0.2,10:0.2,11:0.15,14:0.15",
+                    help="retardo D en ticks:peso. En sala se midió un lag (frame aplicado − observado) de 9–12 ticks "
+                         "antes del arreglo de hilos de ONNX (puede ser menor); en la convención del kernel D = lag − 1 "
+                         "(decisión en S_t aplicada desde S_{t+D+1})")
+    ap.add_argument("--delay-feature", choices=("mixed", "true", "fixed"), default="mixed",
+                    help="retardo que ve la política: mixed = mitad fijo (como el bot) y mitad verdadero ± 2")
+    ap.add_argument("--delay-feature-fixed", type=int, default=10, help="valor que informa el bot en la sala")
     ap.add_argument("--match-minutes", default="1:3")
     ap.add_argument("--splits", default=str(ROOT / "reports" / "x4" / "splits.json"))
     ap.add_argument("--bank-recordings", type=int, default=200, help="grabaciones para estados humanos (0 = ninguna)")
@@ -374,7 +439,23 @@ def parse_args(argv=None):
                     help="victorias contra la BC a partir de las cuales el shaping se retira para siempre (0 = nunca)")
     ap.add_argument("--human-gate", type=float, default=1.0,
                     help="W1 normalizada media máxima (métricas clave) para que un checkpoint cuente como mejor")
-    ap.add_argument("--eval-selfplay", type=int, default=8, help="partidos de self-play por evaluación (parecido humano)")
+    ap.add_argument("--eval-selfplay", type=int, default=16,
+                    help="partidos de self-play por evaluación (parecido humano y cadena de pase)")
+    ap.add_argument("--rsone-every", type=int, default=100, help="monitor de olvido en RS ONE cada N actualizaciones")
+    ap.add_argument("--dev-recordings", type=int, default=15,
+                    help="grabaciones de desarrollo para NLL/KL sobre estados humanos fijos (0 = no)")
+    ap.add_argument("--keep-evals", action=argparse.BooleanOptionalAction, default=True,
+                    help="guardar la política y los partidos de self-play de cada evaluación en <out>/evals/")
+    ap.add_argument("--pass-ref", default=str(ROOT / "reports" / "x4" / "pass_chain_human.json"),
+                    help="referencia humana de la cadena de pase (tools/x4_pass_chain.py --human)")
+    ap.add_argument("--pass-ref-key", default="sanguchito_test")
+    ap.add_argument("--drift-pass-ratio", type=float, default=0.8,
+                    help="corte si el índice de la cadena de pase cae por debajo de esta fracción del de la BC")
+    ap.add_argument("--auto-pass-arm-update", type=int, default=1000,
+                    help="actualización en la que se decide el brazo de pases (0 = nunca)")
+    ap.add_argument("--auto-pass-arm-index", type=float, default=0.85,
+                    help="si el índice de la cadena de pase está por debajo, se activa --auto-pass-bonus")
+    ap.add_argument("--auto-pass-bonus", type=float, default=0.05)
     ap.add_argument("--stop-on-drift", type=int, default=2,
                     help="evaluaciones seguidas que cumplen el criterio de corte antes de detener la corrida (0 = nunca)")
     ap.add_argument("--drift-min-score", type=float, default=0.4)
@@ -398,6 +479,7 @@ def parse_args(argv=None):
     lo, hi = (float(x) for x in a.match_minutes.split(":"))
     a.match_minutes = (lo, hi)
     a.map_mix = [(m.split(":")[0], float(m.split(":")[1])) for m in a.maps.split(",")]
+    a.forfeit_reasons = tuple(int(x) for x in a.forfeit_reasons.split(",") if x)
     return a
 
 
@@ -440,7 +522,37 @@ class Trainer:
         self.best_score = -1.0
         self.drift_count = 0
         self.retire_count = 0
+        self.nonfinite_updates = 0
+        self.baseline = None                   # evaluación 0 (política inicial): referencia de los cortes relativos
+        self.best_pass = -1.0
+        self.pass_ok_streak = 0
+        self.pass_arm_on = a.pass_bonus > 0
         self.n_fixed_pool = len(self.pool)     # BC + --pool; los snapshots se agregan después
+        self.epv = None
+        if Path(a.epv).exists():
+            from learn.x4_epv import EPV
+            self.epv = EPV(a.epv, self.dev)
+        elif a.shaping_kind == "epv":
+            raise SystemExit(f"--shaping-kind epv necesita el modelo {a.epv}: `python -m learn.x4_epv` (runbook §1)")
+        self.pass_ref = None
+        if Path(a.pass_ref).exists():
+            self.pass_ref = json.loads(Path(a.pass_ref).read_text(encoding="utf-8"))[a.pass_ref_key]
+        elif a.eval_every:
+            raise SystemExit(f"falta la referencia humana de la cadena de pase {a.pass_ref}: "
+                             "`python -m tools.x4_pass_chain --human --out reports/x4/pass_chain_human.json`")
+        self.dev_set = None
+        self.last_eval_episodes = []
+        if a.eval_every and a.dev_recordings:
+            from learn import x4_data as XD
+            names = XD.split_names(a.splits, "dev", None, ("sanguchito_rs_x4",))[:a.dev_recordings]
+            if names:
+                dd = XD.load(names, maps=("sanguchito_rs_x4",))
+                t, p = XD.Sampler(dd).fixed(20000, seed=7)
+                delay = np.random.default_rng(7).integers(8, 12, len(t))
+                obs = XD.featurize(dd, t, p, delay)
+                self.dev_set = (torch.from_numpy(obs).to(self.dev),
+                                torch.from_numpy(dd.label[t, p].astype(np.int64)).to(self.dev))
+                del dd
         if a.init:
             ck = torch.load(a.init, map_location="cpu")
             self.policy.load_state_dict(ck["model"])
@@ -465,6 +577,43 @@ class Trainer:
         if a.resume and (self.out / "last.pt").exists():
             self._resume(self.out / "last.pt")
         self.log = open(self.out / "log.jsonl", "a", encoding="utf-8")
+        self.write_run_meta()
+
+    def write_run_meta(self):
+        """Versión del código, entorno e hilos de cada lanzamiento o reanudación (<out>/run_meta.jsonl)."""
+        import hashlib
+        import subprocess
+        import sys
+        def git(*args):
+            try:
+                return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True, timeout=10).stdout.strip()
+            except Exception:  # noqa: BLE001
+                return None
+        files = ["env/rs4z/kernel.py", "env/rs4z/core.py", "env/rs4z/obs_v3.py", "env/rs4z/contract.py",
+                 "learn/x4_ppo.py", "learn/x4_epv.py", "tools/x4_pass_chain.py"]
+        sha = {f: hashlib.sha256((ROOT / f).read_bytes()).hexdigest()[:16] for f in files if (ROOT / f).exists()}
+        try:
+            import numba
+            nthreads = numba.get_num_threads()
+        except Exception:  # noqa: BLE001
+            nthreads = None
+        try:
+            cpus = len(os.sched_getaffinity(0))
+        except AttributeError:
+            cpus = os.cpu_count()
+        cpu_max = None
+        if Path("/sys/fs/cgroup/cpu.max").exists():
+            cpu_max = Path("/sys/fs/cgroup/cpu.max").read_text().strip()
+        meta = dict(time=time.strftime("%Y-%m-%dT%H:%M:%S"), update=self.update, argv=sys.argv, git_head=git("rev-parse", "HEAD"),
+                    git_dirty=git("status", "--porcelain", "--", "env", "learn", "tools"), sha256=sha,
+                    torch=torch.__version__, cuda=torch.version.cuda,
+                    gpu=torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
+                    numba_threads=nthreads, torch_threads=torch.get_num_threads(), cpus=cpus, cgroup_cpu_max=cpu_max,
+                    omp=os.environ.get("OMP_NUM_THREADS"), numba_env=os.environ.get("NUMBA_NUM_THREADS"))
+        with open(self.out / "run_meta.jsonl", "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(meta) + "\n")
+        if meta["git_dirty"]:
+            print(f"AVISO: cambios sin commitear en env/, learn/ o tools/:\n{meta['git_dirty']}", flush=True)
 
     def _resume(self, path):
         cands = [path] + sorted(self.out.glob("snap_*.pt"), reverse=True)
@@ -495,6 +644,12 @@ class Trainer:
         self.drift_count = int(ck.get("drift_count", 0))
         self.retire_count = int(ck.get("retire_count", 0))
         self.a.shaping = float(ck.get("shaping", self.a.shaping))
+        self.baseline = ck.get("baseline")
+        self.best_pass = float(ck.get("best_pass", -1.0))
+        self.pass_ok_streak = int(ck.get("pass_ok_streak", 0))
+        if ck.get("pass_arm_on"):
+            self.pass_arm_on = True
+            self.a.pass_bonus = float(ck.get("pass_bonus", self.a.pass_bonus))
         for name in ck.get("pool_names", []):
             if (self.out / f"{name}.pt").exists():
                 self.pool.append((name, load_policy(self.out / f"{name}.pt", self.dev)))
@@ -546,22 +701,36 @@ class Trainer:
             acts[rows] = sub
         return acts, logp.view(N, 8).cpu().numpy(), bc_logp.view(N, 8, 18).cpu().numpy(), v.view(N, 8).cpu().numpy()
 
+    def lam_eff(self, arena):
+        """λ efectivo de cada partido en esta actualización (VPT: decaimiento por actualización con piso)."""
+        a = self.a
+        if a.lambda_decay == 1.0:
+            return arena.lam.astype(np.float32)
+        return np.maximum(arena.lam * a.lambda_decay ** self.update, a.lambda_min).astype(np.float32)
+
     def critic_input(self, arena, obs):
         env = arena.env
         c = obs_v2.critic(env)
         up = upcoming_actions(env)
-        lam = np.broadcast_to(arena.lam[:, None, None], (arena.N, 8, 1)).astype(np.float32)
-        return np.concatenate([obs, c, up, lam], -1).astype(np.float32)
+        lam = np.broadcast_to(self.lam_eff(arena)[:, None, None], (arena.N, 8, 1)).astype(np.float32)
+        # tipo de rival del partido: self-play, la BC o un snapshot (el valor depende de contra quién se juega)
+        kind = np.zeros((arena.N, 3), np.float32)
+        kind[np.arange(arena.N), np.where(arena.opp < 0, 0, np.where(arena.opp == 0, 1, 2))] = 1.0
+        kind = np.broadcast_to(kind[:, None, :], (arena.N, 8, 3))
+        return np.concatenate([obs, c, up, lam, kind], -1).astype(np.float32)
 
     # -------------------------------------------------------------- rollout
     def rollout(self):
         a = self.a
         T = a.rollout
         buf = []
-        stats = dict(goals=0, matches=0, shaping=0.0, kickoff_wait=[], decisions=0, forfeits=0, passes=0, pass_bonus=0.0)
+        stats = dict(goals=0, matches=0, shaping=0.0, kickoff_wait=[], decisions=0, forfeits=0, passes=0, pass_bonus=0.0,
+                     forfeits_by={v: 0 for v in FORFEIT_NAMES.values()}, epv_shaping=0.0, lambda_eff=[],
+                     dist_ball=0.0, dist_n=0, still=0, kick=0, acts_n=0, kickoff_steps=0)
         shaping_scale = 1.0
         if a.shaping_anneal > 0:
             shaping_scale = max(0.0, 1.0 - self.decisions / a.shaping_anneal)
+        epv_on = a.shaping_kind == "epv" and a.epv_coef > 0
         for arena in self.arenas:
             env = arena.env
             N = arena.N
@@ -576,22 +745,45 @@ class Trainer:
             lm = np.zeros((T, N, 8), bool)
             la = np.zeros((T, N), np.float32)
             pfsp = self.pfsp()
+            phi = self.epv.phi_env(env) if epv_on else None
             for t in range(T):
-                obs = obs_v3.observe(env)
+                obs = obs_v3.observe(env, delay=arena.delay_obs)
                 crit = self.critic_input(arena, obs)
                 acts, logp, bc_logp, v = self.act(arena, obs, crit)
                 ob[t], cr[t], ac[t], lp[t], bl[t], vv[t] = obs, crit, acts, logp, bc_logp, v
                 lm[t] = arena.learner & env.active
-                la[t] = arena.lam
+                la[t] = self.lam_eff(arena)
+                # conducta del aprendiz: jugador más cercano a la pelota, quietos, patadas y saques iniciales
+                dpb = np.hypot(env.player_pos[..., 0] - env.ball_pos[:, None, 0], env.player_pos[..., 1] - env.ball_pos[:, None, 1])
+                for side in (slice(0, 4), slice(4, 8)):
+                    own = lm[t][:, side].any(1)
+                    stats["dist_ball"] += float(dpb[own, side].min(1).sum())
+                    stats["dist_n"] += int(own.sum())
+                stats["still"] += int(((acts == 0) & lm[t]).sum())
+                stats["kick"] += int(((acts >= 9) & lm[t]).sum())
+                stats["acts_n"] += int(lm[t].sum())
+                stats["kickoff_steps"] += int((env.ri[:, K.RI_KO] != 0).sum())
                 ev = env.step(acts)
                 goal = ev["goal"]
                 team_r = np.zeros((N, 2))
                 team_r[:, 0] += np.sign(goal)
                 team_r[:, 1] -= np.sign(goal)
-                sh = arena.shaping(goal) * shaping_scale
-                team_r += sh
-                team_r += forfeit_reward(ev["forfeit"], a.forfeit_penalty)
+                if a.shaping_kind == "checkpoint":
+                    sh = arena.shaping(goal) * shaping_scale
+                    team_r += sh
+                    stats["shaping"] += float(np.abs(sh).sum())
+                if epv_on:
+                    # shaping basado en potencial (Ng 1999; en juegos, Devlin y Kudenko 2011): F = γ·φ(s') − φ(s) para
+                    # el rojo, −F para el azul; φ(s') = 0 al terminar el partido
+                    phi_new = self.epv.phi_env(env)
+                    f = a.epv_coef * (a.gamma * phi_new * (~ev["match_end"]) - phi)
+                    team_r[:, 0] += f
+                    team_r[:, 1] -= f
+                    stats["epv_shaping"] += float(np.abs(f).sum())
+                team_r += forfeit_reward(ev["forfeit"], a.forfeit_penalty, ev["forfeit_why"], a.forfeit_reasons)
                 stats["forfeits"] += int((ev["forfeit"] >= 0).sum())
+                for code, name in FORFEIT_NAMES.items():
+                    stats["forfeits_by"][name] += int(((ev["forfeit"] >= 0) & (ev["forfeit_why"] == code)).sum())
                 done_p, scored_p = arena.passes.step(ev["touched"], ev["kicked"], env.ball_pos, goal)
                 stats["passes"] += int(done_p.sum())
                 pb = pass_bonus_reward(goal, scored_p, a.pass_bonus)
@@ -601,7 +793,6 @@ class Trainer:
                 arena.ep_goals[:, 0] += goal > 0
                 arena.ep_goals[:, 1] += goal < 0
                 stats["goals"] += int((goal != 0).sum())
-                stats["shaping"] += float(np.abs(sh).sum())
                 done = ev["match_end"]
                 dn[t] = done
                 ends = np.flatnonzero(done)
@@ -614,12 +805,15 @@ class Trainer:
                         self.pool_wins[k] = 0.97 * self.pool_wins[k] + 0.03 * res
                 stats["matches"] += len(ends)
                 arena.new_match(ends, pfsp)
-            obs = obs_v3.observe(env)
+                if epv_on:
+                    phi = self.epv.phi_env(env) if len(ends) else phi_new
+            obs = obs_v3.observe(env, delay=arena.delay_obs)
             crit = self.critic_input(arena, obs)
             with torch.no_grad():
                 last_v = self.critic(torch.from_numpy(crit.reshape(N * 8, -1)).to(self.dev)).view(N, 8).cpu().numpy()
             buf.append((ob, cr, ac, lp, bl, vv, rw, dn, lm, la, last_v))
             stats["decisions"] += T * N
+            stats["lambda_eff"].append(float(la.mean()))
         self.decisions += stats["decisions"]
         return buf, stats
 
@@ -642,17 +836,22 @@ class Trainer:
     # -------------------------------------------------------------- actualización
     def learn(self, buf, critic_only=False):
         a = self.a
-        cols = [[] for _ in range(8)]
+        cols = [[] for _ in range(9)]
         for ob, cr, ac, lp, bl, vv, rw, dn, lm, la, last_v in buf:
             adv, ret = self.gae(vv, rw, dn, last_v)
             m = lm
-            for i, x in enumerate((ob, cr, ac, lp, bl, adv, ret, np.broadcast_to(la[..., None], lm.shape))):
+            v_old = vv * self.vnorm.std + self.vnorm.mu
+            for i, x in enumerate((ob, cr, ac, lp, bl, adv, ret, np.broadcast_to(la[..., None], lm.shape), v_old)):
                 cols[i].append(x[m])
         buf.clear()                                   # libera el rollout antes de armar los tensores
-        ob, cr, ac, lp, bl, adv, ret, lam = (c[0] if len(c) == 1 else np.concatenate(c) for c in cols)
+        ob, cr, ac, lp, bl, adv, ret, lam, v_old = (c[0] if len(c) == 1 else np.concatenate(c) for c in cols)
         del cols
-        if a.lambda_decay != 1.0:   # VPT: el coeficiente del KL decae con las actualizaciones
-            lam = np.maximum(lam * a.lambda_decay ** self.update, a.lambda_min)
+        # varianza explicada por el crítico (con los valores con que se calcularon las ventajas)
+        explained = float(1.0 - np.var(ret - v_old) / max(np.var(ret), 1e-8))
+        # copia en memoria por si la actualización produce pesos no finitos
+        backup = ({k: v.detach().clone() for k, v in self.policy.state_dict().items()},
+                  {k: v.detach().clone() for k, v in self.critic.state_dict().items()},
+                  self.opt_pi.state_dict(), self.opt_v.state_dict())
         self.vnorm.update(ret)
         ret_n = (ret - self.vnorm.mu) / self.vnorm.std
         adv = (adv - adv.mean()) / (adv.std() + 1e-8)
@@ -665,16 +864,20 @@ class Trainer:
         del ob, cr, bl
         gen = torch.Generator(device=dev)
         gen.manual_seed(int(a.seed) * 1_000_003 + int(self.update))
-        sums = torch.zeros(6, device=dev)   # pi_loss, v_loss, kl_bc, entropy, clipfrac, approx_kl
+        sums = torch.zeros(8, device=dev)   # pi_loss, v_loss, kl_bc, entropy, clipfrac, approx_kl, |∇π|, |∇V|
         steps = 0
+        skipped = 0
         for _ in range(a.epochs):
             perm = torch.randperm(n, device=dev, generator=gen)
             for mb in perm.chunk(a.minibatches):
                 v = self.critic(G["cr"][mb])
                 v_loss = F.mse_loss(v, G["ret"][mb])
+                if not bool(torch.isfinite(v_loss)):
+                    skipped += 1
+                    continue
                 self.opt_v.zero_grad(set_to_none=True)
                 v_loss.backward()
-                nn.utils.clip_grad_norm_(self.critic.parameters(), 1.0)
+                sums[7] += nn.utils.clip_grad_norm_(self.critic.parameters(), 1.0).detach()
                 self.opt_v.step()
                 sums[1] += v_loss.detach()
                 if not critic_only:
@@ -690,9 +893,12 @@ class Trainer:
                     ent = -(logp_all.exp() * logp_all).sum(-1)
                     L = G["lam"][mb]
                     loss = ((1 - L) * (pg - a.ent * ent) + L * kl).mean()
+                    if not bool(torch.isfinite(loss)):
+                        skipped += 1
+                        continue
                     self.opt_pi.zero_grad(set_to_none=True)
                     loss.backward()
-                    nn.utils.clip_grad_norm_(self.policy.parameters(), 1.0)
+                    sums[6] += nn.utils.clip_grad_norm_(self.policy.parameters(), 1.0).detach()
                     self.opt_pi.step()
                     with torch.no_grad():
                         sums[0] += pg.mean()
@@ -702,8 +908,20 @@ class Trainer:
                         sums[5] += (old - logp).mean()
                 steps += 1
         vals = (sums / max(1, steps)).tolist()
-        info = dict(samples=n, **dict(zip(("pi_loss", "v_loss", "kl_bc", "entropy", "clipfrac", "approx_kl"), vals)))
+        info = dict(samples=n, **dict(zip(("pi_loss", "v_loss", "kl_bc", "entropy", "clipfrac", "approx_kl",
+                                           "grad_norm_pi", "grad_norm_v"), vals)))
         info["ret_mean"] = float(ret.mean())
+        info["explained_var"] = explained
+        info["nonfinite_skipped"] = skipped
+        finite = all(bool(torch.isfinite(p).all()) for p in list(self.policy.parameters()) + list(self.critic.parameters()))
+        if not finite:
+            # se descarta la actualización entera: vuelven los pesos y los optimizadores de antes
+            self.policy.load_state_dict(backup[0])
+            self.critic.load_state_dict(backup[1])
+            self.opt_pi.load_state_dict(backup[2])
+            self.opt_v.load_state_dict(backup[3])
+            info["restored_nonfinite"] = True
+            self.nonfinite_updates += 1
         return info
 
     @torch.no_grad()
@@ -718,9 +936,11 @@ class Trainer:
         bc = ModelPolicy(self.bc, self.dev, "bc", generator=gen)
         self.policy.eval()
         w = dr = l = gf = ga = 0
+        od = a.delay_feature_fixed if a.delay_feature != "true" else None      # como el bot en la sala
         for side, (red, blue) in enumerate(((me, bc), (bc, me))):
             r = play(red, blue, map_name="sanguchito_rs_x4", matches=a.eval_matches, minutes=a.eval_minutes,
-                     delays=delays, seed=1000 + self.update * 2 + side + 100_000 * seed_offset, record=0)
+                     delays=delays, seed=1000 + self.update * 2 + side + 100_000 * seed_offset, record=0,
+                     obs_delay=od)
             g = r["goals"] if side == 0 else r["goals"][:, ::-1]
             d = g[:, 0] - g[:, 1]
             w += int((d > 0).sum()); dr += int((d == 0).sum()); l += int((d < 0).sum())
@@ -731,11 +951,11 @@ class Trainer:
             return dict(vs_bc=dict(wins=w, draws=dr, losses=l, score=round((w + 0.5 * dr) / n, 3),
                                    goal_diff=round((gf - ga) / n, 3)))
         selfplay = play(me, me, map_name="sanguchito_rs_x4", matches=a.eval_selfplay, minutes=a.eval_minutes,
-                        delays=delays, seed=77 + self.update, record=a.eval_selfplay)
+                        delays=delays, seed=77 + self.update, record=a.eval_selfplay, obs_delay=od)
+        self.last_eval_episodes = selfplay["episodes"]
         hum = human_compare(selfplay["episodes"]) or {}
         from tools.x4_pass_stats import rates, unit_counts
         pooled = rates([unit_counts([ep]) for ep in selfplay["episodes"]])
-        self.policy.train()
         n = max(1, w + dr + l)
         key = ("passes_per_min", "possession_s", "pass_length", "depth", "width", "dist_ball_2", "still_frac",
                "key_changes_per_s", "kickoff_wait_s", "restart_s_lateral")
@@ -744,6 +964,7 @@ class Trainer:
         out = dict(vs_bc=dict(wins=w, draws=dr, losses=l, score=round((w + 0.5 * dr) / n, 3),
                               goal_diff=round((gf - ga) / n, 3)),
                    selfplay_safety=float(selfplay["safety"].mean()),
+                   selfplay_kickoff_safety=float(selfplay["safety_kickoff"].mean()),
                    human_w1_mean=round(float(np.mean(vals)), 3) if vals else None,
                    human_w1={k: (round(w1[k], 3) if w1.get(k) is not None else None) for k in key},
                    # valores crudos de self-play (humanos p50 en Sanguchito: patadas 3,2/min, pases 8,8/min,
@@ -754,7 +975,48 @@ class Trainer:
                    # tasas agregadas (Σ eventos / Σ minutos; humanos de Sanguchito, reports/x4/pass_stats.json:
                    # pases/min 9,2, pases/(pases+pérdidas) 0,36, pases por posesión 0,55, patadas 3,5/min, goles 0,37/min)
                    selfplay_pases={k: (round(v, 3) if v == v else None) for k, v in pooled.items()})
+        if self.pass_ref is not None:
+            out["cadena_pase"] = self.pass_chain(selfplay["episodes"])
+        if self.dev_set is not None:
+            out["humanos_dev"] = self.dev_metrics()
+        if a.rsone_every and self.update % a.rsone_every == 0:
+            # monitor de olvido en RS ONE (no se entrena ahí; sus saques no son conformes): sólo informativo
+            w2 = l2 = d2 = 0
+            for side, (red, blue) in enumerate(((me, bc), (bc, me))):
+                r = play(red, blue, map_name="rs_one", matches=8, minutes=a.eval_minutes, delays=delays,
+                         seed=5000 + self.update * 2 + side, record=0, obs_delay=od)
+                g = r["goals"] if side == 0 else r["goals"][:, ::-1]
+                dd = g[:, 0] - g[:, 1]
+                w2 += int((dd > 0).sum()); d2 += int((dd == 0).sum()); l2 += int((dd < 0).sum())
+            out["vs_bc_rs_one"] = dict(wins=w2, draws=d2, losses=l2, score=round((w2 + 0.5 * d2) / max(1, w2 + d2 + l2), 3))
+        self.policy.train()
         return out
+
+    @torch.no_grad()
+    def dev_metrics(self):
+        """NLL de las acciones humanas y KL(BC‖π) sobre estados humanos fijos de desarrollo: separa "la política cambió
+        en estados humanos" de "visita otros estados" (el KL del log se mide sobre los estados que visita)."""
+        obs, lab = self.dev_set
+        self.policy.eval()
+        lp = F.log_softmax(self.policy(obs), -1)
+        lb = F.log_softmax(self.bc(obs), -1)
+        nll = float(-lp.gather(1, lab[:, None]).mean())
+        nll_bc = float(-lb.gather(1, lab[:, None]).mean())
+        kl = float((lb.exp() * (lb - lp)).sum(-1).mean())
+        acc = float((lp.argmax(-1) == lab).float().mean())
+        return dict(nll=round(nll, 4), nll_bc=round(nll_bc, 4), kl_bc=round(kl, 4), acc=round(acc, 4))
+
+    def pass_chain(self, episodes):
+        """Cadena de pase del self-play contra la referencia humana (tools/x4_pass_chain.py): índice (media
+        geométrica de agente/humano en las métricas de eficacia; 1 = promedio humano), gate y métricas."""
+        from tools import x4_pass_chain as PC
+        units = [PC.unit_counts([ep], self.epv) for ep in episodes]
+        m = PC.bootstrap(units, n=200, seed=int(self.update))
+        g = PC.gate(m, self.pass_ref["metricas"], self.pass_ref["banda"])
+        return dict(indice=g["indice_cadena"], aprobado=g["aprobado"], fraccion_eficacia_ok=g["fraccion_eficacia_ok"],
+                    por_etapa=g["por_etapa"], pases=m["pases"]["valor"],
+                    fallan=sorted(k for k, v in g["metricas"].items() if not v["ok"]),
+                    metricas={k: [v["agente"], v["humano"]] for k, v in g["metricas"].items()})
 
     def save(self, name="last.pt"):
         # sólo tipos planos: los checkpoints se cargan con torch.load(weights_only=True)
@@ -766,6 +1028,8 @@ class Trainer:
             if isinstance(v, (list, tuple)):
                 return [plain(x) for x in v]
             return v
+        if not all(bool(torch.isfinite(p).all()) for p in list(self.policy.parameters()) + list(self.critic.parameters())):
+            raise SystemExit(f"pesos no finitos: no se guarda {name} (la última copia buena queda en disco)")
         tmp = self.out / (name + ".tmp")
         torch.save(dict(model=self.policy.state_dict(), critic=self.critic.state_dict(), hidden=self.hidden,
                         obs_version=obs_v3.OBS_VERSION, update=int(self.update), decisions=int(self.decisions),
@@ -774,6 +1038,9 @@ class Trainer:
                         opt_pi=self.opt_pi.state_dict(), opt_v=self.opt_v.state_dict(),
                         best_score=float(self.best_score), drift_count=int(self.drift_count),
                         shaping=float(self.a.shaping), retire_count=int(self.retire_count),
+                        baseline=self.baseline, nonfinite_updates=int(self.nonfinite_updates),
+                        best_pass=float(self.best_pass), pass_ok_streak=int(self.pass_ok_streak),
+                        pass_arm_on=bool(self.pass_arm_on), pass_bonus=float(self.a.pass_bonus),
                         pool_names=[n for n, _ in self.pool[self.n_fixed_pool:]],
                         args={k: plain(v) for k, v in vars(self.a).items()}),
                    tmp)
@@ -814,7 +1081,26 @@ class Trainer:
         ev = self.evaluate()
         ev.update(update=self.update, decisions=self.decisions, shaping=a.shaping)
         score = ev["vs_bc"]["score"]
-        if a.shaping > 0 and a.shaping_retire > 0:
+        pc = ev.get("cadena_pase") or {}
+        if pc.get("indice") is not None:
+            # best_pase.pt: mejor índice de la cadena de pase entre los checkpoints que no son más débiles que la BC
+            if score >= 0.5 and pc["indice"] > self.best_pass:
+                self.best_pass = pc["indice"]
+                self.save("best_pase.pt")
+                ev["new_best_pase"] = True
+            # gate de pases aprobado en dos evaluaciones seguidas → candidato a certificación (learn/x4_certify.py)
+            self.pass_ok_streak = self.pass_ok_streak + 1 if pc["aprobado"] else 0
+            if self.pass_ok_streak >= 2:
+                self.save(f"pase_aprobado_{self.update:05d}.pt")
+                ev["pase_aprobado"] = True
+            # brazo de pases pre-registrado: una sola decisión, en --auto-pass-arm-update
+            if (a.auto_pass_arm_update and not self.pass_arm_on and self.update >= a.auto_pass_arm_update
+                    and pc["indice"] < a.auto_pass_arm_index):
+                self.pass_arm_on = True
+                a.pass_bonus = a.auto_pass_bonus
+                ev["brazo_pases_activado"] = dict(indice=pc["indice"], umbral=a.auto_pass_arm_index,
+                                                  pass_bonus=a.pass_bonus)
+        if a.shaping_kind == "checkpoint" and a.shaping > 0 and a.shaping_retire > 0:
             self.retire_count = self.retire_count + 1 if score >= a.shaping_retire else 0
             if self.retire_count >= max(1, a.retire_patience):
                 a.shaping = 0.0                       # MARLadona: se retira para siempre
@@ -830,11 +1116,19 @@ class Trainer:
                 self.save("best.pt")
                 ev["new_best"] = True
                 ev["best_score"] = mean
-        reasons = drift_reasons(ev, a)
+                # ¿le gana a la BC con margen? 0,5 + 2 errores estándar del puntaje con 2 evaluaciones de 2×eval_matches
+                se = math.sqrt(0.25 / (4 * a.eval_matches))
+                (self.out / "best.json").write_text(json.dumps(dict(
+                    update=self.update, decisions=self.decisions, score=mean, umbral=round(0.5 + 2 * se, 4),
+                    beats_bc=bool(mean >= 0.5 + 2 * se), cadena_pase=pc.get("indice"),
+                    human_w1_mean=hw), indent=1), encoding="utf-8")
+        defense_hi = (self.pass_ref or {}).get("banda", {}).get("presion_al_portador_p50", [None, None])[1]
+        reasons = drift_reasons(ev, a, self.baseline, defense_hi)
         self.drift_count = self.drift_count + 1 if reasons else 0
         ev["drift"] = reasons
         with open(self.out / "eval.jsonl", "a", encoding="utf-8") as fh:
             fh.write(json.dumps(ev) + "\n")
+        self.keep_eval(ev)
         print("EVAL " + json.dumps(ev), flush=True)
         if a.stop_on_drift and self.drift_count >= a.stop_on_drift:
             # criterio de corte pre-registrado: se detiene y deja constancia (volver a best.pt, subir λ o bajar lr)
@@ -847,9 +1141,44 @@ class Trainer:
             return True
         return False
 
+    def baseline_eval(self):
+        """Evaluación 0 (política inicial = BC o --init): referencia de los cortes relativos (cadena de pase, distancia
+        a la pelota, parecido humano y saques iniciales sin ejecutar)."""
+        ev = self.evaluate(seed_offset=2)
+        ev.update(update=self.update, decisions=self.decisions, baseline=True)
+        self.baseline = dict(indice=(ev.get("cadena_pase") or {}).get("indice"), w1=ev.get("human_w1_mean"),
+                             dist=(ev.get("selfplay") or {}).get("dist_ball_1"),
+                             kickoff=ev.get("selfplay_kickoff_safety", 0.0), vs_bc=ev["vs_bc"]["score"])
+        with open(self.out / "eval.jsonl", "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(ev) + "\n")
+        self.keep_eval(ev)
+        print("EVAL0 " + json.dumps(ev), flush=True)
+
+    def keep_eval(self, ev):
+        """Política y partidos de self-play de la evaluación (para reanalizar una deriva o medir con métricas nuevas)."""
+        if not self.a.keep_evals:
+            return
+        d = self.out / "evals"
+        d.mkdir(exist_ok=True)
+        torch.save(dict(model=self.policy.state_dict(), hidden=self.hidden, obs_version=obs_v3.OBS_VERSION,
+                        update=int(self.update)), d / f"pi_{self.update:05d}.pt")
+        eps = self.last_eval_episodes
+        if eps:
+            arr = {}
+            for i, ep in enumerate(eps):
+                for k in ("ball", "pos", "vel", "kicked", "open_play", "restart_kind", "restart_team", "kickoff",
+                          "goal_ev", "move", "kick_key", "restart_age"):
+                    v = getattr(ep, k)
+                    if v is not None:
+                        arr[f"{i}/{k}"] = v.astype(np.float32) if v.dtype == np.float64 else v
+                arr[f"{i}/ball_r"] = np.float32(ep.ball_r)
+            np.savez_compressed(d / f"ep_{self.update:05d}.npz", **arr)
+
     def train(self):
         a = self.a
         t0 = time.time()
+        if a.eval_every and self.baseline is None:
+            self.baseline_eval()
         for u in range(self.update, a.updates):
             self.update = u + 1
             tr = time.time()
@@ -864,7 +1193,13 @@ class Trainer:
                        # contador del kernel (toque de otro compañero): da 40–57% más que la métrica de x4_metrics;
                        # sirve para ver tendencias, la comparación con humanos es `selfplay_pases` en eval.jsonl
                        rollout_passes_per_min_kernel=round(stats["passes"] / max(1e-9, stats["decisions"] * 3 / 3600), 3),
-                       pass_bonus_abs=round(stats["pass_bonus"], 3),
+                       pass_bonus_abs=round(stats["pass_bonus"], 3), pass_bonus=a.pass_bonus,
+                       forfeits_by=stats["forfeits_by"], epv_shaping_abs=round(stats["epv_shaping"], 3),
+                       lambda_eff=round(float(np.mean(stats["lambda_eff"])), 4),
+                       dist_ball_1=round(stats["dist_ball"] / max(1, stats["dist_n"]), 1),
+                       still_frac=round(stats["still"] / max(1, stats["acts_n"]), 4),
+                       kick_frac=round(stats["kick"] / max(1, stats["acts_n"]), 4),
+                       kickoff_frac=round(stats["kickoff_steps"] / max(1, stats["decisions"]), 4),
                        pool_wins={n: round(float(w), 3) for (n, _), w in zip(self.pool, self.pool_wins)},
                        **{k: (round(v, 5) if isinstance(v, float) else v) for k, v in info.items()})
             self.log.write(json.dumps(row) + "\n")

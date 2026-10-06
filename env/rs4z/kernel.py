@@ -139,7 +139,12 @@ EV_KO_TAKEN = 5      # se ejecutó el saque inicial
 EV_MATCH_END = 6
 EV_TICKS = 7         # ticks simulados en la decisión
 EV_SAFETY = 8        # liberación de seguridad (saque o saque inicial)
-EV_SIZE = 9
+EV_FWHY = 9          # causa del saque perdido (EV_FORFEIT): FW_* (0 si ninguno)
+EV_SIZE = 10
+FW_BAD_THROW = 1     # lateral mal ejecutado (regla de la sala: corrida > 270 px o entrada sin patada)
+FW_LAT_TIME = 2      # lateral vencido por tiempo (regla de la sala)
+FW_LATE = 3          # plazo de entrenamiento de un saque
+FW_KICKOFF = 4       # saque inicial vencido (plazo de entrenamiento)
 
 
 # ============================================================================ utilidades
@@ -658,11 +663,15 @@ def post_tick(goal, kicked, contact, pos, vel, group, radius, inv, kick_cancel, 
             # El script verifica X mientras la pelota sigue fuera. Una entrada sin
             # patada es mal saque; las patadas cuentan también en ticks anteriores.
             too_far = abs(pos[0, 1]) > prm[_LAT_REL] and abs(pos[0, 0] - rf[RF_SPOT_X]) > prm[_LAT_RUN]
-            pushed_in = lateral_in and ri[RI_LAT_KICKED] == 0
+            # sólo si la pelota estaba colocada afuera (el script la pone en ±lateral_ball_y): un saque iniciado con la
+            # pelota ya adentro (estado grabado a mitad de la colocación) no puede "entrar sin patada", y sin esta
+            # condición el lateral rebotaba de un equipo al otro en cada decisión
+            pushed_in = lateral_in and ri[RI_LAT_KICKED] == 0 and abs(rf[RF_SPOT_Y]) >= prm[_LAT_REL]
             timed_out = ri[RI_TICKS] >= prm[_LAT_TIMEOUT] and not lateral_in
             if too_far or pushed_in or timed_out:
                 ev[EV_FORFEIT] = forfeit_piece(pos, vel, group, radius, inv, kick_cancel, grav,
                     active, team, fp, P, prm, flags, sd_home, ri, rf, outside)
+                ev[EV_FWHY] = FW_BAD_THROW if (too_far or pushed_in) else FW_LAT_TIME
                 ev[EV_START] = LATERAL
                 return 0
         moved = math.hypot(pos[0, 0] - rf[RF_SPOT_X], pos[0, 1] - rf[RF_SPOT_Y]) > prm[_SPOT_REL]
@@ -891,10 +900,12 @@ def decision_step(pos, vel, mask, group, radius, inv, bcoef, damping, kick_cance
                                                   grav[n], active[n], team, fp, P, prm, flags, sd_home,
                                                   ri[n], rf[n], outside[n])
                 ev[n, EV_START] = ri[n, RI_KIND]
+                ev[n, EV_FWHY] = FW_LATE
             if ri[n, RI_KO] != 0 and ko_deadline > 0 and ri[n, RI_KO_TICKS] >= ko_deadline:
                 loser = ri[n, RI_KO_TEAM]
                 ev[n, EV_FORFEIT] = loser
                 ev[n, EV_SAFETY] = 2
+                ev[n, EV_FWHY] = FW_KICKOFF
                 reset_kickoff(1 - loser, pos[n], vel[n], mask[n], group[n], radius[n], inv[n], kick_cancel[n],
                               grav[n], active[n], team, spawn_rank[n], fp, P, prm, flags, sd_home, base_mask,
                               d_pos, ri[n], rf[n], outside[n], spawn_x, spawn_dy, map_inv)

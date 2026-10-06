@@ -1,0 +1,165 @@
+{
+ "version": "x4-epv-1",
+ "horizon_s": 10.0,
+ "every": 1,
+ "epochs": [
+  {
+   "epoch": 1,
+   "train_logloss": 0.10813,
+   "dev": {
+    "logloss": 0.12405,
+    "brier_skill": 0.1423,
+    "auc": 0.8547
+   }
+  },
+  {
+   "epoch": 2,
+   "train_logloss": 0.09502,
+   "dev": {
+    "logloss": 0.1238,
+    "brier_skill": 0.1454,
+    "auc": 0.8539
+   }
+  },
+  {
+   "epoch": 3,
+   "train_logloss": 0.08928,
+   "dev": {
+    "logloss": 0.12784,
+    "brier_skill": 0.1417,
+    "auc": 0.8424
+   }
+  },
+  {
+   "epoch": 4,
+   "train_logloss": 0.08444,
+   "dev": {
+    "logloss": 0.13383,
+    "brier_skill": 0.1294,
+    "auc": 0.8411
+   }
+  }
+ ],
+ "dev": {
+  "n": 623532,
+  "tasa_base": 0.0372,
+  "brier": 0.03063,
+  "brier_skill": 0.1454,
+  "logloss": 0.1238,
+  "logloss_skill": 0.2216,
+  "auc": 0.8539,
+  "calibracion": [
+   {
+    "p_media": 0.0,
+    "frecuencia": 0.0001,
+    "n": 62354
+   },
+   {
+    "p_media": 0.0003,
+    "frecuencia": 0.0008,
+    "n": 62353
+   },
+   {
+    "p_media": 0.001,
+    "frecuencia": 0.0028,
+    "n": 62353
+   },
+   {
+    "p_media": 0.0027,
+    "frecuencia": 0.0048,
+    "n": 62353
+   },
+   {
+    "p_media": 0.007,
+    "frecuencia": 0.0101,
+    "n": 62353
+   },
+   {
+    "p_media": 0.0148,
+    "frecuencia": 0.0242,
+    "n": 62353
+   },
+   {
+    "p_media": 0.0254,
+    "frecuencia": 0.0346,
+    "n": 62353
+   },
+   {
+    "p_media": 0.0399,
+    "frecuencia": 0.0389,
+    "n": 62353
+   },
+   {
+    "p_media": 0.0656,
+    "frecuencia": 0.0637,
+    "n": 62353
+   },
+   {
+    "p_media": 0.2403,
+    "frecuencia": 0.1923,
+    "n": 62354
+   }
+  ]
+ },
+ "test": {
+  "n": 866370,
+  "tasa_base": 0.0309,
+  "brier": 0.02485,
+  "brier_skill": 0.1691,
+  "logloss": 0.10124,
+  "logloss_skill": 0.265,
+  "auc": 0.8703,
+  "calibracion": [
+   {
+    "p_media": 0.0001,
+    "frecuencia": 0.0002,
+    "n": 86637
+   },
+   {
+    "p_media": 0.0003,
+    "frecuencia": 0.0004,
+    "n": 86637
+   },
+   {
+    "p_media": 0.0012,
+    "frecuencia": 0.0011,
+    "n": 86637
+   },
+   {
+    "p_media": 0.0033,
+    "frecuencia": 0.004,
+    "n": 86637
+   },
+   {
+    "p_media": 0.008,
+    "frecuencia": 0.0075,
+    "n": 86637
+   },
+   {
+    "p_media": 0.0155,
+    "frecuencia": 0.0152,
+    "n": 86637
+   },
+   {
+    "p_media": 0.0253,
+    "frecuencia": 0.0235,
+    "n": 86637
+   },
+   {
+    "p_media": 0.0387,
+    "frecuencia": 0.0324,
+    "n": 86637
+   },
+   {
+    "p_media": 0.0622,
+    "frecuencia": 0.0521,
+    "n": 86637
+   },
+   {
+    "p_media": 0.2198,
+    "frecuencia": 0.1723,
+    "n": 86637
+   }
+  ]
+ }
+}

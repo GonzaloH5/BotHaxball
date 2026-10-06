@@ -1,0 +1,1029 @@
+{
+ "runs/x4_bc/final_sangu_rsone/best.pt": {
+  "unidades": 32,
+  "rival": "self-play",
+  "retardos": [
+   3,
+   4,
+   5
+  ],
+  "safety": 9,
+  "metricas": {
+   "lineas_disponibles": {
+    "valor": 1.2529,
+    "ic90": [
+     1.2053,
+     1.3017
+    ]
+   },
+   "linea_progresiva_frac": {
+    "valor": 0.2994,
+    "ic90": [
+     0.2788,
+     0.3178
+    ]
+   },
+   "apoyo_frac": {
+    "valor": 0.4434,
+    "ic90": [
+     0.4198,
+     0.4688
+    ]
+   },
+   "control_espacio": {
+    "valor": 0.4995,
+    "ic90": [
+     0.4854,
+     0.5126
+    ]
+   },
+   "separacion_media": {
+    "valor": 208.4311,
+    "ic90": [
+     200.9683,
+     215.8228
+    ]
+   },
+   "desmarques_por_min_posesion": {
+    "valor": 7.9036,
+    "ic90": [
+     6.487,
+     9.3718
+    ]
+   },
+   "desmarques_utiles_frac": {
+    "valor": 0.0755,
+    "ic90": [
+     0.028,
+     0.125
+    ]
+   },
+   "reofrece_tras_pasar_frac": {
+    "valor": 0.6442,
+    "ic90": [
+     0.613,
+     0.6749
+    ]
+   },
+   "pases_por_min": {
+    "valor": 7.0372,
+    "ic90": [
+     6.2977,
+     7.732
+    ]
+   },
+   "precision_pase": {
+    "valor": 0.4994,
+    "ic90": [
+     0.4646,
+     0.5327
+    ]
+   },
+   "precision_bajo_presion": {
+    "valor": 0.6847,
+    "ic90": [
+     0.645,
+     0.7232
+    ]
+   },
+   "progresivos_por_min": {
+    "valor": 0.5118,
+    "ic90": [
+     0.34,
+     0.6834
+    ]
+   },
+   "rompe_lineas_por_min": {
+    "valor": 2.1934,
+    "ic90": [
+     1.8497,
+     2.5283
+    ]
+   },
+   "al_espacio_por_min": {
+    "valor": 2.6869,
+    "ic90": [
+     2.2719,
+     3.1145
+    ]
+   },
+   "cambios_orientacion_por_min": {
+    "valor": 1.0419,
+    "ic90": [
+     0.8658,
+     1.25
+    ]
+   },
+   "paredes_por_min": {
+    "valor": 0.2925,
+    "ic90": [
+     0.1805,
+     0.4088
+    ]
+   },
+   "salidas_presion_por_min": {
+    "valor": 1.1698,
+    "ic90": [
+     0.9393,
+     1.394
+    ]
+   },
+   "asistencias_por_min": {
+    "valor": 0.0548,
+    "ic90": [
+     0.0,
+     0.1038
+    ]
+   },
+   "epv_por_intento": {
+    "valor": 0.0063,
+    "ic90": [
+     0.0019,
+     0.0101
+    ]
+   },
+   "atras_frac": {
+    "valor": 0.4649,
+    "ic90": [
+     0.4286,
+     0.5027
+    ]
+   },
+   "largo_pase_p50": {
+    "valor": 304.0988,
+    "ic90": [
+     285.2834,
+     329.2195
+    ]
+   },
+   "velocidad_pase_p50": {
+    "valor": 6.3344,
+    "ic90": [
+     6.1552,
+     6.4158
+    ]
+   },
+   "retencion_tras_recibir": {
+    "valor": 0.4182,
+    "ic90": [
+     0.3641,
+     0.4722
+    ]
+   },
+   "retencion_bajo_presion": {
+    "valor": 0.3158,
+    "ic90": [
+     0.2277,
+     0.4071
+    ]
+   },
+   "control_orientado_frac": {
+    "valor": 0.387,
+    "ic90": [
+     0.3491,
+     0.422
+    ]
+   },
+   "anticipacion_receptor": {
+    "valor": 0.5979,
+    "ic90": [
+     0.5755,
+     0.6183
+    ]
+   },
+   "de_primera_frac": {
+    "valor": 0.2494,
+    "ic90": [
+     0.2078,
+     0.2886
+    ]
+   },
+   "tiempo_con_pelota_p50": {
+    "valor": 0.15,
+    "ic90": [
+     0.05,
+     0.2
+    ]
+   },
+   "progreso_tras_pase_avance": {
+    "valor": 127.2081,
+    "ic90": [
+     103.2135,
+     151.1964
+    ]
+   },
+   "tiro_tras_pase_avance_frac": {
+    "valor": 0.0859,
+    "ic90": [
+     0.0413,
+     0.1348
+    ]
+   },
+   "devolucion_inmediata_frac": {
+    "valor": 0.3516,
+    "ic90": [
+     0.2718,
+     0.4416
+    ]
+   },
+   "epv_por_posesion": {
+    "valor": 0.0057,
+    "ic90": [
+     0.0008,
+     0.0101
+    ]
+   },
+   "pases_por_posesion": {
+    "valor": 0.2359,
+    "ic90": [
+     0.2068,
+     0.2668
+    ]
+   },
+   "circulacion_inutil_frac": {
+    "valor": 0.3571,
+    "ic90": [
+     0.1,
+     0.6364
+    ]
+   },
+   "tiros_por_min": {
+    "valor": 0.5118,
+    "ic90": [
+     0.359,
+     0.6944
+    ]
+   },
+   "epv_por_decision": {
+    "valor": -0.0042,
+    "ic90": [
+     -0.008,
+     -0.0005
+    ]
+   },
+   "perdida_sin_pase_bajo_presion": {
+    "valor": 0.6292,
+    "ic90": [
+     0.6009,
+     0.6577
+    ]
+   },
+   "pase_con_linea_progresiva": {
+    "valor": 0.4352,
+    "ic90": [
+     0.3873,
+     0.4816
+    ]
+   },
+   "presion_al_portador_p50": {
+    "valor": 97.6356,
+    "ic90": [
+     92.2901,
+     102.8773
+    ]
+   },
+   "minutos": {
+    "valor": 100.1167,
+    "ic90": [
+     99.4357,
+     100.8212
+    ]
+   },
+   "minutos_juego_abierto": {
+    "valor": 54.7092,
+    "ic90": [
+     51.6923,
+     57.5163
+    ]
+   },
+   "pases": {
+    "valor": 385.0,
+    "ic90": [
+     335.0,
+     435.0
+    ]
+   },
+   "intentos": {
+    "valor": 771.0,
+    "ic90": [
+     706.0,
+     832.0
+    ]
+   },
+   "goles_por_min": {
+    "valor": 0.2193,
+    "ic90": [
+     0.124,
+     0.3148
+    ]
+   }
+  },
+  "gate": {
+   "aprobado": false,
+   "fraccion_eficacia_ok": 0.1,
+   "indice_cadena": 0.5282,
+   "por_etapa": {
+    "posicionamiento y líneas": "3/5",
+    "desmarques y apoyo": "0/3",
+    "elección y ejecución": "3/14",
+    "recepción y control": "2/6",
+    "aprovechar la ventaja": "0/3",
+    "posesión y valor": "0/4",
+    "decisión": "0/3",
+    "contexto defensivo": "1/1"
+   },
+   "metricas": {
+    "lineas_disponibles": {
+     "etapa": "posicionamiento y líneas",
+     "tipo": "mas",
+     "agente": 1.2529,
+     "agente_ic90": [
+      1.2053,
+      1.3017
+     ],
+     "humano": 1.0897,
+     "humano_ic90": [
+      1.0641,
+      1.1153
+     ],
+     "banda_humana": null,
+     "razon": 1.1498,
+     "ok": true
+    },
+    "linea_progresiva_frac": {
+     "etapa": "posicionamiento y líneas",
+     "tipo": "mas",
+     "agente": 0.2994,
+     "agente_ic90": [
+      0.2788,
+      0.3178
+     ],
+     "humano": 0.3039,
+     "humano_ic90": [
+      0.2912,
+      0.3154
+     ],
+     "banda_humana": null,
+     "razon": 0.9852,
+     "ok": false
+    },
+    "apoyo_frac": {
+     "etapa": "posicionamiento y líneas",
+     "tipo": "mas",
+     "agente": 0.4434,
+     "agente_ic90": [
+      0.4198,
+      0.4688
+     ],
+     "humano": 0.3711,
+     "humano_ic90": [
+      0.3584,
+      0.3853
+     ],
+     "banda_humana": null,
+     "razon": 1.1948,
+     "ok": true
+    },
+    "control_espacio": {
+     "etapa": "posicionamiento y líneas",
+     "tipo": "mas",
+     "agente": 0.4995,
+     "agente_ic90": [
+      0.4854,
+      0.5126
+     ],
+     "humano": 0.5134,
+     "humano_ic90": [
+      0.5062,
+      0.52
+     ],
+     "banda_humana": null,
+     "razon": 0.9729,
+     "ok": false
+    },
+    "separacion_media": {
+     "etapa": "posicionamiento y líneas",
+     "tipo": "banda",
+     "agente": 208.4311,
+     "agente_ic90": [
+      200.9683,
+      215.8228
+     ],
+     "humano": 179.5614,
+     "humano_ic90": [
+      174.0917,
+      185.2603
+     ],
+     "banda_humana": [
+      145.5428,
+      219.4092
+     ],
+     "razon": 1.1608,
+     "ok": true
+    },
+    "desmarques_por_min_posesion": {
+     "etapa": "desmarques y apoyo",
+     "tipo": "mas",
+     "agente": 7.9036,
+     "agente_ic90": [
+      6.487,
+      9.3718
+     ],
+     "humano": 9.7349,
+     "humano_ic90": [
+      9.2304,
+      10.2394
+     ],
+     "banda_humana": null,
+     "razon": 0.8119,
+     "ok": false
+    },
+    "desmarques_utiles_frac": {
+     "etapa": "desmarques y apoyo",
+     "tipo": "mas",
+     "agente": 0.0755,
+     "agente_ic90": [
+      0.028,
+      0.125
+     ],
+     "humano": 0.1006,
+     "humano_ic90": [
+      0.0867,
+      0.1149
+     ],
+     "banda_humana": null,
+     "razon": 0.7505,
+     "ok": false
+    },
+    "reofrece_tras_pasar_frac": {
+     "etapa": "desmarques y apoyo",
+     "tipo": "mas",
+     "agente": 0.6442,
+     "agente_ic90": [
+      0.613,
+      0.6749
+     ],
+     "humano": 0.6952,
+     "humano_ic90": [
+      0.6815,
+      0.7092
+     ],
+     "banda_humana": null,
+     "razon": 0.9266,
+     "ok": false
+    },
+    "pases_por_min": {
+     "etapa": "elección y ejecución",
+     "tipo": "mas",
+     "agente": 7.0372,
+     "agente_ic90": [
+      6.2977,
+      7.732
+     ],
+     "humano": 12.7574,
+     "humano_ic90": [
+      12.34,
+      13.1838
+     ],
+     "banda_humana": null,
+     "razon": 0.5516,
+     "ok": false
+    },
+    "precision_pase": {
+     "etapa": "elección y ejecución",
+     "tipo": "mas",
+     "agente": 0.4994,
+     "agente_ic90": [
+      0.4646,
+      0.5327
+     ],
+     "humano": 0.6862,
+     "humano_ic90": [
+      0.6733,
+      0.6987
+     ],
+     "banda_humana": null,
+     "razon": 0.7278,
+     "ok": false
+    },
+    "precision_bajo_presion": {
+     "etapa": "elección y ejecución",
+     "tipo": "mas",
+     "agente": 0.6847,
+     "agente_ic90": [
+      0.645,
+      0.7232
+     ],
+     "humano": 0.7132,
+     "humano_ic90": [
+      0.6977,
+      0.728
+     ],
+     "banda_humana": null,
+     "razon": 0.96,
+     "ok": false
+    },
+    "progresivos_por_min": {
+     "etapa": "elección y ejecución",
+     "tipo": "mas",
+     "agente": 0.5118,
+     "agente_ic90": [
+      0.34,
+      0.6834
+     ],
+     "humano": 1.8931,
+     "humano_ic90": [
+      1.7471,
+      2.0482
+     ],
+     "banda_humana": null,
+     "razon": 0.2704,
+     "ok": false
+    },
+    "rompe_lineas_por_min": {
+     "etapa": "elección y ejecución",
+     "tipo": "mas",
+     "agente": 2.1934,
+     "agente_ic90": [
+      1.8497,
+      2.5283
+     ],
+     "humano": 4.5538,
+     "humano_ic90": [
+      4.3207,
+      4.7703
+     ],
+     "banda_humana": null,
+     "razon": 0.4817,
+     "ok": false
+    },
+    "al_espacio_por_min": {
+     "etapa": "elección y ejecución",
+     "tipo": "mas",
+     "agente": 2.6869,
+     "agente_ic90": [
+      2.2719,
+      3.1145
+     ],
+     "humano": 5.4987,
+     "humano_ic90": [
+      5.2647,
+      5.7439
+     ],
+     "banda_humana": null,
+     "razon": 0.4886,
+     "ok": false
+    },
+    "cambios_orientacion_por_min": {
+     "etapa": "elección y ejecución",
+     "tipo": "mas",
+     "agente": 1.0419,
+     "agente_ic90": [
+      0.8658,
+      1.25
+     ],
+     "humano": 1.2109,
+     "humano_ic90": [
+      1.0971,
+      1.3292
+     ],
+     "banda_humana": null,
+     "razon": 0.8604,
+     "ok": false
+    },
+    "paredes_por_min": {
+     "etapa": "elección y ejecución",
+     "tipo": "mas",
+     "agente": 0.2925,
+     "agente_ic90": [
+      0.1805,
+      0.4088
+     ],
+     "humano": 0.7675,
+     "humano_ic90": [
+      0.6689,
+      0.8769
+     ],
+     "banda_humana": null,
+     "razon": 0.3811,
+     "ok": false
+    },
+    "salidas_presion_por_min": {
+     "etapa": "elección y ejecución",
+     "tipo": "mas",
+     "agente": 1.1698,
+     "agente_ic90": [
+      0.9393,
+      1.394
+     ],
+     "humano": 3.0802,
+     "humano_ic90": [
+      2.9052,
+      3.2573
+     ],
+     "banda_humana": null,
+     "razon": 0.3798,
+     "ok": false
+    },
+    "asistencias_por_min": {
+     "etapa": "elección y ejecución",
+     "tipo": "mas",
+     "agente": 0.0548,
+     "agente_ic90": [
+      0.0,
+      0.1038
+     ],
+     "humano": 0.249,
+     "humano_ic90": [
+      0.2035,
+      0.2978
+     ],
+     "banda_humana": null,
+     "razon": 0.2201,
+     "ok": false
+    },
+    "epv_por_intento": {
+     "etapa": "elección y ejecución",
+     "tipo": "mas",
+     "agente": 0.0063,
+     "agente_ic90": [
+      0.0019,
+      0.0101
+     ],
+     "humano": 0.0221,
+     "humano_ic90": [
+      0.02,
+      0.0243
+     ],
+     "banda_humana": null,
+     "razon": 0.2851,
+     "ok": false
+    },
+    "atras_frac": {
+     "etapa": "elección y ejecución",
+     "tipo": "banda",
+     "agente": 0.4649,
+     "agente_ic90": [
+      0.4286,
+      0.5027
+     ],
+     "humano": 0.3861,
+     "humano_ic90": [
+      0.3724,
+      0.3998
+     ],
+     "banda_humana": [
+      0.2848,
+      0.4832
+     ],
+     "razon": 1.2041,
+     "ok": true
+    },
+    "largo_pase_p50": {
+     "etapa": "elección y ejecución",
+     "tipo": "banda",
+     "agente": 304.0988,
+     "agente_ic90": [
+      285.2834,
+      329.2195
+     ],
+     "humano": 312.6392,
+     "humano_ic90": [
+      307.1049,
+      318.2728
+     ],
+     "banda_humana": [
+      274.418,
+      361.572
+     ],
+     "razon": 0.9727,
+     "ok": true
+    },
+    "velocidad_pase_p50": {
+     "etapa": "elección y ejecución",
+     "tipo": "banda",
+     "agente": 6.3344,
+     "agente_ic90": [
+      6.1552,
+      6.4158
+     ],
+     "humano": 6.5721,
+     "humano_ic90": [
+      6.534,
+      6.6238
+     ],
+     "banda_humana": [
+      6.2865,
+      6.9061
+     ],
+     "razon": 0.9638,
+     "ok": true
+    },
+    "retencion_tras_recibir": {
+     "etapa": "recepción y control",
+     "tipo": "mas",
+     "agente": 0.4182,
+     "agente_ic90": [
+      0.3641,
+      0.4722
+     ],
+     "humano": 0.5829,
+     "humano_ic90": [
+      0.5654,
+      0.5993
+     ],
+     "banda_humana": null,
+     "razon": 0.7174,
+     "ok": false
+    },
+    "retencion_bajo_presion": {
+     "etapa": "recepción y control",
+     "tipo": "mas",
+     "agente": 0.3158,
+     "agente_ic90": [
+      0.2277,
+      0.4071
+     ],
+     "humano": 0.4758,
+     "humano_ic90": [
+      0.4464,
+      0.5036
+     ],
+     "banda_humana": null,
+     "razon": 0.6637,
+     "ok": false
+    },
+    "control_orientado_frac": {
+     "etapa": "recepción y control",
+     "tipo": "mas",
+     "agente": 0.387,
+     "agente_ic90": [
+      0.3491,
+      0.422
+     ],
+     "humano": 0.493,
+     "humano_ic90": [
+      0.4755,
+      0.5092
+     ],
+     "banda_humana": null,
+     "razon": 0.785,
+     "ok": false
+    },
+    "anticipacion_receptor": {
+     "etapa": "recepción y control",
+     "tipo": "mas",
+     "agente": 0.5979,
+     "agente_ic90": [
+      0.5755,
+      0.6183
+     ],
+     "humano": 0.5877,
+     "humano_ic90": [
+      0.5792,
+      0.5972
+     ],
+     "banda_humana": null,
+     "razon": 1.0174,
+     "ok": true
+    },
+    "de_primera_frac": {
+     "etapa": "recepción y control",
+     "tipo": "banda",
+     "agente": 0.2494,
+     "agente_ic90": [
+      0.2078,
+      0.2886
+     ],
+     "humano": 0.3005,
+     "humano_ic90": [
+      0.2842,
+      0.3162
+     ],
+     "banda_humana": [
+      0.1721,
+      0.4097
+     ],
+     "razon": 0.83,
+     "ok": true
+    },
+    "tiempo_con_pelota_p50": {
+     "etapa": "recepción y control",
+     "tipo": "banda",
+     "agente": 0.15,
+     "agente_ic90": [
+      0.05,
+      0.2
+     ],
+     "humano": 0.4,
+     "humano_ic90": [
+      0.35,
+      0.4
+     ],
+     "banda_humana": [
+      0.165,
+      0.7
+     ],
+     "razon": 0.375,
+     "ok": false
+    },
+    "progreso_tras_pase_avance": {
+     "etapa": "aprovechar la ventaja",
+     "tipo": "mas",
+     "agente": 127.2081,
+     "agente_ic90": [
+      103.2135,
+      151.1964
+     ],
+     "humano": 231.962,
+     "humano_ic90": [
+      222.3871,
+      241.2484
+     ],
+     "banda_humana": null,
+     "razon": 0.5484,
+     "ok": false
+    },
+    "tiro_tras_pase_avance_frac": {
+     "etapa": "aprovechar la ventaja",
+     "tipo": "mas",
+     "agente": 0.0859,
+     "agente_ic90": [
+      0.0413,
+      0.1348
+     ],
+     "humano": 0.1689,
+     "humano_ic90": [
+      0.149,
+      0.1907
+     ],
+     "banda_humana": null,
+     "razon": 0.5086,
+     "ok": false
+    },
+    "devolucion_inmediata_frac": {
+     "etapa": "aprovechar la ventaja",
+     "tipo": "banda",
+     "agente": 0.3516,
+     "agente_ic90": [
+      0.2718,
+      0.4416
+     ],
+     "humano": 0.2347,
+     "humano_ic90": [
+      0.218,
+      0.2514
+     ],
+     "banda_humana": [
+      0.0952,
+      0.3236
+     ],
+     "razon": 1.4981,
+     "ok": false
+    },
+    "epv_por_posesion": {
+     "etapa": "posesión y valor",
+     "tipo": "mas",
+     "agente": 0.0057,
+     "agente_ic90": [
+      0.0008,
+      0.0101
+     ],
+     "humano": 0.0447,
+     "humano_ic90": [
+      0.0409,
+      0.0487
+     ],
+     "banda_humana": null,
+     "razon": 0.1275,
+     "ok": false
+    },
+    "pases_por_posesion": {
+     "etapa": "posesión y valor",
+     "tipo": "mas",
+     "agente": 0.2359,
+     "agente_ic90": [
+      0.2068,
+      0.2668
+     ],
+     "humano": 0.5846,
+     "humano_ic90": [
+      0.5545,
+      0.6178
+     ],
+     "banda_humana": null,
+     "razon": 0.4035,
+     "ok": false
+    },
+    "circulacion_inutil_frac": {
+     "etapa": "posesión y valor",
+     "tipo": "menos",
+     "agente": 0.3571,
+     "agente_ic90": [
+      0.1,
+      0.6364
+     ],
+     "humano": 0.1455,
+     "humano_ic90": [
+      0.1111,
+      0.185
+     ],
+     "banda_humana": null,
+     "razon": 2.4543,
+     "ok": false
+    },
+    "tiros_por_min": {
+     "etapa": "posesión y valor",
+     "tipo": "mas",
+     "agente": 0.5118,
+     "agente_ic90": [
+      0.359,
+      0.6944
+     ],
+     "humano": 1.3815,
+     "humano_ic90": [
+      1.265,
+      1.5037
+     ],
+     "banda_humana": null,
+     "razon": 0.3705,
+     "ok": false
+    },
+    "epv_por_decision": {
+     "etapa": "decisión",
+     "tipo": "mas",
+     "agente": -0.0042,
+     "agente_ic90": [
+      -0.008,
+      -0.0005
+     ],
+     "humano": 0.0176,
+     "humano_ic90": [
+      0.0162,
+      0.0193
+     ],
+     "banda_humana": null,
+     "razon": -0.2386,
+     "ok": false
+    },
+    "perdida_sin_pase_bajo_presion": {
+     "etapa": "decisión",
+     "tipo": "menos",
+     "agente": 0.6292,
+     "agente_ic90": [
+      0.6009,
+      0.6577
+     ],
+     "humano": 0.5184,
+     "humano_ic90": [
+      0.505,
+      0.532
+     ],
+     "banda_humana": null,
+     "razon": 1.2137,
+     "ok": false
+    },
+    "pase_con_linea_progresiva": {
+     "etapa": "decisión",
+     "tipo": "banda",
+     "agente": 0.4352,
+     "agente_ic90": [
+      0.3873,
+      0.4816
+     ],
+     "humano": 0.6038,
+     "humano_ic90": [
+      0.5866,
+      0.6203
+     ],
+     "banda_humana": [
+      0.489,
+      0.7305
+     ],
+     "razon": 0.7208,
+     "ok": false
+    },
+    "presion_al_portador_p50": {
+     "etapa": "contexto defensivo",
+     "tipo": "banda",
+     "agente": 97.6356,
+     "agente_ic90": [
+      92.2901,
+      102.8773
+     ],
+     "humano": 98.4806,
+     "humano_ic90": [
+      95.2745,
+      101.5161
+     ],
+     "banda_humana": [
+      80.2615,
+      126.8011
+     ],
+     "razon": 0.9914,
+     "ok": true
+    }
+   }
+  }
+ }
+}

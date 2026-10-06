@@ -57,6 +57,8 @@ class Episode:
     goals: int = 0
     segment: np.ndarray = None  # (T,) id de tramo continuo (cortes de la grabación o del plantel)
     meta: dict = field(default_factory=dict)
+    restart_team: np.ndarray = None  # (T,) equipo que saca (-1 sin saque, 0 rojo, 1 azul)
+    goal_ev: np.ndarray = None       # (T,) +1 gol rojo, -1 gol azul en la ventana del muestreo, 0 nada
 
 
 # ------------------------------------------------------------------------------------- humanos
@@ -110,38 +112,60 @@ def episodes_from_ticks(npz, map_id=None, stride=3):
         st = d["state"][samp]
         rk = d["restart_kind"][samp]
         pend = d["pending"][samp]
+        goal_ev = np.zeros(len(samp), np.int8)
+        for g, team in (d["goals"] if len(d["goals"]) else ()):
+            if frame[rows[0]] <= g <= frame[rows[-1]]:
+                j = int(np.searchsorted(frame[samp], g, side="right")) - 1
+                if 0 <= j < len(samp):
+                    goal_ev[j] = 1 if team == 1 else -1
         ep = Episode(stride=stride, ball=d["ball"][samp, :4].astype(np.float64), ball_r=float(np.median(d["ball"][rows, 4])),
                      pos=d["pos"][samp].astype(np.float64), vel=d["vel"][samp].astype(np.float64),
                      move=_move_of_input(d["inp"][samp]), kick_key=(d["inp"][samp] & 16) != 0, kicked=kicked,
                      open_play=(st == 1) & (rk == 0) & (pend == 0), restart_kind=rk.astype(np.int64),
                      restart_age=d["restart_age"][samp].astype(np.int64), kickoff=st == 0,
                      goals=int(np.sum(np.isin(d["goals"][:, 0], frame[rows]))) if len(d["goals"]) else 0,
-                     segment=np.zeros(len(samp), np.int64), meta=dict(frames=(int(frame[rows[0]]), int(frame[rows[-1]]))))
+                     segment=np.zeros(len(samp), np.int64), meta=dict(frames=(int(frame[rows[0]]), int(frame[rows[-1]]))),
+                     restart_team=np.where(rk > 0, d["restart_team"][samp], -1).astype(np.int64), goal_ev=goal_ev)
         out.append(ep)
     return out
 
 
 # ------------------------------------------------------------------------------------- simulación
 class EpisodeRecorder:
-    """Graba un partido de `RS4ZEnv` (fila `row`) en el formato `Episode`. Llamar `record(env, ev, actions)`
-    después de cada `env.step(actions)` (acciones en el marco propio, como las recibe el entorno)."""
+    """Graba un partido de `RS4ZEnv` (fila `row`) en el formato `Episode`. Llamar `pre(env)` antes y
+    `record(env, ev, actions)` después de cada `env.step(actions)` (acciones en el marco propio).
+
+    Alineación con las grabaciones: en `episodes_from_ticks` el muestreo t es el estado en el frame f y las patadas
+    y goles de la ventana [f, f+3). Acá el estado se toma antes del paso (`pre`) y las patadas y goles son los de ese
+    paso. Sin `pre`, se usa el estado después del paso (versión anterior: la pelota pateada ya salió del pie)."""
 
     def __init__(self, env, row=0):
         self.env, self.row = env, row
         self.rows = []
+        self._pre = None
+
+    def _state(self, env):
+        from env.rs4z import kernel as K
+        n = self.row
+        ko = env.ri[n, K.RI_KO] != 0
+        rk = int(env.ri[n, K.RI_KIND]) if env.ri[n, K.RI_TEAM] >= 0 else 0
+        pend = int(env.ri[n, K.RI_PEND]) > 0
+        return (env.pos[n, 0].copy(), env.vel[n, 0].copy(), env.player_pos[n].copy(), env.player_vel[n].copy(),
+                (not ko) and rk == 0 and not pend, rk, int(env.ri[n, K.RI_TICKS]), ko,
+                int(env.ri[n, K.RI_TEAM]) if rk > 0 else -1)
+
+    def pre(self, env):
+        self._pre = self._state(env)
 
     def record(self, env, ev, actions):
-        from env.rs4z import kernel as K
         from env.rs4z.core import MIRROR_ACTION
         n = self.row
         world = np.asarray(actions[n], dtype=np.int64).copy()
         world[4:] = MIRROR_ACTION[world[4:]]
-        ko = env.ri[n, K.RI_KO] != 0
-        rk = int(env.ri[n, K.RI_KIND]) if env.ri[n, K.RI_TEAM] >= 0 else 0
-        pend = int(env.ri[n, K.RI_PEND]) > 0
-        self.rows.append((env.pos[n, 0].copy(), env.vel[n, 0].copy(), env.player_pos[n].copy(), env.player_vel[n].copy(),
-                          world % 9, world >= 9, ev["kicked"][n].copy(), (not ko) and rk == 0 and not pend, rk,
-                          int(env.ri[n, K.RI_TICKS]), ko, int(ev["goal"][n] != 0)))
+        bp, bv, pp, pv, open_, rk, rticks, ko, rteam = self._pre if self._pre is not None else self._state(env)
+        self._pre = None
+        self.rows.append((bp, bv, pp, pv, world % 9, world >= 9, ev["kicked"][n].copy(), open_, rk, rticks, ko,
+                          int(np.sign(ev["goal"][n])), rteam))
 
     def episode(self):
         r = self.rows
@@ -150,7 +174,9 @@ class EpisodeRecorder:
                        ball_r=float(self.env.radius[self.row, 0]), pos=np.array(cols[2]), vel=np.array(cols[3]),
                        move=np.array(cols[4]), kick_key=np.array(cols[5]), kicked=np.array(cols[6]),
                        open_play=np.array(cols[7]), restart_kind=np.array(cols[8]), restart_age=np.array(cols[9]),
-                       kickoff=np.array(cols[10]), goals=int(sum(cols[11])), segment=np.zeros(len(r), np.int64))
+                       kickoff=np.array(cols[10]), goals=int(sum(abs(g) for g in cols[11])),
+                       segment=np.zeros(len(r), np.int64), restart_team=np.array(cols[12], np.int64),
+                       goal_ev=np.array(cols[11], np.int8))
 
 
 # ------------------------------------------------------------------------------------- métricas

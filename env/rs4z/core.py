@@ -278,6 +278,7 @@ class RS4ZEnv:
                     restart_exec=ev[:, K.EV_EXEC].copy(), forfeit=ev[:, K.EV_FORFEIT].copy(),
                     kickoff_taken=ev[:, K.EV_KO_TAKEN] != 0, match_end=ev[:, K.EV_MATCH_END] != 0,
                     ticks=ev[:, K.EV_TICKS].copy(), safety=ev[:, K.EV_SAFETY].copy(),
+                    forfeit_why=ev[:, K.EV_FWHY].copy(),
                     kicked=self.ev_kicked.copy(), touched=self.ev_touch.copy())
 
     # ------------------------------------------------------------------ utilidades

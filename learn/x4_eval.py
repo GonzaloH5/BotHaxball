@@ -86,8 +86,9 @@ class ModelPolicy:
 
 
 def play(red, blue, *, map_name="sanguchito_rs_x4", matches=16, minutes=3.0, delays=(8, 9, 10, 11), seed=0,
-         record=4, max_decisions=None):
-    """Partidos completos red vs blue. Devuelve goles por partido, eventos de seguridad y episodios grabados."""
+         record=4, max_decisions=None, obs_delay=None):
+    """Partidos completos red vs blue. Devuelve goles por partido, eventos de seguridad y episodios grabados.
+    `obs_delay`: retardo que se les informa a las políticas (None = el verdadero; 10 = como el bot en la sala)."""
     rng = np.random.default_rng(seed)
     # sin plazos de saque (como la sala); el saque inicial que nadie ejecuta se libera por seguridad a los
     # KICKOFF_SAFETY ticks y se cuenta en `safety` (si no, el reloj congelado detendría el partido para siempre)
@@ -99,25 +100,31 @@ def play(red, blue, *, map_name="sanguchito_rs_x4", matches=16, minutes=3.0, del
     recs = [XM.EpisodeRecorder(env, row=r) for r in range(min(record, matches))]
     goals = np.zeros((matches, 2), np.int64)
     safety = np.zeros(matches, np.int64)
+    safety_ko = np.zeros(matches, np.int64)
     done = np.zeros(matches, bool)
     limit = max_decisions or int(ticks / 3 * 4)
     steps = 0
     while not done.all() and steps < limit:
-        obs = obs_v3.observe(env)
+        obs = obs_v3.observe(env, delay=obs_delay)
         acts = np.zeros((matches, 8), np.int64)
         acts[:, :4] = red(obs[:, :4].reshape(-1, obs.shape[-1]), rng).reshape(matches, 4)
         acts[:, 4:] = blue(obs[:, 4:].reshape(-1, obs.shape[-1]), rng).reshape(matches, 4)
+        for rec in recs:
+            if not done[rec.row]:
+                rec.pre(env)
         ev = env.step(acts)
         live = ~done
         goals[live, 0] += ev["goal"][live] > 0
         goals[live, 1] += ev["goal"][live] < 0
         safety[live] += ev["safety"][live] != 0
+        safety_ko[live] += ev["safety"][live] == 2         # saque inicial que nadie ejecutó
         for rec in recs:
             if not done[rec.row]:
                 rec.record(env, ev, acts)
         done |= ev["match_end"]
         steps += 1
-    return dict(goals=goals, safety=safety, finished=int(done.sum()), episodes=[r.episode() for r in recs])
+    return dict(goals=goals, safety=safety, safety_kickoff=safety_ko, finished=int(done.sum()),
+                episodes=[r.episode() for r in recs])
 
 
 def bradley_terry(names, results, iters=200):

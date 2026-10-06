@@ -244,13 +244,15 @@ def _build_env(pos, vel, kick_cancel, active, ri, rf, radius, inv, act_hist, app
                        rf[n, K.RF_KSTR], map_idx, line_h, goal_x, )
 
 
-def observe(env, out=None):
-    """Observación v3 de todos los jugadores de `env` (N, 8, OBS_DIM)."""
+def observe(env, out=None, delay=None):
+    """Observación v3 de todos los jugadores de `env` (N, 8, OBS_DIM). `delay` (N, 8): retardo que se le informa a la
+    política (por defecto, el verdadero `env.delay`; en la sala el bot informa un valor fijo)."""
     if out is None:
         out = np.empty((env.N, 8, OBS_DIM), dtype=np.float32)
     line_h, goal_x, map_idx = map_geometry(env.map)
+    d = env.delay if delay is None else np.ascontiguousarray(np.broadcast_to(delay, env.delay.shape), env.delay.dtype)
     _build_env(env.pos, env.vel, env.kick_cancel, env.active, env.ri, env.rf, env.radius, env.inv, env.act_hist,
-               env._s_act, env.delay, env.fp, map_idx, line_h, goal_x, out)
+               env._s_act, d, env.fp, map_idx, line_h, goal_x, out)
     return out
 
 

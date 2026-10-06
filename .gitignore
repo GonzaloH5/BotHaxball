@@ -30,3 +30,6 @@ runs/**
 !runs/x4_bc/final_sangu_rsone/
 !runs/x4_bc/final_sangu_rsone/best.pt
 !runs/x4_bc/final_sangu_rsone/log.json
+# Valor de posesión aprendido de humanos (shaping del RL y métricas de la cadena de pase).
+!runs/x4_epv/
+!runs/x4_epv/epv.pt

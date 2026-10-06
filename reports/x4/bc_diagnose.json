@@ -1,0 +1,53 @@
+{
+ "policy": "/home/user/BotHaxball/runs/x4_bc/final_sangu_rsone/best.pt",
+ "lazo_abierto": [
+  {
+   "distancia": [
+    0,
+    27.325
+   ],
+   "n": 5590,
+   "humanos_tecla": 0.0834,
+   "bc_p_patada": 0.1005
+  },
+  {
+   "distancia": [
+    27.3,
+    40
+   ],
+   "n": 4072,
+   "humanos_tecla": 0.1925,
+   "bc_p_patada": 0.1608
+  },
+  {
+   "distancia": [
+    40,
+    70
+   ],
+   "n": 7936,
+   "humanos_tecla": 0.139,
+   "bc_p_patada": 0.1425
+  },
+  {
+   "distancia": [
+    70,
+    120
+   ],
+   "n": 12351,
+   "humanos_tecla": 0.0408,
+   "bc_p_patada": 0.0411
+  }
+ ],
+ "lazo_cerrado_humanos": {
+  "minutos_juego_abierto": 293.2,
+  "frac_alguien_al_alcance": 0.2891,
+  "patadas_por_min_y_jugador": 3.837,
+  "patadas_por_muestreo_al_alcance": 0.0666
+ },
+ "lazo_cerrado_bc": {
+  "minutos_juego_abierto": 29.6,
+  "frac_alguien_al_alcance": 0.1286,
+  "patadas_por_min_y_jugador": 2.732,
+  "patadas_por_muestreo_al_alcance": 0.0118
+ }
+}

@@ -22,7 +22,8 @@ POD = os.environ.get("HAXBALL_POD", "aa368f72-ad42-43ee-b278-61d0a50706de@96.28.
 PORT = os.environ.get("HAXBALL_POD_PORT", "40900")
 REMOTE = os.environ.get("HAXBALL_POD_REPO", "/workspace/HaxballRL")
 CODE_DIRS = ("sim", "env", "train", "eval", "bots", "tools", "tests", "export", "bridge", "stadiums",
-             "learn", "docs", "reports", "runs/x4_bc/final_sangu_rsone")   # X4: código, particiones e imitación de partida
+             "learn", "docs", "reports", "runs/x4_bc/final_sangu_rsone", "runs/x4_epv")   # X4: código, referencias,
+# imitación de partida y valor de posesión
 TEXT = {".py", ".yaml", ".yml", ".js", ".json", ".hbs", ".md", ".txt", ".sh", ".cfg", ".toml"}
 
 
