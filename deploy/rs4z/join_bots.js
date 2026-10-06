@@ -28,6 +28,7 @@ for (let k = 1; k <= count; k++) {
     if (arg("--hyst", null)) botArgs.push("--hyst", arg("--hyst"));
     if (args.includes("--trace")) botArgs.push("--trace", path.join(logs, `trace_${prefix}_${k}.jsonl`));
     if (arg("--temp", null)) botArgs.push("--temp", arg("--temp"));
+    if (arg("--ort-threads", null)) botArgs.push("--ort-threads", arg("--ort-threads"));
     if (arg("--delay", null)) botArgs.push("--delay", arg("--delay"));
     if (arg("--extrapolate", null)) botArgs.push("--extrapolate", arg("--extrapolate"));
     if (k === 1) botArgs.push("--dump-stadium", path.join(logs, `room_stadium_${prefix}.hbs`));

@@ -30,7 +30,7 @@ const { buildObsUniversal } = require("./obs_universal");
 const { assertObservationContract } = require("./observation_contract");
 const { PolicyMemory } = require("./policy_memory");
 const { PublicSignalTracker } = require("./public_signals");
-const { sampleLogits, geometryFromText } = require("./runtime");
+const { sampleLogits, geometryFromText, ortSessionOptions } = require("./runtime");
 
 // ------------------------------------------------------------------ args
 const args = process.argv.slice(2);
@@ -552,7 +552,8 @@ function BotPlugin(session, managed = false) {
 (async () => {
   if (API.ready) await API.ready;
   if (MANAGED && !process.connected) return process.exit(0);
-  const session = await ort.InferenceSession.create(MODEL, MANAGED ? {intraOpNumThreads:1,interOpNumThreads:1} : {});
+  // --ort-threads n: hilos de inferencia por bot (1 por defecto; ver ortSessionOptions)
+  const session = await ort.InferenceSession.create(MODEL, ortSessionOptions(arg("--ort-threads", "1")));
   const plugin = new BotPlugin(session, MANAGED);
   console.log(RS4Z
     ? `modelo ${MODEL} (RS4-Z 4v4 Real Soccer ONE, obs v2, ${META.stage} ${(META.samples / 1e6).toFixed(0)}M muestras)`

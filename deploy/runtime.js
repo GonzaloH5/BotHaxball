@@ -18,4 +18,11 @@ function geometryFromText(text){
     return JSON.parse(result.stdout);
   }finally{if(fs.existsSync(file))fs.unlinkSync(file);fs.rmdirSync(directory);}
 }
-module.exports={sampleLogits,geometryFromText};
+// Opciones de sesión ONNX para un bot. Con varios bots en la misma PC, el valor por defecto de onnxruntime
+// (un hilo por núcleo en cada sesión) hace que los procesos compitan por la CPU: en la prueba del 2026-10-06
+// con 7 bots cada uno decidía cada 9–10 ticks en vez de cada 3. La red es chica: 1 hilo alcanza.
+function ortSessionOptions(threads=1){
+  const n=Math.max(1,Math.floor(Number(threads))||1);
+  return {intraOpNumThreads:n,interOpNumThreads:1,executionMode:'sequential'};
+}
+module.exports={sampleLogits,geometryFromText,ortSessionOptions};
