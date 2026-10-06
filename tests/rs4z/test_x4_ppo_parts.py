@@ -52,3 +52,22 @@ def test_upcoming_actions_order_and_mirror():
                 a = MIRROR_ACTION[a]
             assert up[0, p, k, a] == 1.0 and up[0, p, k].sum() == 1.0
     assert ORDER[5][0] == 5 and set(ORDER[5][1:4]) == {4, 6, 7}
+
+
+def test_bc_sees_2k23_as_rs_one():
+    from env.rs4z import obs_v3
+    from learn.x4_ppo import Trainer
+    a = SimpleNamespace(delay_values=np.array([0]), delay_weights=np.array([1.0]), match_minutes=(10.0, 10.0),
+                        human_starts=0.0, human_restart_frac=0.0, pool_frac=0.0, lambda_values=[0.06], shaping=1.0)
+    ar = Arena("haxarg_2k23", 1, a, np.random.default_rng(0))
+    obs = obs_v3.observe(ar.env)
+    view = Trainer.bc_view(ar, obs)
+    j = obs_v3.SELF_FEATURES.index("map_rs_one")
+    assert (obs[0, :, j + 2] == 1).all() and (obs[0, :, j] == 0).all()
+    assert (view[0, :, j] == 1).all() and (view[0, :, j + 2] == 0).all()
+    other = np.ones(obs.shape[-1], bool)
+    other[[j, j + 2]] = False
+    assert np.array_equal(view[..., other], obs[..., other])
+    sangu = _arena(n=1)
+    o2 = obs_v3.observe(sangu.env)
+    assert Trainer.bc_view(sangu, o2) is o2

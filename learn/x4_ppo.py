@@ -134,8 +134,15 @@ class StateBank:
 class Arena:
     """Un `RS4ZEnv` de un mapa con su bookkeeping: quién controla cada lugar, λ, shaping, latencias."""
 
+    # [inferencia] La imitación no tiene datos humanos de 2K23 (one-hot nunca visto): el ancla KL y los rivales del
+    # pool ven ese mapa como RS ONE, del que 2K23 es la versión 70 px más angosta (la geometría ya va en la obs).
+    BC_MAP_ALIAS = {"haxarg_2k23": "rs_one"}
+
     def __init__(self, map_name, n, args, rng, bank=None, pool_size=0):
         self.map, self.N, self.a, self.rng, self.bank = map_name, n, args, rng, bank
+        j = obs_v3.SELF_FEATURES.index("map_rs_one")
+        self.map_cols = (j + obs_v3.MAP_NAMES.index(map_name), j + obs_v3.MAP_NAMES.index(self.BC_MAP_ALIAS[map_name])) \
+            if map_name in self.BC_MAP_ALIAS else None
         self.env = RS4ZEnv(n, map=map_name, frame_skip=3, max_delay=15, seed=int(rng.integers(1 << 30)))
         self.learner = np.ones((n, 8), bool)      # lugares que controla el aprendiz
         self.opp = np.full(n, -1)                 # índice del rival del pool (-1 self-play)
@@ -313,6 +320,17 @@ class Trainer:
         w = (1.0 - x) ** 2 + 1e-3
         return w / w.sum()
 
+    @staticmethod
+    def bc_view(arena, obs):
+        """Observación que ven la BC y el pool: con el mapa reemplazado si no hay datos humanos de él."""
+        if arena.map_cols is None:
+            return obs
+        o = obs.copy()
+        real, alias = arena.map_cols
+        o[..., real] = 0.0
+        o[..., alias] = np.where(obs[..., real] > 0, 1.0, o[..., alias])
+        return o
+
     @torch.no_grad()
     def act(self, arena, obs, crit):
         """Acciones (N, 8) y datos del aprendiz para un paso de una arena."""
@@ -322,13 +340,15 @@ class Trainer:
         dist = torch.distributions.Categorical(logits=logits)
         a = dist.sample()
         logp = dist.log_prob(a)
-        bc_logp = F.log_softmax(self.bc(o), -1)
+        obs_bc = self.bc_view(arena, obs)
+        o_bc = o if obs_bc is obs else torch.from_numpy(obs_bc.reshape(N * 8, -1)).to(self.dev)
+        bc_logp = F.log_softmax(self.bc(o_bc), -1)
         v = self.critic(torch.from_numpy(crit.reshape(N * 8, -1)).to(self.dev))
         acts = a.view(N, 8).cpu().numpy()
         for k in np.unique(arena.opp[arena.opp >= 0]):
             rows = np.flatnonzero(arena.opp == k)
             sel = ~arena.learner[rows]
-            ob = torch.from_numpy(obs[rows][sel]).to(self.dev)
+            ob = torch.from_numpy(obs_bc[rows][sel]).to(self.dev)
             oa = torch.distributions.Categorical(logits=self.pool[k][1](ob)).sample().cpu().numpy()
             sub = acts[rows]
             sub[sel] = oa
