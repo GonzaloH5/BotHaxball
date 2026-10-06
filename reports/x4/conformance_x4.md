@@ -55,7 +55,16 @@ Ver `reports/x4/dataset_audit.md`:
 
 ## Pendiente
 
-- **Física en juego abierto** con las 498 grabaciones. Ya está verificada con 7 (p90 a 60 ticks: 0,012 px). La física es la misma de RS ONE, y la conformidad de saques sobre 498 grabaciones da 0,008–0,1 px a 59 ticks.
+- **Física en juego abierto, en las 498 grabaciones completas.** Por ahora se corrió en 40 grabaciones nuevas, del 2 al 5 de octubre (`physics_conformance_sanguchito40.json`):
+
+| | n | Pelota p50 / p90 / p99 | Jugadores p90 / p99 |
+|---|---|---|---|
+| 1 tick | 468.797 | 3e-5 / 1e-4 / 1,4e-4 px | 1,4e-4 / 1,4e-4 px |
+| 60 ticks | 4.232 | 0,0024 / 0,011 / 0,044 px | 0,0026 / 0,012 px |
+
+  - La hipótesis de masa 0,3 da p90 12,5 px a 60 ticks y queda descartada otra vez.
+  - Reloj congelado durante el saque inicial: 96.086 de 96.086 ticks.
+  - Defensores dentro del disco del córner: 0,017% de los ticks.
 - **2K23 (B1):** el script sigue siendo un supuesto (igual a RS ONE desplazado 70 px), salvo la demora del lateral. Se corrió la conformidad sobre las 2 grabaciones de prueba con bots (13 saques; `restart_conformance_2k23_bots.json`). El script de la sala no depende de quién juega, y **no coincide**:
   - córner y saque de arco: la trayectoria tras la patada se desvía 46 y 26 px a +59 ticks (impulso o curva distintos de RS ONE);
   - lateral: el punto real difiere 2–4 px del de salida (valores con un decimal, p. ej. −79,4 o 368,2) y el simulador libera 2–27 ticks antes.
