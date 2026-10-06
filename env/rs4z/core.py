@@ -31,9 +31,9 @@ P = 8
 
 
 class RS4ZEnv:
-    def __init__(self, n_envs: int, *, contract: str = "v2", frame_skip: int = 3, seed: int | None = None,
+    def __init__(self, n_envs: int, *, contract: str = "v2_lateral", frame_skip: int = 3, seed: int | None = None,
                  deadline: int = C.TRAINING_DEADLINE, kickoff_deadline: int = C.TRAINING_DEADLINE,
-                 max_delay: int = 12, stadium: str = "rs_one"):
+                 max_delay: int = 12, stadium: str | None = None, map: str = "rs_one"):
         if contract not in C.FLAGS:
             raise ValueError(f"contrato desconocido: {contract}")
         self.N = int(n_envs)
@@ -43,8 +43,9 @@ class RS4ZEnv:
         self.deadline = int(deadline)
         self.kickoff_deadline = int(kickoff_deadline)
         self.rng = np.random.default_rng(seed)
-        st = self.st = load_stadium(stadium)
-        self.prm = C.params()
+        self.map = map
+        st = self.st = load_stadium(stadium or C.MAPS[map]["stadium"])
+        self.prm = C.params(map)
         D = st.d_pos.shape[0]
         self.fp = fp = 4 + D
         self.K = Kd = fp + P

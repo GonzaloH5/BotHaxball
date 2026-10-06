@@ -5,9 +5,25 @@ from env.rs4z import contract as C
 from env.rs4z import kernel as K
 from env.rs4z.core import RS4ZEnv
 from env.rs4z.obs_v2 import CRITIC_DIM, OBS_DIM, SELF_FEATURES, critic, observe
-from env.rs4z.parity import chase_actions
+from sim.physics import MOVE_UNIT
 
 SWAP = np.array([4, 5, 6, 7, 0, 1, 2, 3])
+
+
+def chase_actions(env, rng, p_random=0.35, p_kick=0.6):
+    """Acciones mixtas: ir hacia la pelota y patear cerca (genera salidas, saques y goles) + azar."""
+    N = env.N
+    d = env.ball_pos[:, None, :] - env.player_pos
+    own = d.copy()
+    own[..., 0] *= env.sign[None, :]
+    dist = np.hypot(d[..., 0], d[..., 1])
+    unit = own / np.maximum(dist[..., None], 1e-9)
+    move = np.argmax(unit @ MOVE_UNIT.T, axis=-1)
+    kick = (dist < 40) & (rng.random((N, 8)) < p_kick)
+    act = move + 9 * kick
+    rand = rng.random((N, 8)) < p_random
+    act[rand] = rng.integers(0, 18, int(rand.sum()))
+    return act.astype(np.int64)
 
 
 def _random_play(env, decisions, seed=0):
@@ -85,10 +101,16 @@ def test_color_swap_gives_identical_observations():
 
 
 def test_color_swap_dynamics_match_away_from_map_asymmetries():
-    # Asimetrías conocidas (F21 y orden de colisiones rojo→azul) hacen que la igualdad no sea exacta
-    # en choques simultáneos; un paso desde estados de juego abierto debe coincidir casi siempre.
+    # Sonda explícita de juego abierto central sin choques ni barreras: perseguir la
+    # pelota durante 300 pasos producía laterales/contactos, fuera del alcance del test.
     env = RS4ZEnv(64, seed=7)
-    _random_play(env, 300, seed=7)
+    rng = np.random.default_rng(7)
+    base = np.array([(-450, -250), (-150, -250), (150, -250), (450, -250),
+                     (-450, 250), (-150, 250), (150, 250), (450, 250)], float)
+    for n in range(env.N):
+        env.place(n, ball_pos=rng.uniform(-50, 50, 2), ball_vel=rng.uniform(-2, 2, 2),
+                  player_pos=base + rng.uniform(-30, 30, (8, 2)),
+                  player_vel=rng.uniform(-1, 1, (8, 2)))
     twin = mirrored_copy(env)
     rng = np.random.default_rng(8)
     act = chase_actions(env, rng)
@@ -100,4 +122,4 @@ def test_color_swap_dynamics_match_away_from_map_asymmetries():
     theirs[..., 0] *= -1.0
     err = np.abs(mine - theirs).max(axis=(1, 2))
     ball = np.abs(env.pos[:, 0] - twin.pos[:, 0] * np.array([-1.0, 1.0])).max(axis=1)
-    assert (np.maximum(err, ball) < 1e-6).mean() >= 0.95, np.sort(np.maximum(err, ball))[-5:]
+    assert np.all(np.maximum(err, ball) < 1e-6), np.sort(np.maximum(err, ball))[-5:]

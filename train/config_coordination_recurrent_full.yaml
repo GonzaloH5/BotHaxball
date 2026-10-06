@@ -1,9 +1,0 @@
-# Usar sólo si el gate comparativo elige el candidato con memoria.
-extends: config_coordination_recurrent.yaml
-run_name: coordination_recurrent_full
-ppo:
-  # 25M del piloto + hasta 375M de continuación = presupuesto total 400M.
-  total_steps: 375_000_000
-evaluation:
-  reports_dir: reports/coordination_recurrent_full
-

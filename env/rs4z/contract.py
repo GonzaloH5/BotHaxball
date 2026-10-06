@@ -58,6 +58,8 @@ V2 = dict(
     map_inv_mass=0.5,            # masa del mapa tras cada reposicionamiento (F1)
     corner_disc_x=1150.0, corner_disc_y=740.0, corner_disc_radius=445.0,
     spot_disc_radius=18.0,
+    lateral_run_distance=270.0, # Host Publico: throwinDistance, respecto al punto original
+    lateral_timeout_ticks=420.0, # Host Publico: throwTimeOut (7 s)
 )
 
 # Índices del vector de parámetros que recibe el kernel (orden fijo).
@@ -65,8 +67,24 @@ PARAM_NAMES = tuple(V1) + tuple(V2)
 PI = {name: i for i, name in enumerate(PARAM_NAMES)}
 
 
-def params() -> np.ndarray:
-    values = {**V1, **V2}
+# Mapas. HAXARG 2K23 (script HaxArg Lite 2026, mapa exportado de la sala: `stadiums/haxarg_2k23.hbs`) es el
+# mismo diseño que Real Soccer ONE con la cancha 70 px más angosta (línea lateral 600): banderines,
+# barrera del lateral (c1 en ±485) y segmentos c0 de las esquinas corridos 70 px; mismos discos del
+# script, área (840/320) y arcos. Puntos de saque medidos con el bot en la sala (2026-10-06): lateral
+# y=±618, córner (±1140, ±590), saque de arco (±1060, 0). Pelota 9 y patada 5,65 salen del mapa.
+# Supuesto sin verificar todavía con grabaciones: impulsos, curva, plazos y disco del córner (±1150, ±670)
+# iguales a RS ONE corridos 70 px.
+MAPS = {
+    "rs_one": dict(stadium="rs_one", overrides={}, kick_strengths=(5.85, 5.75), ball_radii=(8.325, 8.0)),
+    "haxarg_2k23": dict(stadium="haxarg_2k23", overrides=dict(
+        line_half_h=600.0, lateral_ball_y=618.0, lateral_release_y=612.0, corner_y=590.0,
+        goal_kick_x=1060.0, goal_kick_y=0.0, barrier_y=485.0, push_y=470.0, corner_disc_y=670.0),
+        kick_strengths=(5.65,), ball_radii=(9.0,)),
+}
+
+
+def params(map_name: str = "rs_one") -> np.ndarray:
+    values = {**V1, **V2, **MAPS[map_name]["overrides"]}
     return np.array([float(values[name]) for name in PARAM_NAMES], dtype=np.float64)
 
 
@@ -75,7 +93,9 @@ FIX_MASS = 1          # F1: masa 0,5 tras reposicionar, 0,3 con la patada del sa
 FIX_CLOCK = 2         # F2: reloj congelado durante el saque inicial
 FIX_ENGINE = 4        # F5/F22: barreras, discos de exclusión y del punto con el motor de colisiones
 FIX_STRIP = 8         # F7: sin franja muerta en las esquinas
+FIX_LATERAL = 16      # variante Host Publico: rango, patada obligatoria y vencimiento
 FLAGS = {"v1": 0, "v2": FIX_MASS | FIX_CLOCK | FIX_ENGINE | FIX_STRIP}
+FLAGS["v2_lateral"] = FLAGS["v2"] | FIX_LATERAL
 
 # ----------------------------------------------------------------------------- entrenamiento
 # Plazo sólo de entrenamiento (la sala no vence saques). A los 600 ticks sin ejecutar, el saque

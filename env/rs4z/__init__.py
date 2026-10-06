@@ -1,5 +1,5 @@
-"""RS4-Z: entorno Real Soccer ONE reconstruido desde cero (contrato RS4-Z-2).
+"""Simulador Real Soccer verificado contra el juego real (contrato RS4-Z-2).
 
-Paquete nuevo y autocontenido. `env/haxball_env.py` y `env/rs_one_referee.py` quedan
-congelados como oráculo de paridad (modo `contract="v1"`) y para reproducir experimentos viejos.
+Física (`sim/physics.py`) + árbitro del script de la sala (`kernel.py`), mapas en `contract.MAPS`
+(HAXARG 2K23 y RS ONE). Conformidad contra grabaciones: `python -m tools.rs4z_conformance`.
 """

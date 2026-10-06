@@ -8,8 +8,8 @@ Por partido y por tick (orden del motor de HaxBall y del script de la sala):
      salida y saque nuevo (`RSOneReferee.post_tick`) con las correcciones v2 por bandera
   5. reloj, plazos de entrenamiento y fin de partido
 
-El modo v1 (flags = 0) reproduce `HaxballEnv(referee="rs_one_v1")` tick a tick: lo verifica
-`tests/rs4z/test_referee_parity.py`. El modo v2 usa los mecanismos reales del script
+El modo v1 (flags = 0) es el árbitro histórico (sin las correcciones del script; no usar).
+El modo v2 usa los mecanismos reales del script
 (`env/rs4z/contract.py`): grupos c0/c1, discos del script y masa por fase.
 
 Layout de discos por partido: [pelota, disco rojo, disco azul, disco ambos, discos del mapa..., 8 jugadores].
@@ -29,7 +29,7 @@ from env.rs4z.numba_cache import guard
 guard(__file__, ["sim/physics.py", "sim/stadium.py", "env/rs4z/contract.py"])
 from sim.stadium import BLUEKO, C0, C1, PLAYER_MASK, REDKO
 
-from .contract import CORNER, FIX_CLOCK, FIX_ENGINE, FIX_MASS, FIX_STRIP, GOAL_KICK, LATERAL, PI, SD_BLUE, SD_BOTH, SD_RED
+from .contract import CORNER, FIX_CLOCK, FIX_ENGINE, FIX_LATERAL, FIX_MASS, FIX_STRIP, GOAL_KICK, LATERAL, PI, SD_BLUE, SD_BOTH, SD_RED
 
 # ---------------------------------------------------------------------------- estado entero
 RI_TEAM = 0          # equipo que saca (-1 sin saque)
@@ -48,7 +48,8 @@ RI_LEN = 12          # duración del partido (ticks de reloj)
 RI_SCORE0 = 13
 RI_SCORE1 = 14
 RI_LAST_P = 15       # último jugador con contacto (-1)
-RI_SIZE = 16
+RI_LAT_KICKED = 16   # patada durante el lateral, persiste hasta entrada/reposicionamiento
+RI_SIZE = 17
 # ---------------------------------------------------------------------------- estado real
 RF_SPOT_X = 0
 RF_SPOT_Y = 1
@@ -62,6 +63,8 @@ _LINE_H = PI["line_half_h"]
 _LAT_Y = PI["lateral_ball_y"]
 _LAT_MARGIN = PI["lateral_x_margin"]
 _LAT_REL = PI["lateral_release_y"]
+_LAT_RUN = PI["lateral_run_distance"]
+_LAT_TIMEOUT = PI["lateral_timeout_ticks"]
 _SPOT_REL = PI["spot_release_distance"]
 _CX = PI["corner_x"]
 _CY = PI["corner_y"]
@@ -316,6 +319,7 @@ def start_piece(kind, taker, spot_x, spot_y, pos, vel, group, radius, inv, kick_
     rf[RF_SPOT_Y] = spot_y
     ri[RI_LAST] = -1
     ri[RI_LAST_P] = -1
+    ri[RI_LAT_KICKED] = 0
 
 
 @njit(cache=True)
@@ -528,6 +532,19 @@ def post_tick(goal, kicked, contact, pos, vel, group, radius, inv, kick_cancel, 
                 if team[p] == owner and own_kick < 0:
                     own_kick = p
         lateral_in = kind == LATERAL and abs(pos[0, 1]) < prm[_LAT_REL]
+        if kind == LATERAL and (flags & FIX_LATERAL):
+            if any_kick:
+                ri[RI_LAT_KICKED] = 1
+            # El script verifica X mientras la pelota sigue fuera. Una entrada sin
+            # patada es mal saque; las patadas cuentan también en ticks anteriores.
+            too_far = abs(pos[0, 1]) > prm[_LAT_REL] and abs(pos[0, 0] - rf[RF_SPOT_X]) > prm[_LAT_RUN]
+            pushed_in = lateral_in and ri[RI_LAT_KICKED] == 0
+            timed_out = ri[RI_TICKS] >= prm[_LAT_TIMEOUT] and not lateral_in
+            if too_far or pushed_in or timed_out:
+                ev[EV_FORFEIT] = forfeit_piece(pos, vel, group, radius, inv, kick_cancel, grav,
+                    active, team, fp, P, prm, flags, sd_home, ri, rf, outside)
+                ev[EV_START] = LATERAL
+                return 0
         moved = math.hypot(pos[0, 0] - rf[RF_SPOT_X], pos[0, 1] - rf[RF_SPOT_Y]) > prm[_SPOT_REL]
         dead_ball = kind != LATERAL and (any_kick or moved)
         released = lateral_in or dead_ball or ri[RI_TICKS] >= prm[_SAFETY] or goal != 0
@@ -639,6 +656,7 @@ def reset_kickoff(ko_team, pos, vel, mask, group, radius, inv, kick_cancel, grav
     ri[RI_ARMED] = 1
     ri[RI_LAST] = -1
     ri[RI_LAST_P] = -1
+    ri[RI_LAT_KICKED] = 0
     ri[RI_MASS] = 0 if (flags & FIX_MASS) else 1
     ri[RI_KO] = 1
     ri[RI_KO_TEAM] = ko_team
