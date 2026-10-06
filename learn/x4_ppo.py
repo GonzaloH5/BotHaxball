@@ -529,7 +529,12 @@ class Trainer:
                               goal_diff=round((gf - ga) / n, 3)),
                    selfplay_safety=float(selfplay["safety"].mean()),
                    human_w1_mean=round(float(np.mean(vals)), 3) if vals else None,
-                   human_w1={k: (round(w1[k], 3) if w1.get(k) is not None else None) for k in key})
+                   human_w1={k: (round(w1[k], 3) if w1.get(k) is not None else None) for k in key},
+                   # valores crudos de self-play (humanos p50 en Sanguchito: patadas 3,2/min, pases 8,8/min,
+                   # goles 0,25/min por tramo, espera del saque inicial 3,9 s)
+                   selfplay={k: (round(hum["summary"][k]["mean"], 3) if hum.get("summary", {}).get(k, {}).get("n") else None)
+                             for k in ("kicks_per_min", "passes_per_min", "goals_per_min", "kickoff_wait_s",
+                                       "dist_ball_1", "still_frac")})
         return out
 
     def save(self, name="last.pt"):
