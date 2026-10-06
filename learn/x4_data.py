@@ -1,7 +1,8 @@
 """Dataset de imitación X4 desde el caché `tools.x4_ticks`, con la observación v3 armada al vuelo.
 
-Una muestra es (tick de la etiqueta t, lugar p, retardo d): el jugador decide con el estado del tick t − d y
-su etiqueta es la entrada que el host aplicó en t. Las acciones propias pendientes salen de las entradas en
+Una muestra es (tick de la etiqueta t, lugar p, retardo d): el jugador decide con el estado del registro
+t − d − 1 y su etiqueta es la entrada que el host aplicó en t (convención del kernel: con retardo d, la
+decisión tomada en S_t se aplica en el tick que produce S_{t+d+1}; ver `obs_v3.build_samples`). Las acciones propias pendientes salen de las entradas en
 t − 3, …, t − 15 (`env/rs4z/obs_v3.build_samples`). Elegir d por muestra permite:
 * estimar el retardo efectivo de los humanos (el que maximiza la verosimilitud de sus acciones; plan E1);
 * entrenar la política con la distribución de latencias de la sala (revisión §5).
@@ -20,7 +21,7 @@ import numpy as np
 from env.rs4z import obs_v3
 
 ROOT = Path(__file__).resolve().parent.parent
-MAX_BACK = 3 * obs_v3.N_HIST + 24      # ticks hacia atrás que necesita una muestra (retardo ≤ 24)
+MAX_BACK = 3 * obs_v3.N_HIST + 25      # ticks hacia atrás que necesita una muestra (retardo ≤ 24)
 MOVE_DX = np.array([0, 0, 1, 1, 1, 0, -1, -1, -1])
 MOVE_DY = np.array([0, -1, -1, 0, 1, 1, 1, 0, -1])
 MIRROR_MOVE = np.array([0, 1, 8, 7, 6, 5, 4, 3, 2])
@@ -174,7 +175,7 @@ def featurize(data: X4Data, t_lab, slot, delay, out=None):
     delay = np.asarray(delay, np.int64)
     if out is None:
         out = np.empty((len(t_lab), obs_v3.OBS_DIM), np.float32)
-    obs_v3.build_samples(t_lab - delay, t_lab, slot, delay, data.ball, data.ball_r, data.pos, data.vel, data.inp,
+    obs_v3.build_samples(t_lab - delay - 1, t_lab, slot, delay, data.ball, data.ball_r, data.pos, data.vel, data.inp,
                          data.kicking, data.state, data.rkind, data.rteam, data.rage, data.ko_team, data.ko_age,
                          data.mass, data.kstr, data.map_idx, obs_v3.line_h_table(), 1150.0, out)
     return out

@@ -68,7 +68,10 @@ const UNIVERSAL = META.layout === "universal";
 // Modelo RS4-Z (export/to_onnx_rs4z.py): observación v2 armada con lo que se ve en la sala
 // (deploy/rs4z/room_state.js, paridad con el simulador en deploy/test_rs4z_room_state.js). Entrenado
 // con la latencia del cliente como entrada: no se extrapola el estado, se pasa el retraso medido.
-const RS4Z = META.obs_version === "rs4z-obs-v2";
+// Modelo X4 (export/to_onnx_x4.py): observación v3 (5 decisiones propias, mapa por el nombre del estadio de
+// la sala o --map). Mismo rastreador de sala que RS4-Z; paridad con el dataset en deploy/test_x4_room_state.js.
+const X4 = META.obs_version === "x4-obs-v3";
+const RS4Z = META.obs_version === "rs4z-obs-v2" || X4;
 // Sala de prueba con varios bots (anfitrión): --lobby reparte a los bots por nombre y no arranca solo;
 // !admin <clave> da admin a quien la escriba (clave por --admin-password o RS4_ADMIN_PASSWORD).
 const LOBBY = args.includes("--lobby");
@@ -128,7 +131,8 @@ function BotPlugin(session, managed = false) {
   let forcedKickoffTeam = -1;
   let busy = false;
   const policyMemory = new PolicyMemory(META);
-  const rs4z = RS4Z ? new RS4ZTracker({ ...PUBLIC_CUES, ball_radii: META.ball_radii, kick_strengths: META.kick_strengths }) : null;
+  const rs4z = RS4Z ? new RS4ZTracker({ ...PUBLIC_CUES, ball_radii: META.ball_radii, kick_strengths: META.kick_strengths,
+    obs_version: META.obs_version, map: arg("--map", null) }) : null;
   let rs4zPrev = -1;
   let stadiumDumped = false;
   let policyActive = false;
@@ -409,7 +413,7 @@ function BotPlugin(session, managed = false) {
     const ball = dsc(gs.physicsState.discs[0]);
     const frame = {
       state: gs.state, kickoffTeam: teamIdx(gs.goalConcedingTeam ? gs.goalConcedingTeam.id : 1),
-      kickStrength: room.stadium.playerPhysics.kickStrength,
+      kickStrength: room.stadium.playerPhysics.kickStrength, stadiumName: room.stadium.name,
       ball: { x: ball.pos.x, y: ball.pos.y, vx: ball.speed.x, vy: ball.speed.y, r: ball.radius, color: gs.physicsState.discs[0].color },
       players: room.state.players.filter((p) => p.disc && teamIdx(p.team.id) >= 0).map((p) => ({
         id: p.id, team: teamIdx(p.team.id), x: dsc(p.disc).pos.x, y: dsc(p.disc).pos.y, vx: dsc(p.disc).speed.x,
@@ -555,7 +559,9 @@ function BotPlugin(session, managed = false) {
   // --ort-threads n: hilos de inferencia por bot (1 por defecto; ver ortSessionOptions)
   const session = await ort.InferenceSession.create(MODEL, ortSessionOptions(arg("--ort-threads", "1")));
   const plugin = new BotPlugin(session, MANAGED);
-  console.log(RS4Z
+  console.log(X4
+    ? `modelo ${MODEL} (X4 4v4, obs v3, ${META.stage}, mapas ${(META.maps || []).join(", ")})`
+    : RS4Z
     ? `modelo ${MODEL} (RS4-Z 4v4 Real Soccer ONE, obs v2, ${META.stage} ${(META.samples / 1e6).toFixed(0)}M muestras)`
     : UNIVERSAL
     ? `modelo ${MODEL} (multi-tarea: cualquier mapa y formato; entrenado en ${(META.tasks || []).join(", ")})`

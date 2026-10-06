@@ -35,6 +35,7 @@ def parse_delay(text):
 def evaluate(model, data, t, p, delay, batch=8192):
     model.eval()
     nll, acc, acc_move, acc_kick, kick_tp, kick_fp, kick_fn = [], [], [], [], 0, 0, 0
+    changed = data.label[t, p] != data.label[t - 3, p]     # el humano cambió de tecla respecto de hace 3 ticks
     ctx_all = data.ctx[t, p]
     per_ctx = {}
     for i in range(0, len(t), batch):
@@ -58,9 +59,12 @@ def evaluate(model, data, t, p, delay, batch=8192):
         m = ctx_all == c
         if m.any():
             per_ctx[name] = dict(n=int(m.sum()), nll=float(nll[m].mean()), acc=float(acc[m].mean()),
-                                 acc_move=float(acc_move[m].mean()))
+                                 acc_move=float(acc_move[m].mean()),
+                                 acc_change=float(acc[m & changed].mean()) if (m & changed).any() else None)
     model.train()
     return dict(nll=float(nll.mean()), acc=float(acc.mean()), acc_move=float(acc_move.mean()),
+                nll_change=float(nll[changed].mean()), acc_change=float(acc[changed].mean()),
+                frac_change=float(changed.mean()),
                 acc_kick=float(acc_kick.mean()), kick_precision=kick_tp / max(1, kick_tp + kick_fp),
                 kick_recall=kick_tp / max(1, kick_tp + kick_fn), per_context=per_ctx)
 

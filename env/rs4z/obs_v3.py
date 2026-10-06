@@ -242,10 +242,13 @@ def build_samples(t_obs, t_lab, slot, delay, ball, ball_r, pos, vel, inp, kickin
                   ko_team, ko_age, mass, kstr, map_idx, line_h_of_map, goal_x, out):
     """Observaciones de muestras de grabaciones (arrays del caché `x4_ticks` concatenados).
 
-    Muestra b: el jugador `slot[b]` decide con el estado del tick `t_obs[b]` (= t_lab − delay) y su etiqueta
-    es la entrada del tick `t_lab[b]`. Acciones propias h = entradas aplicadas en t_lab − 3(h+1), igual que
-    el historial de decisiones del simulador con ese retardo. Patada "en curso" = entrada del tick anterior
-    con patada y no cancelada; patada cancelada = tecla apretada y el motor no la está usando.
+    Convención de índices (la del kernel): el registro f de una grabación es el estado después del tick f y
+    la entrada que el host aplicó en ese tick. Una decisión tomada viendo el estado S_t con retardo D se
+    aplica en los ticks que producen S_{t+D+1}..S_{t+D+3}. Así, para la etiqueta `t_lab[b]` (entrada del
+    registro t_lab) con retardo D: t_obs = t_lab − D − 1, la feature de retardo es D y la decisión propia h
+    es la entrada del registro t_lab − 3(h+1). "Patada en curso" = entrada del propio registro observado con
+    patada y no cancelada (la acción aplicada en el tick que produjo S_t_obs, como `env._s_act`); patada
+    cancelada = tecla apretada y el motor no la está usando.
     """
     B = t_obs.shape[0]
     for b in prange(B):
@@ -257,7 +260,7 @@ def build_samples(t_obs, t_lab, slot, delay, ball, ball_r, pos, vel, inp, kickin
         for q in range(8):
             held = (inp[t, q] & 16) != 0
             kc[q] = held and not kicking[t, q]
-            kn[q] = ((inp[t - 1, q] & 16) != 0) and not kc[q]
+            kn[q] = held and not kc[q]
         hist = np.zeros(N_HIST, dtype=np.int64)
         for h in range(N_HIST):
             v = inp[t_lab[b] - 3 * (h + 1), p]

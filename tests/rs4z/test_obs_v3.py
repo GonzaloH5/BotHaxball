@@ -51,7 +51,7 @@ def test_map_one_hot_and_lateral(map_name):
 @pytest.mark.parametrize("delay", [0, 6, 9, 12, 15])
 def test_recording_samples_reproduce_pending_actions(delay):
     """Con retardo d, las acciones propias que arma `build_samples` desde las entradas por tick son las mismas
-    que el historial de decisiones del simulador (decisión t aplicada en [t+d, t+d+3))."""
+    que el historial de decisiones del simulador (la decisión tomada en S_t produce S_{t+d+1}..S_{t+d+3})."""
     env = RS4ZEnv(1, map="sanguchito_rs_x4", seed=3, max_delay=15)
     env.delay[:] = delay
     rng = np.random.default_rng(4)
@@ -83,14 +83,14 @@ def test_recording_samples_reproduce_pending_actions(delay):
         own = rng.integers(0, 18, size=(1, 8))
         world = own.copy()
         world[:, 4:] = MIRROR_ACTION[own[:, 4:]]
-        for u in range(t + delay, t + delay + 3):     # ticks en que el host aplica esta decisión
+        for u in range(t + delay + 1, t + delay + 4):     # registros producidos con esta decisión
             inp[u] = [move_bits[a % 9] | (16 if a >= 9 else 0) for a in world[0]]
         env.step(own)
     ts = np.array([t for t in obs_env if t >= 15 + 3], dtype=np.int64)
     B = len(ts) * 8
     t_obs = np.repeat(ts, 8)
     slot = np.tile(np.arange(8), len(ts))
-    t_lab = t_obs + delay
+    t_lab = t_obs + delay + 1
     dl = np.full(B, delay, np.int64)
     out = np.zeros((B, obs_v3.OBS_DIM), np.float32)
     obs_v3.build_samples(t_obs, t_lab, slot, dl, ball.astype(np.float64), np.full(T, 8.325),

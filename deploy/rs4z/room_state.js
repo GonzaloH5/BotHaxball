@@ -16,6 +16,7 @@
 "use strict";
 
 const { buildObs, restartKind } = require("./obs_v2");
+const obsV3 = require("./obs_v3");
 const { colorTeam } = require("../public_signals");
 
 const WHITE = 0xFFFFFF;
@@ -48,12 +49,19 @@ function restartZone(x, y) {
   return 3;
 }
 
+// config.obs_version "x4-obs-v3" (env/rs4z/obs_v3.py): 5 decisiones propias y mapa (config.map, nombre del
+// contrato o se deduce del estadio con obs_v3.mapFromStadiumName); si no, observación v2 de RS4-Z.
 class RS4ZTracker {
-  constructor(config = {}) { this.config = config; this.reset(); }
+  constructor(config = {}) {
+    this.config = config;
+    this.v3 = config.obs_version === "x4-obs-v3";
+    this.histLen = this.v3 ? obsV3.N_HIST : 3;
+    this.reset();
+  }
 
   reset() {
     this.tick = 0;
-    this.hist = [0, 0, 0];
+    this.hist = new Array(this.histLen).fill(0);
     this.restart = { team: -1, kind: 0, start: 0 };
     this.koStart = -1;
   }
@@ -76,7 +84,7 @@ class RS4ZTracker {
   }
 
   pushDecision(worldAction) {
-    this.hist = [worldAction, this.hist[0], this.hist[1]];
+    this.hist = [worldAction, ...this.hist.slice(0, this.histLen - 1)];
   }
 
   // Ocho lugares como el simulador: rojos 0..3 y azules 4..7 por id; con más de 4 por equipo se
@@ -106,7 +114,7 @@ class RS4ZTracker {
       team: k < 4 ? 0 : 1, active: true, x: p.x, y: p.y, vx: p.vx, vy: p.vy,
       kickCancel: !!(p.input & 16) && !p.isKicking, applied: inputToAction(p.input),
     } : { team: k < 4 ? 0 : 1, active: false, x: 0, y: 0, vx: 0, vy: 0, kickCancel: false, applied: 0 });
-    const actHist = slots.map(() => [0, 0, 0]);
+    const actHist = slots.map(() => new Array(this.histLen).fill(0));
     actHist[slot] = this.hist.slice();
     const delay = slots.map(() => 0);
     delay[slot] = delayTicks;
@@ -125,6 +133,10 @@ class RS4ZTracker {
       kickoff: frame.state === 0 ? { active: true, team: frame.kickoffTeam, ticks: this.tick - this.koStart }
         : { active: false, team: -1, ticks: 0 },
     };
+    if (this.v3) {
+      state.map = this.config.map || obsV3.mapFromStadiumName(frame.stadiumName);
+      return { obs: obsV3.buildObs(state, slot), slot, team: slot < 4 ? 0 : 1 };
+    }
     return { obs: buildObs(state, slot), slot, team: slot < 4 ? 0 : 1 };
   }
 }
