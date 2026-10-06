@@ -1,0 +1,63 @@
+{
+ "liga_rs_one": {
+  "n": 681042,
+  "tasa_base": 0.0238,
+  "brier": 0.0195,
+  "brier_skill": 0.1621,
+  "logloss": 0.08523,
+  "logloss_skill": 0.2431,
+  "auc": 0.8515,
+  "calibracion": [
+   {
+    "p_media": 0.0001,
+    "frecuencia": 0.0,
+    "n": 68105
+   },
+   {
+    "p_media": 0.0007,
+    "frecuencia": 0.0008,
+    "n": 68104
+   },
+   {
+    "p_media": 0.0023,
+    "frecuencia": 0.0022,
+    "n": 68104
+   },
+   {
+    "p_media": 0.0055,
+    "frecuencia": 0.0051,
+    "n": 68104
+   },
+   {
+    "p_media": 0.0106,
+    "frecuencia": 0.0089,
+    "n": 68104
+   },
+   {
+    "p_media": 0.017,
+    "frecuencia": 0.0125,
+    "n": 68104
+   },
+   {
+    "p_media": 0.0246,
+    "frecuencia": 0.0195,
+    "n": 68104
+   },
+   {
+    "p_media": 0.0341,
+    "frecuencia": 0.0246,
+    "n": 68104
+   },
+   {
+    "p_media": 0.0495,
+    "frecuencia": 0.0345,
+    "n": 68104
+   },
+   {
+    "p_media": 0.1448,
+    "frecuencia": 0.1303,
+    "n": 68105
+   }
+  ]
+ }
+}
