@@ -107,7 +107,50 @@ No hay diferencia en lazo abierto. Se conserva el margen porque no empeora nada 
 - No mejora contra la BC: a esta escala casi no hay goles en los rollouts (0–1 cada 10 actualizaciones).
 - **Se aleja de la pelota** más que la propia BC (118 px) y patea menos. En el pod hay que vigilar `selfplay.dist_ball_1` y `kicks_per_min` desde la primera evaluación. Si la deriva sigue con millones de decisiones, el primer brazo a probar es un λ mayor (0,2, VPT).
 
-FINAL_BC
+### Imitación final (CPU, 164M muestras, Sanguchito + RS ONE con el mapa como condición, retardo 6–15)
+
+- **Checkpoint versionado:** `runs/x4_bc/final_sangu_rsone/best.pt`. Es el punto de partida del RL en el pod.
+- **Entrenamiento:** 40000 pasos con lote de 4096, unos 75 min a ~37k muestras/s.
+- **En desarrollo** (Sanguchito + RS ONE): NLL 0,617; en los cambios de tecla, NLL 2,49 y precisión 5,0%; patada con precisión 0,70 y recall 0,50. Se estabiliza cerca de los 150M muestras.
+
+**En lazo cerrado** (`reports/x4/eval_bc_final.json`; latencia de sala, partidos de 2 min):
+
+| | Final | B (12M, solo Sanguchito) | Scripted |
+|---|---|---|---|
+| Rating Bradley–Terry | **+145** | −217 | +72 |
+| Contra B | 12 G, 4 E, 0 P (16–0) | | |
+| Contra el scripted | 5 G, 10 E, 1 P (5–1) | 0 G, 4 E, 12 P (0–17) | |
+
+**Self-play contra humanos** (p50):
+
+| | Final | Humanos | W1 normalizada | Techo |
+|---|---|---|---|---|
+| Patadas por minuto | 2,72 | 3,2 | 0,85 | 0,14 |
+| Pases por minuto | 4,3 | 8,8 | 1,16 | 0,22 |
+| Posesión (s) | 3,35 | 2,45 | 0,21 | 0,02 |
+| Goles por minuto (por tramo) | 0,23 | 0,25 | 0,38 | 0,09 |
+| Distancia a la pelota del 1.º (px) | 111 | 84 | 0,33 | 0,02 |
+| Profundidad del equipo (px) | 530 | 464 | 0,30 | 0,05 |
+| Jugadores parados | 3% | 2,6% | 0,33 | 0,12 |
+| Cambios de tecla/s | 3,4 | 3,0 | 0,67 | 0,20 |
+| Espera del saque inicial (s) | 5,1 | 3,9 | 0,38 | 0,10 |
+
+**Sondas de coordinación** desde estados humanos de prueba (`reports/x4/probes_bc_final.json`):
+
+| | Final | B |
+|---|---|---|
+| 2v1: pase | 27% | 6% |
+| 2v1: gol | 9,4% | 0% |
+| 3v2: pase | 25% | 10% |
+| 3v2: gol | 5,5% | 2% |
+
+Para B la muestra era chica (48 sondas).
+
+- **Conclusión:** la pasividad de las imitaciones chicas era sobre todo falta de datos y de entrenamiento: de 12M a 164M muestras y sumando RS ONE, las patadas pasan de 0,6 a 2,7 por minuto. Solo una parte se explica por la deriva de la imitación pura.
+- La final todavía está a 2–20 veces el techo humano según la métrica, pero casi siempre a menos de un desvío. Es un ancla razonable para E3.
+- Conviene reentrenarla más larga en GPU: la NLL seguía bajando lento.
+
+RL_LAMBDA
 
 ## Hipótesis anteriores corregidas
 

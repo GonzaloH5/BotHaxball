@@ -1,0 +1,28 @@
+{
+ "policy": "runs/x4_bc/B_d6_15_gap/best.pt",
+ "split": "test",
+ "horizon": 100,
+ "2v1": {
+  "gol": 5,
+  "nada": 64,
+  "pase": 6,
+  "perdida": 19,
+  "salida": 34,
+  "con_pase": 7,
+  "n": 128,
+  "tasa_pase": 0.055,
+  "tasa_gol": 0.039
+ },
+ "3v2": {
+  "gol": 6,
+  "nada": 50,
+  "pase": 6,
+  "pase_y_perdida": 2,
+  "perdida": 38,
+  "salida": 26,
+  "con_pase": 11,
+  "n": 128,
+  "tasa_pase": 0.086,
+  "tasa_gol": 0.047
+ }
+}

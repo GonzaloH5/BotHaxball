@@ -1,0 +1,28 @@
+{
+ "policy": "runs/x4_bc/final_sangu_rsone/best.pt",
+ "split": "test",
+ "horizon": 100,
+ "2v1": {
+  "gol": 12,
+  "nada": 29,
+  "pase": 27,
+  "perdida": 21,
+  "salida": 39,
+  "con_pase": 34,
+  "n": 128,
+  "tasa_pase": 0.266,
+  "tasa_gol": 0.094
+ },
+ "3v2": {
+  "gol": 7,
+  "nada": 5,
+  "pase": 11,
+  "pase_y_perdida": 14,
+  "perdida": 64,
+  "salida": 27,
+  "con_pase": 32,
+  "n": 128,
+  "tasa_pase": 0.25,
+  "tasa_gol": 0.055
+ }
+}
