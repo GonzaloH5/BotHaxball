@@ -73,8 +73,9 @@ class Queue:
             out = Path(str(cmd[cmd.index("--out") + 1])) if "--out" in cmd else None
             if out is not None and (out / "stopped.json").exists():
                 break                       # cortada por deriva: no se reintenta (el trainer no reanuda)
-            self.note(f"{name} terminó con código {code}; reintento en 60 s")
-            time.sleep(60)
+            if i + 1 < retries:
+                self.note(f"{name} terminó con código {code}; reintento en 60 s")
+                time.sleep(60)
         self.state["done"][name] = code
         self.save()
         return code
@@ -85,6 +86,7 @@ class Queue:
                "--rollout", a.rollout, "--updates", updates or a.updates, "--lambda-dist", "0.2", "--lambda-decay",
                "0.9995", "--lambda-min", "0.05", "--critic-warmup", "20", "--human-starts", "0.4", "--pool-frac", "0.2",
                "--eval-every", "50", "--resume"]
+        extra = list(extra) + a.rl_extra.split()
         # los extras pisan a los valores por defecto (p. ej. --lambda-dist 0.4 en la recuperación)
         for i in range(0, len(extra), 2):
             k = extra[i]
@@ -158,7 +160,7 @@ class Queue:
         a = self.a
         # 1. preflight
         code = self.run("preflight", ["learn.x4_preflight", "--bc", a.bc, "--device", a.device,
-                                      "--out", self.root / "preflight.json"], retries=1)
+                                      "--out", self.root / "preflight.json", *a.preflight_extra.split()], retries=1)
         if code != 0:
             self.note("preflight con FALLA: la cola se detiene (ver preflight.json)")
             return 1
@@ -213,8 +215,8 @@ class Queue:
         for c in cands:
             name = f"cert_{c.parent.name}_{c.stem}"
             out = self.root / f"{name}.json"
-            code = self.run(name, ["learn.x4_certify", "--ckpt", c, "--bc", a.bc, "--device", a.device, "--out", out],
-                            retries=1, ok_codes=(0, 1))
+            code = self.run(name, ["learn.x4_certify", "--ckpt", c, "--bc", a.bc, "--device", a.device, "--out", out,
+                                   *a.cert_extra.split()], retries=1, ok_codes=(0, 1))
             rep = json.loads(out.read_text()) if out.exists() else {}
             results.append((c, code, rep))
             if code == 0:
@@ -231,7 +233,7 @@ class Queue:
             return 2
         self.state["elegido"] = str(c)
         self.save()
-        self.run("export", ["export.to_onnx_x4", "--ckpt", c, "--out", ROOT / "deploy" / "rs4z" / "x4_rl.onnx"], retries=1)
+        self.run("export", ["export.to_onnx_x4", "--ckpt", c, "--out", a.export_to], retries=1)
         self.note("fin de la cola", veredicto=self.state["veredicto"], elegido=str(c))
         return 0 if approved else 2
 
@@ -246,6 +248,10 @@ def main():
     ap.add_argument("--updates", type=int, default=3000)
     ap.add_argument("--extend-to", type=int, default=6000)
     ap.add_argument("--ab-updates", type=int, default=300, help="actualizaciones del A/B temprano del shaping")
+    ap.add_argument("--export-to", default=str(ROOT / "deploy" / "rs4z" / "x4_rl.onnx"))
+    ap.add_argument("--rl-extra", default="", help="argumentos extra para learn.x4_ppo (sólo para pruebas en seco)")
+    ap.add_argument("--cert-extra", default="", help="argumentos extra para learn.x4_certify (sólo para pruebas)")
+    ap.add_argument("--preflight-extra", default="", help="argumentos extra para el preflight (sólo para pruebas)")
     a = ap.parse_args()
     sys.exit(Queue(a).main())
 
