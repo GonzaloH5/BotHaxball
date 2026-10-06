@@ -123,8 +123,8 @@ def main():
     model = SetPolicy(hidden=a.hidden)
     if a.init:
         model.load_state_dict(torch.load(a.init, map_location="cpu")["model"])
-    dev = torch.device(a.device)
-    model.to(dev)
+    device = torch.device(a.device)
+    model.to(device)
     opt = torch.optim.AdamW(model.parameters(), lr=a.lr, weight_decay=1e-4)
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=a.lr, total_steps=a.steps, pct_start=0.05)
     base = baseline(dev, dev_t, dev_p, train.label[train.valid[::7]].ravel().astype(np.int64))
@@ -135,8 +135,8 @@ def main():
     seen = 0
     for step in range(1, a.steps + 1):
         obs, y, ctx, _ = sampler.batch(a.batch)
-        logits = model(torch.from_numpy(obs).to(dev, non_blocking=True))
-        loss = F.cross_entropy(logits, torch.from_numpy(y).to(dev, non_blocking=True))
+        logits = model(torch.from_numpy(obs).to(device, non_blocking=True))
+        loss = F.cross_entropy(logits, torch.from_numpy(y).to(device, non_blocking=True))
         opt.zero_grad(set_to_none=True)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
