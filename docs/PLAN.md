@@ -48,7 +48,7 @@ Correcciones del script de Sanguchito con el dataset nuevo:
 **Pendiente antes de entrenar:**
 - **B1.** Validar el script de 2K23 contra grabaciones de esa sala. Con las 2 pruebas con bots (13 saques) el supuesto "RS ONE desplazado 70 px" **no coincide**: la trayectoria de córner y saque de arco se desvía 46/26 px a +59 ticks, y el punto y la liberación del lateral también difieren (`reports/x4/conformance_x4.md`). Hacen falta más grabaciones de 2K23 para ajustar la regla.
 - **B2.** ~~Medir la distribución de latencia en sala~~ **Hecho:**
-  - dos sesiones con 7 bots dieron 11 (p50) y 9–11 ticks entre el frame observado y el aplicado (`reports/room_latency/`);
+  - dos sesiones con 7 bots dieron 11–12 y 9–11 ticks (mejor desfase por bot) entre el frame observado y el aplicado (`reports/room_latency/`). Se midieron con la contención de ONNX; hay que volver a medir en E4 con el arreglo;
   - en la convención del simulador, el retardo D es igual al lag menos 1 (§2, E1);
   - el entrenamiento sortea D de {8: 0,2; 9: 0,25; 10: 0,25; 11: 0,2; 14: 0,1} (lag − 1).
   - La contención de ONNX con 7 bots en una PC (decidían cada 9–10 ticks) quedó corregida: 1 hilo por bot.
