@@ -56,4 +56,8 @@ Ver `reports/x4/dataset_audit.md`:
 ## Pendiente
 
 - **Física en juego abierto** con las 498 grabaciones. Ya está verificada con 7 (p90 a 60 ticks: 0,012 px). La física es la misma de RS ONE, y la conformidad de saques sobre 498 grabaciones da 0,008–0,1 px a 59 ticks.
-- **2K23:** el script sigue siendo un supuesto (igual a RS ONE desplazado 70 px) salvo la demora del lateral. Hace falta una grabación de un partido humano en esa sala.
+- **2K23 (B1):** el script sigue siendo un supuesto (igual a RS ONE desplazado 70 px), salvo la demora del lateral. Se corrió la conformidad sobre las 2 grabaciones de prueba con bots (13 saques; `restart_conformance_2k23_bots.json`). El script de la sala no depende de quién juega, y **no coincide**:
+  - córner y saque de arco: la trayectoria tras la patada se desvía 46 y 26 px a +59 ticks (impulso o curva distintos de RS ONE);
+  - lateral: el punto real difiere 2–4 px del de salida (valores con un decimal, p. ej. −79,4 o 368,2) y el simulador libera 2–27 ticks antes.
+  - Con 13 saques no se puede ajustar la regla. Hace falta grabar partidos humanos en 2K23 (o la sala de prueba con los bots quietos y humanos sacando) y repetir `tools.rs4z_script_probe` y la conformidad, como se hizo con Sanguchito.
+  - Mientras tanto, el RL usa 2K23 solo en el 15% de los partidos, y conviene no tomar sus saques como fieles.
