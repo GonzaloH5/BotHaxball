@@ -183,7 +183,9 @@ class Arena:
             return out
         bx = env.ball_pos[:, 0]
         last = env.ri[:, K.RI_LAST]
-        live = (env.ri[:, K.RI_KO] == 0)
+        # sólo juego vivo: sin saque inicial, sin saque del script y sin cobro pendiente (la pelota colocada por el
+        # script no es progreso de nadie)
+        live = (env.ri[:, K.RI_KO] == 0) & (env.ri[:, K.RI_TEAM] < 0) & (env.ri[:, K.RI_PEND] == 0)
         for t, s in ((0, 1.0), (1, -1.0)):
             xa = bx * s
             k = np.clip((xa / C_GOAL_X * N_REGIONS).astype(np.int64), 0, N_REGIONS - 1)
@@ -240,8 +242,9 @@ def parse_args(argv=None):
     ap.add_argument("--pool-frac", type=float, default=0.2)
     ap.add_argument("--pool", default="", help="checkpoints extra del pool, separados por coma (la BC siempre está)")
     ap.add_argument("--snapshot-every", type=int, default=100, help="actualizaciones entre snapshots al pool")
-    ap.add_argument("--delays", default="9:0.2,10:0.25,11:0.25,12:0.2,15:0.1",
-                    help="latencia en ticks:peso (distribución medida en sala)")
+    ap.add_argument("--delays", default="8:0.2,9:0.25,10:0.25,11:0.2,14:0.1",
+                    help="retardo D en ticks:peso. En sala se midió un lag (frame aplicado − observado) de 9–12 ticks; "
+                         "en la convención del kernel D = lag − 1 (decisión en S_t aplicada desde S_{t+D+1})")
     ap.add_argument("--match-minutes", default="1:3")
     ap.add_argument("--splits", default=str(ROOT / "reports" / "x4" / "splits.json"))
     ap.add_argument("--bank-recordings", type=int, default=200, help="grabaciones para estados humanos (0 = ninguna)")

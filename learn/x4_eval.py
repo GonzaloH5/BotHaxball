@@ -79,7 +79,7 @@ class ModelPolicy:
         return torch.distributions.Categorical(logits=logits).sample().cpu().numpy()
 
 
-def play(red, blue, *, map_name="sanguchito_rs_x4", matches=16, minutes=3.0, delays=(9, 10, 11, 12), seed=0,
+def play(red, blue, *, map_name="sanguchito_rs_x4", matches=16, minutes=3.0, delays=(8, 9, 10, 11), seed=0,
          record=4, max_decisions=None):
     """Partidos completos red vs blue. Devuelve goles por partido, eventos de seguridad y episodios grabados."""
     rng = np.random.default_rng(seed)
@@ -145,7 +145,7 @@ def main():
     ap.add_argument("--map", default="sanguchito_rs_x4")
     ap.add_argument("--matches", type=int, default=16, help="partidos por par y por lado")
     ap.add_argument("--minutes", type=float, default=3.0)
-    ap.add_argument("--delays", default="9,10,11,12")
+    ap.add_argument("--delays", default="8,9,10,11", help="retardo D del kernel (lag medido en sala − 1)")
     ap.add_argument("--greedy", action="store_true")
     ap.add_argument("--record", type=int, default=4)
     ap.add_argument("--threads", type=int, default=4)

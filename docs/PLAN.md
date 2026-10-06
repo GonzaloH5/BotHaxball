@@ -50,7 +50,7 @@ Correcciones del script de Sanguchito con el dataset nuevo:
 - **B2.** ~~Medir la distribución de latencia en sala~~ **Hecho:**
   - dos sesiones con 7 bots dieron 11 (p50) y 9–11 ticks entre el frame observado y el aplicado (`reports/room_latency/`);
   - en la convención del simulador, el retardo D es igual al lag menos 1 (§2, E1);
-  - el entrenamiento sortea D de {9: 0,2; 10: 0,25; 11: 0,25; 12: 0,2; 15: 0,1}.
+  - el entrenamiento sortea D de {8: 0,2; 9: 0,25; 10: 0,25; 11: 0,2; 14: 0,1} (lag − 1).
   - La contención de ONNX con 7 bots en una PC (decidían cada 9–10 ticks) quedó corregida: 1 hilo por bot.
 
 ## 2. Etapas
