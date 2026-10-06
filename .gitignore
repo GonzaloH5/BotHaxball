@@ -25,3 +25,8 @@ runs/**
 !runs/bc2/bc.pt
 !runs/bc_rsx6_20260929/
 !runs/bc_rsx6_20260929/bc.pt
+# Imitación X4 entrenada en la sesión del 2026-10-06 (CPU): punto de partida del RL en el pod.
+!runs/x4_bc/
+!runs/x4_bc/final_sangu_rsone/
+!runs/x4_bc/final_sangu_rsone/best.pt
+!runs/x4_bc/final_sangu_rsone/log.json
