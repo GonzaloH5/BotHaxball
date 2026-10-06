@@ -37,7 +37,7 @@ Borrador del 2026-10-06, revisado esa noche con el dataset ampliado y las medici
 |---|---|---|---|
 | SANGUCHITO RS X4 | verificada (p90 a 60 ticks 0,012 px, 7 grabaciones) | **verificado en 498 grabaciones** (`reports/x4/conformance_x4.md`) | **498** (2.822 min) |
 | RS ONE | verificada (p90 a 60 ticks ~0,01 px) | verificado (11 902 saques) | 147 (2.745 min) |
-| HAXARG 2K23 | verificada en 1 replay | supuesto igual a RS ONE desplazado 70 px; la demora del lateral medida en sala | 0 (las 2 grabaciones son pruebas con 7 bots) |
+| HAXARG 2K23 | verificada en 1 replay | **no coincide** en 13 saques de 2 pruebas con bots (B1) | 0 (las 2 grabaciones son pruebas con 7 bots) |
 
 Correcciones del script de Sanguchito con el dataset nuevo:
 - **Córner:** solo lo libera una patada del ejecutor hacia la cancha en x **y en y**.
@@ -46,7 +46,7 @@ Correcciones del script de Sanguchito con el dataset nuevo:
 - Laterales: tipo, punto, empujes y fin coinciden en el 99,7%.
 
 **Pendiente antes de entrenar:**
-- **B1.** Validar el script de 2K23 contra grabaciones humanas de esa sala. Las únicas que hay son las 2 pruebas con bots: alcanzan para la demora del lateral (p50 38 ticks, n=12), no para el resto. Hace falta una grabación de un partido humano en 2K23.
+- **B1.** Validar el script de 2K23 contra grabaciones de esa sala. Con las 2 pruebas con bots (13 saques) el supuesto "RS ONE desplazado 70 px" **no coincide**: la trayectoria de córner y saque de arco se desvía 46/26 px a +59 ticks, y el punto y la liberación del lateral también difieren (`reports/x4/conformance_x4.md`). Hacen falta más grabaciones de 2K23 para ajustar la regla.
 - **B2.** ~~Medir la distribución de latencia en sala~~ **Hecho:**
   - dos sesiones con 7 bots dieron 11 (p50) y 9–11 ticks entre el frame observado y el aplicado (`reports/room_latency/`);
   - en la convención del simulador, el retardo D es igual al lag menos 1 (§2, E1);
