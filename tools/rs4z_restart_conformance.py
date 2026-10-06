@@ -305,10 +305,15 @@ def main():
             n=len(rs), detected=len(started), executed=len(executed),
             room_delay=dict(collections.Counter(r["real_delay"] for r in rs)),
             sim_delay=dict(collections.Counter(r["sim_start_off"] for r in started)),
-            # demora de colocación: cuantiles y W1 entre la de la sala y la simulada (mismas salidas)
-            delay_room_q=_pct([r["real_delay"] for r in started], (10, 50, 90)),
+            # demora de colocación de la sala (todas las salidas) y simulada (sólo las detectadas). La detección se
+            # corta 3 ticks después de la colocación real: con demora aleatoria la simulada queda censurada (sólo
+            # aparecen las cortas) y la comparación no vale; `delay_censored` lo marca. Comparar entonces la de la
+            # sala con el rango del contrato (reports/x4/dataset_audit.md).
+            delay_room_q=_pct([r["real_delay"] for r in rs], (10, 50, 90)),
             delay_sim_q=_pct([r["sim_start_off"] for r in started], (10, 50, 90)),
-            delay_w1=_w1([r["real_delay"] for r in started], [r["sim_start_off"] for r in started]),
+            delay_censored=len(started) < 0.95 * len(rs),
+            delay_w1=None if len(started) < 0.95 * len(rs) else _w1([r["real_delay"] for r in started],
+                                                                     [r["sim_start_off"] for r in started]),
             kind_ok=sum(r["sim_kind"] == r["real_kind"] for r in started),
             taker_ok=sum(r["taker_ok"] for r in started),
             spot_err=_pct([r["spot_err"] for r in started]),

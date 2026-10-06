@@ -53,6 +53,23 @@ Ver `reports/x4/dataset_audit.md`:
 - La distribución de RS ONE coincide con los rangos uniformes del contrato.
 - Los tests de la mecánica están en `tests/rs4z/test_rs4z_script_rs.py`: córner demorado con disco en el punto, y Sanguchito sin demora.
 
+## RS ONE: saques con el dataset nuevo (`restart_conformance_rs_one.json`, 144 grabaciones)
+
+La herramienta valida RS ONE con el contrato "v2" más `FIX_SEGBOOST`. Resultados:
+
+| Tipo | n | Detectados | Fin coincidente | Pelota p90 a +1 / +10 / +59 ticks |
+|---|---|---|---|---|
+| Lateral | 7.812 | 5.590 | 7.220 / 7.726 (93%) | 3,4 / 5,6 / 72 px |
+| Córner | 1.241 | 645 | 1.223 / 1.229 | 0,1 / 2,6 / 129 px |
+| Saque de arco | 1.013 | 510 | 987 / 999 | 0,1 / 1,7 / 17 px |
+
+- **Detección baja en córner y saque de arco.** Es un artefacto de la herramienta, no del simulador. La detección se corta 3 ticks después de la colocación real, y con la demora aleatoria de RS ONE (uniforme [5,60] y [6,62]) solo entran los saques cuya demora simulada salió corta. Por la misma razón, comparar las demoras con esta herramienta no vale (`delay_censored`). La demora real del dataset completo coincide con el rango del contrato (`dataset_audit.md`).
+- **Diferencias reales sin resolver:**
+  - tras la liberación del lateral, la pelota se desvía 3,4 px p90 ya al primer tick (en Sanguchito, 0,001 px);
+  - córner y saque de arco divergen a +30–59 ticks;
+  - el entrenamiento usa el contrato "v2_lateral" (reglas del lateral de Host Publico) y esta conformidad usa "v2", así que queda por ver cuál corresponde a cada sala de RS ONE.
+- **Consecuencia:** el RL usa por defecto solo Sanguchito (`--maps sanguchito_rs_x4:1.0`) hasta resolver RS ONE y 2K23. La imitación no se ve afectada: aprende de las grabaciones, no del simulador.
+
 ## Pendiente
 
 - **Física en juego abierto, en las 498 grabaciones completas.** Por ahora se corrió en 40 grabaciones nuevas, del 2 al 5 de octubre (`physics_conformance_sanguchito40.json`):

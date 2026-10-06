@@ -36,7 +36,7 @@ Borrador del 2026-10-06, revisado esa noche con el dataset ampliado y las medici
 | Mapa | Física | Script de la sala | Grabaciones humanas (4v4) |
 |---|---|---|---|
 | SANGUCHITO RS X4 | verificada (p90 a 60 ticks 0,012 px, 7 grabaciones) | **verificado en 498 grabaciones** (`reports/x4/conformance_x4.md`) | **498** (2.822 min) |
-| RS ONE | verificada (p90 a 60 ticks ~0,01 px) | verificado (11 902 saques) | 147 (2.745 min) |
+| RS ONE | verificada (p90 a 60 ticks ~0,01 px) | **diferencias sin resolver** en saques con el dataset nuevo: el lateral se desvía 3,4 px p90 al liberar; v2 contra v2_lateral (`conformance_x4.md`) | 147 (2.745 min) |
 | HAXARG 2K23 | verificada en 1 replay | **no coincide** en 13 saques de 2 pruebas con bots (B1) | 0 (las 2 grabaciones son pruebas con 7 bots) |
 
 Correcciones del script de Sanguchito con el dataset nuevo:
@@ -134,7 +134,7 @@ Fuentes: HR-PPO, VPT, AlphaStar, DiL-piKL, MAPPO. **Implementado:** `learn/x4_pp
 - **Arranques:** 40% de los partidos desde estados humanos grabados (juego abierto y, en el 30% de esos, inicio de saque) del split de entrenamiento de Sanguchito.
 - **Variabilidad:**
   - delay aleatorio con la distribución de sala;
-  - mezcla de Sanguchito (70%), RS ONE (15%) y 2K23 (15%). *Pendiente:* variaciones de geometría.
+  - **solo Sanguchito por defecto**: es el único mapa con física y script verificados de punta a punta. RS ONE y 2K23 se suman con `--maps` cuando se resuelvan sus saques (B1). *Pendiente:* variaciones de geometría.
 - **[inferencia] Vigilar desde el día 1** los estados donde los humanos esperan, como el saque inicial. La evaluación periódica registra los saques iniciales que nadie ejecuta (`selfplay_safety`) y la espera contra la referencia humana.
 - **Criterio:** fuerza ≥ BC + margen contra el pool y parecido humano dentro del rango test-vs-train, todo a delay de sala.
 
@@ -182,3 +182,4 @@ Fuentes: HR-PPO, VPT, AlphaStar, DiL-piKL, MAPPO. **Implementado:** `learn/x4_pp
 | Métricas de imitación en cambios de tecla | Riesgo de copycat (de Haan 2019, Wen 2020): "repetir la tecla" ya acierta el 84% |
 | Correcciones del script de Sanguchito (córner en y, dirección al patear) | Conformidad en 498 grabaciones |
 | Penalización por dejar vencer saques en el RL | Equilibrio degenerado observado: el RL dejó de sacar a las 50 actualizaciones |
+| RL solo en Sanguchito por defecto (antes: mezcla de 3 mapas) | Prioridad 1, fidelidad: los saques de 2K23 y RS ONE no coinciden con sus grabaciones |

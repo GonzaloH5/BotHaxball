@@ -241,7 +241,10 @@ def parse_args(argv=None):
     ap.add_argument("--bc", required=True, help="checkpoint de la imitación (ancla, inicialización y pool)")
     ap.add_argument("--out", required=True)
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
-    ap.add_argument("--maps", default="sanguchito_rs_x4:0.7,rs_one:0.15,haxarg_2k23:0.15")
+    # Sólo Sanguchito por defecto: es el único mapa con física y script verificados de punta a punta
+    # (reports/x4/conformance_x4.md). El script de 2K23 no coincide (B1) y los saques de RS ONE tienen diferencias
+    # sin resolver con el contrato del entrenamiento. Agregarlos con --maps cuando estén verificados.
+    ap.add_argument("--maps", default="sanguchito_rs_x4:1.0")
     ap.add_argument("--envs", type=int, default=1024)
     ap.add_argument("--rollout", type=int, default=64, help="decisiones por partido y por actualización")
     ap.add_argument("--updates", type=int, default=1000)
