@@ -128,7 +128,11 @@ Fuentes: HR-PPO, VPT, AlphaStar, DiL-piKL, MAPPO. **Implementado:** `learn/x4_pp
     - Motivo: con el reloj congelado y el saque pasando al rival, que en self-play es la misma política, quedarse quieto vale exactamente 0.
     - Una corrida chica en CPU desde la BC dejó de sacar a las 50 actualizaciones; el ancla con λ=0,06 no lo impidió.
     - En la sala, quedarse quieto no es una opción.
-  - El pase no se premia por defecto (Liu 2022). Si a 100–300M decisiones el pase cae por debajo del criterio, se prueba **como brazo pre-registrado** el término de TiZero (+0,05 por pase exitoso antes de un gol).
+  - El pase no se premia por defecto (Liu 2022). Si a 100–300M decisiones el pase cae por debajo del criterio, se prueba **como brazo pre-registrado** el término de TiZero: +0,05 por pase de la posesión que termina en gol, de suma cero (`--pass-bonus 0.05`).
+  - **Criterio numérico de pase (agregado):** en self-play con latencia de sala, ≥ 6 pases/min y ≥ 0,28 de pases/(pases+pérdidas).
+    - Referencia humana en Sanguchito: 9,2 y 0,36 (`reports/x4/pass_stats.json`).
+    - La BC de partida está en 3,1 y 0,19.
+    - Implicancia: hoy **el ancla no aporta por sí sola el pase humano**, solo un tercio. El pase va a tener que venir de una BC más fuerte (más entrenamiento en GPU), del RL o del brazo de TiZero.
 - **Oponentes** (TiZero, AlphaStar):
   - 80% self-play y 20% contra el pool con PFSP (1−x)², incluida la BC; snapshots cada 100 actualizaciones;
   - un explotador barato cada 200–500M decisiones (*pendiente*).
