@@ -12,11 +12,15 @@ tramos tocados por el script y medía sólo 1500 transiciones por grabación:
 3. Reloj congelado durante la espera del saque inicial (F2).
 
   python -m tools.rs4z_conformance --out reports/rs4z/conformance.json [--files 72] [--workers 12]
+  python -m tools.rs4z_conformance --map sanguchito_rs_x4 --pattern 'SanguREC*' --out conformance_sangu.json
+
+El punto 2 (córners de RS ONE) no aplica a otros mapas: sus saques se validan con `tools.rs4z_restart_conformance`.
 """
 from __future__ import annotations
 
 import argparse
 import collections
+import functools
 import glob
 import gzip
 import json
@@ -114,9 +118,10 @@ def mass_phases(ticks, events):
 class Replayer:
     """Un partido RS4-Z de un solo entorno cargado desde ticks reales (registros compactos)."""
 
-    def __init__(self, tick0):
+    def __init__(self, tick0, map_name="rs_one"):
         from env.rs4z.core import RS4ZEnv
-        self.env = RS4ZEnv(1, contract="v2", frame_skip=1, deadline=0, kickoff_deadline=0, max_delay=0)
+        self.env = RS4ZEnv(1, contract="v2", frame_skip=1, deadline=0, kickoff_deadline=0, max_delay=0, map=map_name,
+                           seed=0)  # sorteos (último toque desconocido) reproducibles
         self.order = [p[0] for p in sorted(tick0["players"], key=lambda p: (p[1], p[0]))]
 
     def by_slot(self, t):
@@ -154,8 +159,38 @@ def _stable(a, b):
             and a["state"] == 1 and b["state"] == 1)
 
 
-def audit_file(path):
+def stadium_frames(path, map_name):
+    """Tramos [desde, hasta) de la grabación jugados en el estadio del mapa.
+
+    Las grabaciones mezclan variantes: Classic, entrenamiento o la tanda de penales al final de
+    Sanguchito. Se reconocen por la cantidad de segmentos del .hbs exportado.
+    """
+    from pathlib import PureWindowsPath
+    from env.rs4z import contract as C
+    ref = len(json.loads((ROOT / "stadiums" / f"{C.MAPS[map_name]['stadium']}.hbs").read_text(encoding="utf-8"))["segments"])
+    folder = Path(path).parent
+    index = json.loads((ROOT / "data/rs4_jsonl/index.json").read_text(encoding="utf-8"))["recordings"]
+    entry = next((v for v in index.values() if v.get("jsonl") and PureWindowsPath(v["jsonl"]).parts[0] == folder.name), None)
+    if entry is None:
+        return [(0, float("inf"))]
+    stadiums = entry.get("stadiums") or []
+    spans = []
+    for i, st in enumerate(stadiums):
+        end = stadiums[i + 1]["frame"] if i + 1 < len(stadiums) else float("inf")
+        segs = len(json.loads((folder / st["file"]).read_text(encoding="utf-8"))["segments"])
+        if segs == ref:
+            spans.append((st["frame"], end))
+    return spans
+
+
+def in_spans(frame, spans):
+    return any(a <= frame < b for a, b in spans)
+
+
+def audit_file(path, map_name="rs_one"):
     ticks, events = _read(path)
+    spans = stadium_frames(path, map_name)
+    ticks = [t for t in ticks if in_spans(t["frame"], spans)]
     phase = mass_phases(ticks, events)
     script = {f for f, evs in events.items() if any(e["name"] == "disc_props" for e in evs)}
     resets = {f for f, evs in events.items() if any(e["name"] in ("positions_reset", "goal") for e in evs)}
@@ -171,7 +206,7 @@ def audit_file(path):
                 or b["frame"] in script or b["frame"] in resets):
             continue
         if rep is None or rep.order != [p[0] for p in sorted(a["players"], key=lambda p: (p[1], p[0]))]:
-            rep = Replayer(a)
+            rep = Replayer(a, map_name)
         hyps = (("fases", m), ("fija_0.3", 0.3)) if m == 0.5 else (("fases", m),)
         if len(one[(m, "fases")]) >= MAX_ONE_TICK_PER_PHASE:
             hyps_one = ()
@@ -242,14 +277,16 @@ def main():
     ap.add_argument("--out", default="reports/rs4z/conformance.json")
     ap.add_argument("--files", type=int, default=0, help="0 = todas")
     ap.add_argument("--workers", type=int, default=12)
+    ap.add_argument("--map", default="rs_one", help="mapa del contrato (env/rs4z/contract.MAPS)")
+    ap.add_argument("--pattern", default="*", help="carpetas de data/rs4_jsonl, p. ej. 'SanguREC*'")
     args = ap.parse_args()
-    files = sorted(glob.glob(str(ROOT / "data/rs4_jsonl/*/*.jsonl.gz")))
+    files = sorted(glob.glob(str(ROOT / "data/rs4_jsonl" / args.pattern / "*.jsonl.gz")))
     if args.files:
         files = files[:args.files]
     one, roll, corner = collections.defaultdict(list), collections.defaultdict(list), []
     frozen = moving = 0
     with Pool(args.workers) as pool:
-        for r in pool.imap_unordered(audit_file, files):
+        for r in pool.imap_unordered(functools.partial(audit_file, map_name=args.map), files):
             for k, v in r["one"].items():
                 one[k] += v
             for k, v in r["roll"].items():
@@ -259,7 +296,7 @@ def main():
             moving += r["clock"][1]
     corner = np.asarray(corner)
     report = dict(
-        version="RS4-Z-2-conformance-1", files=len(files),
+        version="RS4-Z-2-conformance-1", map=args.map, pattern=args.pattern, files=len(files),
         one_tick={k: _summary(v) for k, v in sorted(one.items())},
         sixty_ticks={k: _summary(v) for k, v in sorted(roll.items())},
         corner_defender_min_distance=dict(n=int(len(corner)), p0=float(corner.min()) if len(corner) else None,

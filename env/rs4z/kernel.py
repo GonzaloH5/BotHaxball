@@ -29,7 +29,8 @@ from env.rs4z.numba_cache import guard
 guard(__file__, ["sim/physics.py", "sim/stadium.py", "env/rs4z/contract.py"])
 from sim.stadium import BLUEKO, C0, C1, PLAYER_MASK, REDKO
 
-from .contract import CORNER, FIX_CLOCK, FIX_ENGINE, FIX_LATERAL, FIX_MASS, FIX_STRIP, GOAL_KICK, LATERAL, PI, SD_BLUE, SD_BOTH, SD_RED
+from .contract import (CORNER, FIX_CLOCK, FIX_ENGINE, FIX_LATERAL, FIX_MASS, FIX_SANGU, FIX_STRIP, GOAL_KICK, LATERAL,
+                       PI, SD_BLUE, SD_BOTH, SD_RED)
 
 # ---------------------------------------------------------------------------- estado entero
 RI_TEAM = 0          # equipo que saca (-1 sin saque)
@@ -97,6 +98,15 @@ _CD_X = PI["corner_disc_x"]
 _CD_Y = PI["corner_disc_y"]
 _CD_R = PI["corner_disc_radius"]
 _SPOT_R = PI["spot_disc_radius"]
+_LAT_PUSH_MIN = PI["lat_push_min_y"]
+_BOX_PAD = PI["box_push_pad"]
+_C_SPEED = PI["corner_kick_speed"]
+_G_SPEED = PI["goal_kick_speed"]
+_C_GRAV_Y = PI["corner_grav_y"]
+_C_GRAV_KVX = PI["corner_grav_kvx"]
+_G_GRAV_KVY = PI["goal_kick_grav_kvy"]
+_GRAV_HOLD = PI["grav_hold_ticks"]
+_FORM_X = PI["form0_x"]  # form{i}_x, form{i}_y consecutivos
 
 GROUP_RED = 2
 GROUP_BLUE = 4
@@ -158,10 +168,11 @@ def physics_tick(pos, vel, mask, group, radius, inv, bcoef, damping, kick_cancel
                  v_pos, v_bcoef, v_group, v_mask,
                  s_p0, s_p1, s_curved, s_center, s_radius, s_t0, s_t1, s_bias, s_bcoef, s_group, s_mask,
                  p_normal, p_dist, p_bcoef, p_group, p_mask, g_p0, g_p1, g_team,
-                 kicked, touch4):
+                 kicked, touch4, kinfo):
     """Un tick de un partido; copia del cuerpo de `sim.physics.step_batch` sin powershot.
 
     Devuelve el gol del tick (+1 rojo, -1 azul). Libera el saque inicial cuando la pelota se mueve.
+    kinfo[p] = (distancia a la pelota, vx, vy) del pateador antes del tick (lo usa el script de Sanguchito).
     """
     K = pos.shape[0]
     # 1. entradas
@@ -181,6 +192,9 @@ def physics_tick(pos, vel, mask, group, radius, inv, bcoef, damping, kick_cancel
             if d - radius[k] - radius[0] < KICK_REACH:
                 touch4[p] = True
                 if is_kicking and d > 0.0:
+                    kinfo[p, 0] = d
+                    kinfo[p, 1] = vel[k, 0]
+                    kinfo[p, 2] = vel[k, 1]
                     nx = dx / d
                     ny = dy / d
                     vel[0, 0] += nx * kstr * inv[0]
@@ -279,7 +293,7 @@ def start_piece(kind, taker, spot_x, spot_y, pos, vel, group, radius, inv, kick_
             if not active[p] or team[p] == taker:
                 continue
             k = fp + p
-            if sy * pos[k, 1] > prm[_PUSH_Y] and abs(pos[k, 0] - spot_x) < prm[_PUSH_DX]:
+            if sy * pos[k, 1] > prm[_LAT_PUSH_MIN] and abs(pos[k, 0] - spot_x) < prm[_PUSH_DX]:
                 pos[k, 1] = sy * prm[_PUSH_Y]  # el script sólo fija y
             if flags & FIX_ENGINE:
                 group[k] = _team_group(team[p]) | C1
@@ -288,20 +302,24 @@ def start_piece(kind, taker, spot_x, spot_y, pos, vel, group, radius, inv, kick_
     else:
         for p in range(P):
             inv[fp + p] = prm[_PIECE_INV]
+        if flags & FIX_SANGU:
+            inv[0] = 0.0  # pelota fija hasta la patada válida del ejecutor
         if kind == GOAL_KICK:
             for p in range(P):
                 if not active[p] or team[p] == taker:
                     continue
                 k = fp + p
-                if sx * pos[k, 0] > prm[_BOX_F] - pr and abs(pos[k, 1]) < prm[_BOX_H] + pr:
+                pad = prm[_BOX_PAD]
+                if sx * pos[k, 0] > prm[_BOX_F] - pad and abs(pos[k, 1]) < prm[_BOX_H] + pad:
                     pos[k, 0] = sx * prm[_BOX_PUSH]  # el script sólo fija x
                 if flags & FIX_ENGINE:
                     group[k] = _team_group(team[p]) | C0
         if flags & FIX_ENGINE:
             if kind == GOAL_KICK:
-                pos[SD_BOTH, 0] = spot_x
-                pos[SD_BOTH, 1] = spot_y
-                radius[SD_BOTH] = prm[_SPOT_R]
+                if prm[_SPOT_R] > 0.0:
+                    pos[SD_BOTH, 0] = spot_x
+                    pos[SD_BOTH, 1] = spot_y
+                    radius[SD_BOTH] = prm[_SPOT_R]
             else:
                 d = SD_RED if sx < 0 else SD_BLUE  # disco del equipo que defiende ese arco
                 pos[d, 0] = sx * prm[_CD_X]
@@ -388,6 +406,24 @@ def _schedule(kind, pos, vel, grav, k_kicker, prm, ri, rf):
 
 
 @njit(cache=True)
+def _sangu_kick(kind, pos, vel, grav, fp, p, kinfo, prm, ri, sy):
+    """Patada válida del ejecutor en córner o saque de arco de Sanguchito: velocidad y curva del script."""
+    k = fp + p
+    s = prm[_C_SPEED] if kind == CORNER else prm[_G_SPEED]
+    d0 = kinfo[p, 0]
+    vel[0, 0] = s * (pos[0, 0] - pos[k, 0]) / d0
+    vel[0, 1] = s * (pos[0, 1] - pos[k, 1]) / d0
+    if kind == CORNER:
+        grav[0] = prm[_C_GRAV_KVX] * kinfo[p, 1]
+        grav[1] = -sy * prm[_C_GRAV_Y]
+    else:
+        grav[0] = 0.0
+        grav[1] = prm[_G_GRAV_KVY] * kinfo[p, 2]
+    ri[RI_BOOST] = 0
+    ri[RI_GRAV] = int(prm[_GRAV_T])
+
+
+@njit(cache=True)
 def set_piece(side, rand_bit, pos, vel, group, radius, inv, kick_cancel, grav, active, team, fp, P,
               prm, flags, sd_home, ri, rf, outside, line_w):
     """Salida cobrada: `RSOneReferee.set_piece` para un partido. Devuelve el tipo iniciado."""
@@ -459,7 +495,7 @@ def forfeit_piece(pos, vel, group, radius, inv, kick_cancel, grav, active, team,
 
 @njit(cache=True)
 def post_tick(goal, kicked, contact, pos, vel, group, radius, inv, kick_cancel, grav, active, team,
-              fp, P, prm, flags, sd_home, ri, rf, outside, line_w, goal_hh, rand_bit, deadline, ev):
+              fp, P, prm, flags, sd_home, ri, rf, outside, line_w, goal_hh, rand_bit, deadline, ev, kinfo):
     """`RSOneReferee.post_tick` para un partido, más las correcciones v2.
 
     Devuelve 1 si el saque activo venció su plazo de entrenamiento en este tick.
@@ -507,7 +543,17 @@ def post_tick(goal, kicked, contact, pos, vel, group, radius, inv, kick_cancel, 
         if fire:
             vel[0, 0] *= rf[RF_BOOST]
             vel[0, 1] *= rf[RF_BOOST]
-    if ri[RI_GRAV] > 0:
+    if ri[RI_GRAV] > 0 and (flags & FIX_SANGU):
+        # Sanguchito: la curva se mantiene `grav_hold_ticks`, después decae; los toques no la cortan
+        ri[RI_GRAV] -= 1
+        if ri[RI_GRAV] == 0 or goal != 0:
+            grav[0] = 0.0
+            grav[1] = 0.0
+            ri[RI_GRAV] = 0
+        elif prm[_GRAV_T] - ri[RI_GRAV] >= prm[_GRAV_HOLD]:
+            grav[0] *= prm[_DECAY]
+            grav[1] *= prm[_DECAY]
+    elif ri[RI_GRAV] > 0:
         stop = (any_contact and not (pending or fire)) or goal != 0
         if stop:
             grav[0] = 0.0
@@ -547,6 +593,15 @@ def post_tick(goal, kicked, contact, pos, vel, group, radius, inv, kick_cancel, 
                 return 0
         moved = math.hypot(pos[0, 0] - rf[RF_SPOT_X], pos[0, 1] - rf[RF_SPOT_Y]) > prm[_SPOT_REL]
         dead_ball = kind != LATERAL and (any_kick or moved)
+        sangu_kick = -1
+        if (flags & FIX_SANGU) and kind != LATERAL:
+            # sólo cuenta la patada del ejecutor que manda la pelota hacia la cancha (en x)
+            sx_spot = 1.0 if rf[RF_SPOT_X] >= 0.0 else -1.0
+            for p in range(P):
+                if kicked[p] and team[p] == owner and (pos[0, 0] - pos[fp + p, 0]) * sx_spot < 0.0:
+                    sangu_kick = p
+                    break
+            dead_ball = sangu_kick >= 0
         released = lateral_in or dead_ball or ri[RI_TICKS] >= prm[_SAFETY] or goal != 0
         executed = lateral_in or dead_ball or goal != 0
         if deadline > 0 and (not executed) and ri[RI_TICKS] == deadline:
@@ -556,7 +611,12 @@ def post_tick(goal, kicked, contact, pos, vel, group, radius, inv, kick_cancel, 
             for p in range(P):
                 inv[fp + p] = prm[_PLAY_INV]
             ri[RI_MASS] = 1
-        if released and own_kick >= 0 and (kind == CORNER or kind == GOAL_KICK):
+        if released and (flags & FIX_SANGU) and kind != LATERAL:
+            inv[0] = rf[RF_BALL_INV]
+            if sangu_kick >= 0:
+                _sangu_kick(kind, pos, vel, grav, fp, sangu_kick, kinfo, prm, ri,
+                            1.0 if rf[RF_SPOT_Y] >= 0.0 else -1.0)
+        elif released and own_kick >= 0 and (kind == CORNER or kind == GOAL_KICK):
             _schedule(kind, pos, vel, grav, fp + own_kick, prm, ri, rf)
         if (flags & FIX_ENGINE) and kind == GOAL_KICK and ri[RI_TICKS] == int(prm[_HOLD]):
             # el disco del punto se retira 180 ticks después de colocar la pelota
@@ -634,9 +694,14 @@ def reset_kickoff(ko_team, pos, vel, mask, group, radius, inv, kick_cancel, grav
         outside[p] = False
         if active[p]:
             c = spawn_rank[p]
-            y = spawn_dy * ((c + 1) >> 1) * (1.0 if c % 2 == 1 else -1.0)
-            pos[k, 0] = -spawn_x if team[p] == 0 else spawn_x
-            pos[k, 1] = y
+            if flags & FIX_SANGU:
+                # el script de Sanguchito forma el rombo (posiciones del rojo; el azul, espejado en x)
+                pos[k, 0] = prm[_FORM_X + 2 * c] * (1.0 if team[p] == 0 else -1.0)
+                pos[k, 1] = prm[_FORM_X + 2 * c + 1]
+            else:
+                y = spawn_dy * ((c + 1) >> 1) * (1.0 if c % 2 == 1 else -1.0)
+                pos[k, 0] = -spawn_x if team[p] == 0 else spawn_x
+                pos[k, 1] = y
             mask[k] = PLAYER_MASK | ko_flag
             group[k] = _team_group(team[p])
         else:
@@ -672,7 +737,7 @@ def decision_step(pos, vel, mask, group, radius, inv, bcoef, damping, kick_cance
                   v_pos, v_bcoef, v_group, v_mask,
                   s_p0, s_p1, s_curved, s_center, s_radius, s_t0, s_t1, s_bias, s_bcoef, s_group, s_mask,
                   p_normal, p_dist, p_bcoef, p_group, p_mask, g_p0, g_p1, g_team,
-                  ev, ev_kicked, ev_touch, scratch_act, scratch_kick, scratch_t4, scratch_contact):
+                  ev, ev_kicked, ev_touch, scratch_act, scratch_kick, scratch_t4, scratch_contact, scratch_kinfo):
     """Avanza una decisión (frame_skip ticks) en todos los partidos.
 
     act_hist[n, p, h]: acción en coordenadas del mundo, h=0 la más nueva (una por decisión).
@@ -713,12 +778,12 @@ def decision_step(pos, vel, mask, group, radius, inv, bcoef, damping, kick_cance
                              v_pos, v_bcoef, v_group, v_mask,
                              s_p0, s_p1, s_curved, s_center, s_radius, s_t0, s_t1, s_bias, s_bcoef, s_group,
                              s_mask, p_normal, p_dist, p_bcoef, p_group, p_mask, g_p0, g_p1, g_team,
-                             scratch_kick[n], scratch_t4[n])
+                             scratch_kick[n], scratch_t4[n], scratch_kinfo[n])
             if was_ko and ri[n, RI_KO] == 0:
                 ev[n, EV_KO_TAKEN] = 1
             late = post_tick(g, scratch_kick[n], scratch_contact[n], pos[n], vel[n], group[n], radius[n],
                              inv[n], kick_cancel[n], grav[n], active[n], team, fp, P, prm, flags, sd_home,
-                             ri[n], rf[n], outside[n], line_w, goal_hh, rbit, deadline, ev[n])
+                             ri[n], rf[n], outside[n], line_w, goal_hh, rbit, deadline, ev[n], scratch_kinfo[n])
             for p in range(P):
                 if scratch_kick[n, p]:
                     ev_kicked[n, p] = True

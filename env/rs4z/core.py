@@ -38,7 +38,8 @@ class RS4ZEnv:
             raise ValueError(f"contrato desconocido: {contract}")
         self.N = int(n_envs)
         self.contract = contract
-        self.flags = C.FLAGS[contract]
+        # el script propio de un mapa (p. ej. Sanguchito) se suma al contrato pedido
+        self.flags = C.FLAGS[contract] | C.MAPS[map].get("flags", 0)
         self.frame_skip = int(frame_skip)
         self.deadline = int(deadline)
         self.kickoff_deadline = int(kickoff_deadline)
@@ -55,7 +56,8 @@ class RS4ZEnv:
         # propiedades por disco comunes a todos los partidos
         sd_group = np.full(3, BALL, dtype=np.int64)
         sd_mask = np.array([RED, BLUE, RED | BLUE], dtype=np.int64)
-        self.bcoef = np.concatenate([[b["bCoef"]], np.zeros(3), st.d_bcoef, np.full(P, pl["bCoef"])])
+        self.bcoef = np.concatenate([[b["bCoef"]], np.full(3, self.prm[C.PI["script_disc_bcoef"]]), st.d_bcoef,
+                                     np.full(P, pl["bCoef"])])
         self.damping = np.concatenate([[b["damping"]], np.full(3, 0.99), st.d_damping, np.full(P, pl["damping"])])
         team_group = np.where(TEAM == 0, RED, BLUE)
         self.base_group = np.concatenate([[b["cGroup"]], sd_group, st.d_group, team_group]).astype(np.int64)
@@ -63,7 +65,7 @@ class RS4ZEnv:
         self.base_radius = np.concatenate([[b["radius"]], np.zeros(3), st.d_radius, np.full(P, pl["radius"])])
         self.base_inv = np.concatenate([[b["invMass"]], np.zeros(3), st.d_invmass,
                                         np.full(P, self.prm[C.PI["map_inv_mass"]])])
-        self.sd_home = np.array(C.SD_HOME, dtype=np.float64)
+        self.sd_home = np.array(C.MAPS[map].get("sd_home", C.SD_HOME), dtype=np.float64)
         self.d_pos = st.d_pos.copy()
         self.p_acc = float(pl["acceleration"])
         self.p_kacc = float(pl["kickingAcceleration"])
@@ -99,6 +101,7 @@ class RS4ZEnv:
         self._s_kick = np.zeros((N, P), dtype=np.bool_)
         self._s_t4 = np.zeros((N, P), dtype=np.bool_)
         self._s_contact = np.zeros((N, P), dtype=np.bool_)
+        self._s_kinfo = np.zeros((N, P, 3))
         self.episode = np.zeros(N, dtype=np.int64)
         self.start_match(np.arange(N))
 
@@ -263,7 +266,7 @@ class RS4ZEnv:
                         st.s_bcoef, st.s_group, st.s_mask,
                         st.p_normal, st.p_dist, st.p_bcoef, st.p_group, st.p_mask, st.g_p0, st.g_p1, st.g_team,
                         self.ev, self.ev_kicked, self.ev_touch, self._s_act, self._s_kick, self._s_t4,
-                        self._s_contact)
+                        self._s_contact, self._s_kinfo)
         return self.events()
 
     def events(self):
