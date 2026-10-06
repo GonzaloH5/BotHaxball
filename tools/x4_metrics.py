@@ -173,14 +173,17 @@ def _touch_owner(ep):
     return owner, d
 
 
-def episode_samples(ep):
-    """Muestras de cada métrica para un tramo (listas de floats) y totales para las tasas."""
-    T = len(ep.ball)
-    minutes = T * ep.stride * TICK_S / 60.0
-    open_ = ep.open_play
-    s = {}
+def possession_sequence(ep):
+    """Pases, pérdidas y posesiones de un tramo (una sola definición para grabaciones y simulación).
+
+    Toques en el orden en que ocurren (dueño de la pelota en cada muestreo, `_touch_owner`). Entre dos toques
+    seguidos de jugadores distintos: mismo equipo y la pelota recorrió ≥ MIN_PASS en juego abierto → pase;
+    distinto equipo → pérdida (incluye despejes y pelotas divididas). Una posesión dura del primer toque de un
+    equipo al primer toque del otro.
+    """
     owner, dist = _touch_owner(ep)
-    # --- secuencia de toques en juego abierto (los saques cortan la secuencia, no la posesión)
+    T = len(ep.ball)
+    open_ = ep.open_play
     seq = []   # (índice, lugar)
     for i in range(T):
         o = owner[i]
@@ -208,6 +211,29 @@ def episode_samples(ep):
                 passes += 1
                 pass_len.append(travel)
                 cur_passes += 1
+    return dict(passes=passes, losses=losses, pass_len=pass_len, poss_len=poss_len, poss_passes=poss_passes,
+                owner=owner, dist=dist)
+
+
+def episode_counts(ep):
+    """Totales de un tramo para tasas agregadas (suma de eventos / suma de minutos) e intervalos por bootstrap."""
+    ps = possession_sequence(ep)
+    minutes = len(ep.ball) * ep.stride * TICK_S / 60.0
+    return dict(minutes=minutes, open_minutes=float(ep.open_play.sum()) * ep.stride * TICK_S / 60.0,
+                passes=ps["passes"], losses=ps["losses"], goals=int(ep.goals), kicks=float(ep.kicked.sum()),
+                possessions=len(ps["poss_len"]), pass_len=ps["pass_len"])
+
+
+def episode_samples(ep):
+    """Muestras de cada métrica para un tramo (listas de floats) y totales para las tasas."""
+    T = len(ep.ball)
+    minutes = T * ep.stride * TICK_S / 60.0
+    open_ = ep.open_play
+    s = {}
+    ps = possession_sequence(ep)
+    dist = ps["dist"]
+    passes, losses, pass_len, poss_len, poss_passes = (ps[k] for k in ("passes", "losses", "pass_len", "poss_len",
+                                                                         "poss_passes"))
     s["passes_per_min"] = [passes / minutes] if minutes > 0 else []
     s["losses_per_min"] = [losses / minutes] if minutes > 0 else []
     s["pass_length"] = pass_len

@@ -61,6 +61,7 @@ class X4Data:
     map_idx: np.ndarray
     pid: np.ndarray
     label: np.ndarray        # (T, 8) acción 0..17 en el marco propio
+    kick_ev: np.ndarray      # (T, 8) patada efectiva (evento del motor) en ese registro
     valid: np.ndarray        # índices de ticks válidos como etiqueta
     ctx: np.ndarray          # (T, 8) contexto del estado (STATE_*) para métricas
 
@@ -79,7 +80,7 @@ def load(names, ticks_dir=ROOT / "data" / "x4_ticks", maps=("sanguchito_rs_x4",)
     want = {MAP_IDS[m] for m in maps}
     to_v3 = {MAP_IDS[m]: obs_v3.MAP_NAMES.index(m) for m in MAP_IDS}
     parts = {k: [] for k in ("ball", "ball_r", "pos", "vel", "inp", "kicking", "state", "rkind", "rteam", "rage",
-                             "ko_team", "ko_age", "mass", "kstr", "map_idx", "pid", "label", "ok", "rec")}
+                             "ko_team", "ko_age", "mass", "kstr", "map_idx", "pid", "label", "kick_ev", "ok", "rec")}
     used = []
     for name in names:
         path = Path(ticks_dir) / f"{Path(name).stem}.npz"
@@ -144,6 +145,7 @@ def load(names, ticks_dir=ROOT / "data" / "x4_ticks", maps=("sanguchito_rs_x4",)
         parts["map_idx"].append(np.array([to_v3.get(int(m), -1) for m in range(3)], np.int8)[d["map_id"]])
         parts["pid"].append(d["pid"])
         parts["label"].append(label)
+        parts["kick_ev"].append(kick_ev)
         parts["ok"].append(lab_ok)
         parts["rec"].append(np.full(T, r, np.int32))
     if not used:

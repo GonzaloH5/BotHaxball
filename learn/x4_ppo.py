@@ -155,6 +155,7 @@ class Arena:
         self.regions = np.zeros((n, 2, N_REGIONS), bool)
         self.pool_size = pool_size
         self.ep_goals = np.zeros((n, 2))
+        self.passes = PassTracker(n)
         self.restart_all()
 
     def _delays(self, k):
@@ -183,6 +184,7 @@ class Arena:
             self.lam[r] = self.rng.choice(self.a.lambda_values)
             self.regions[r] = False
             self.ep_goals[r] = 0
+        self.passes.reset(rows)
 
     def restart_all(self):
         self.new_match(np.arange(self.N))
@@ -218,6 +220,88 @@ class Arena:
 
 
 C_GOAL_X = 1150.0
+
+
+MIN_PASS = 40.0   # px que recorre la pelota entre los dos toques (tools.x4_metrics.MIN_PASS)
+
+
+class PassTracker:
+    """Pases completados por partido con los toques del kernel (contacto exacto o patada en la decisión).
+
+    Misma idea que `tools.x4_metrics.possession_sequence`: toque de un compañero distinto del último que tocó, con la
+    pelota recorriendo ≥ MIN_PASS → pase; toque del rival → cambia la posesión. Toques de los dos equipos en la misma
+    decisión → pelota dividida (se corta la secuencia). Cuenta los pases de la posesión en curso de cada equipo para el
+    brazo de TiZero (`--pass-bonus`).
+    """
+
+    def __init__(self, n):
+        self.last = np.full(n, -1, np.int64)
+        self.last_ball = np.zeros((n, 2))
+        self.poss_passes = np.zeros((n, 2), np.int64)
+
+    def reset(self, rows):
+        self.last[rows] = -1
+        self.poss_passes[rows] = 0
+
+    def step(self, touched, kicked, ball_pos, goal):
+        """(pases completados en el paso, pases de la posesión del equipo que hizo el gol) por partido."""
+        N = len(self.last)
+        done = np.zeros(N, np.int64)
+        scored = np.zeros(N, np.int64)
+        tk = touched | kicked
+        for n in np.flatnonzero(tk.any(1)):
+            who = np.flatnonzero(tk[n])
+            teams = set((who // 4).tolist())
+            if len(teams) == 2:                       # dividida
+                self.last[n] = -1
+                self.poss_passes[n] = 0
+                continue
+            t = int(who[0] // 4)
+            last = self.last[n]
+            if last < 0:
+                self.last[n] = who[0]
+            elif last // 4 != t:                      # cambio de posesión
+                self.poss_passes[n] = 0
+                self.last[n] = who[0]
+            else:
+                others = who[who != last]
+                if len(others):
+                    if np.hypot(*(ball_pos[n] - self.last_ball[n])) >= MIN_PASS:
+                        self.poss_passes[n, t] += 1
+                        done[n] += 1
+                    self.last[n] = others[0]
+            self.last_ball[n] = ball_pos[n]
+        for n in np.flatnonzero(goal != 0):
+            s = 0 if goal[n] > 0 else 1
+            scored[n] = self.poss_passes[n, s]
+            self.reset([n])
+        return done, scored
+
+
+def pass_bonus_reward(goal, scored_passes, bonus):
+    """(N, 2) suma cero: +bonus por cada pase de la posesión que terminó en gol (TiZero, arXiv 2302.07515)."""
+    out = np.zeros((len(goal), 2))
+    if bonus <= 0:
+        return out
+    for n in np.flatnonzero(goal != 0):
+        s = 0 if goal[n] > 0 else 1
+        out[n, s] += bonus * scored_passes[n]
+        out[n, 1 - s] -= bonus * scored_passes[n]
+    return out
+
+
+def drift_reasons(ev, a):
+    """Criterio de corte pre-registrado (docs/POD_RUNBOOK.md §4) aplicado a una evaluación."""
+    out = []
+    if ev["vs_bc"]["score"] < a.drift_min_score:
+        out.append(f"vs_bc.score {ev['vs_bc']['score']} < {a.drift_min_score}")
+    hw = ev.get("human_w1_mean")
+    if hw is not None and hw > a.drift_max_w1:
+        out.append(f"human_w1_mean {hw} > {a.drift_max_w1}")
+    d = (ev.get("selfplay") or {}).get("dist_ball_1")
+    if d is not None and d > a.drift_max_dist:
+        out.append(f"selfplay.dist_ball_1 {d} > {a.drift_max_dist}")
+    return out
 
 
 def forfeit_reward(forfeit, penalty):
@@ -267,6 +351,8 @@ def parse_args(argv=None):
     ap.add_argument("--shaping", type=float, default=1.0)
     ap.add_argument("--forfeit-penalty", type=float, default=0.1,
                     help="penalización (suma cero) por dejar vencer un saque o el saque inicial")
+    ap.add_argument("--pass-bonus", type=float, default=0.0,
+                    help="brazo pre-registrado de TiZero: +x por pase de la posesión que termina en gol (0 = apagado)")
     ap.add_argument("--shaping-anneal", type=float, default=0.0, help="decisiones hasta llevar el shaping a 0 (0 = fijo)")
     ap.add_argument("--critic-warmup", type=int, default=20, help="actualizaciones sólo del crítico al empezar")
     ap.add_argument("--human-starts", type=float, default=0.4)
@@ -287,6 +373,13 @@ def parse_args(argv=None):
                     help="victorias contra la BC a partir de las cuales el shaping se retira para siempre (0 = nunca)")
     ap.add_argument("--human-gate", type=float, default=1.0,
                     help="W1 normalizada media máxima (métricas clave) para que un checkpoint cuente como mejor")
+    ap.add_argument("--eval-selfplay", type=int, default=8, help="partidos de self-play por evaluación (parecido humano)")
+    ap.add_argument("--stop-on-drift", type=int, default=2,
+                    help="evaluaciones seguidas que cumplen el criterio de corte antes de detener la corrida (0 = nunca)")
+    ap.add_argument("--drift-min-score", type=float, default=0.4)
+    ap.add_argument("--drift-max-w1", type=float, default=1.0)
+    ap.add_argument("--drift-max-dist", type=float, default=200.0)
+    ap.add_argument("--resume", action="store_true", help="continuar desde <out>/last.pt si existe")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--threads", type=int, default=4)
     a = ap.parse_args(argv)
@@ -337,7 +430,38 @@ class Trainer:
         self.decisions = 0
         self.update = 0
         self.best_score = -1.0
+        self.drift_count = 0
+        self.n_fixed_pool = len(self.pool)     # BC + --pool; los snapshots se agregan después
+        if a.eval_every and a.human_gate > 0:
+            from learn.x4_eval import HUMAN_SAMPLES
+            if not HUMAN_SAMPLES.exists():
+                raise SystemExit(f"falta la referencia humana {HUMAN_SAMPLES}: correr `python -m tools.x4_metrics "
+                                 "--map sanguchito_rs_x4 --out reports/x4/human_metrics_sanguchito.json` (runbook §1); "
+                                 "sin ella best.pt nunca se guarda")
+        if a.resume and (self.out / "last.pt").exists():
+            self._resume(self.out / "last.pt")
         self.log = open(self.out / "log.jsonl", "a", encoding="utf-8")
+
+    def _resume(self, path):
+        ck = torch.load(path, map_location="cpu")
+        self.policy.load_state_dict(ck["model"])
+        self.critic.load_state_dict(ck["critic"])
+        if "opt_pi" in ck:
+            self.opt_pi.load_state_dict(ck["opt_pi"])
+            self.opt_v.load_state_dict(ck["opt_v"])
+        self.vnorm.mean, self.vnorm.sq, self.vnorm.w = ck["vnorm"]
+        self.update, self.decisions = int(ck["update"]), int(ck["decisions"])
+        self.best_score = float(ck.get("best_score", -1.0))
+        self.drift_count = int(ck.get("drift_count", 0))
+        self.a.shaping = float(ck.get("shaping", self.a.shaping))
+        for name in ck.get("pool_names", []):
+            self.pool.append((name, load_policy(self.out / f"{name}.pt", self.dev)))
+        wins = list(ck.get("pool_wins", []))
+        self.pool_wins = np.array(wins + [0.5] * (len(self.pool) - len(wins)))[:len(self.pool)]
+        for ar in self.arenas:
+            ar.pool_size = len(self.pool)
+        print(f"reanudando desde {path}: actualización {self.update}, {self.decisions} decisiones, "
+              f"pool {len(self.pool)}", flush=True)
 
     # -------------------------------------------------------------- inferencia
     def pfsp(self):
@@ -392,7 +516,7 @@ class Trainer:
         a = self.a
         T = a.rollout
         buf = []
-        stats = dict(goals=0, matches=0, shaping=0.0, kickoff_wait=[], decisions=0, forfeits=0)
+        stats = dict(goals=0, matches=0, shaping=0.0, kickoff_wait=[], decisions=0, forfeits=0, passes=0, pass_bonus=0.0)
         shaping_scale = 1.0
         if a.shaping_anneal > 0:
             shaping_scale = max(0.0, 1.0 - self.decisions / a.shaping_anneal)
@@ -426,6 +550,11 @@ class Trainer:
                 team_r += sh
                 team_r += forfeit_reward(ev["forfeit"], a.forfeit_penalty)
                 stats["forfeits"] += int((ev["forfeit"] >= 0).sum())
+                done_p, scored_p = arena.passes.step(ev["touched"], ev["kicked"], env.ball_pos, goal)
+                stats["passes"] += int(done_p.sum())
+                pb = pass_bonus_reward(goal, scored_p, a.pass_bonus)
+                team_r += pb
+                stats["pass_bonus"] += float(np.abs(pb).sum())
                 rw[t] = team_r[:, TEAM]
                 arena.ep_goals[:, 0] += goal > 0
                 arena.ep_goals[:, 1] += goal < 0
@@ -545,9 +674,11 @@ class Trainer:
             d = g[:, 0] - g[:, 1]
             w += int((d > 0).sum()); dr += int((d == 0).sum()); l += int((d < 0).sum())
             gf += int(g[:, 0].sum()); ga += int(g[:, 1].sum())
-        selfplay = play(me, me, map_name="sanguchito_rs_x4", matches=4, minutes=a.eval_minutes, delays=delays,
-                        seed=77 + self.update, record=4)
+        selfplay = play(me, me, map_name="sanguchito_rs_x4", matches=a.eval_selfplay, minutes=a.eval_minutes,
+                        delays=delays, seed=77 + self.update, record=a.eval_selfplay)
         hum = human_compare(selfplay["episodes"]) or {}
+        from tools.x4_pass_stats import rates, unit_counts
+        pooled = rates([unit_counts([ep]) for ep in selfplay["episodes"]])
         self.policy.train()
         n = max(1, w + dr + l)
         key = ("passes_per_min", "possession_s", "pass_length", "depth", "width", "dist_ball_2", "still_frac",
@@ -563,7 +694,10 @@ class Trainer:
                    # goles 0,25/min por tramo, espera del saque inicial 3,9 s)
                    selfplay={k: (round(hum["summary"][k]["mean"], 3) if hum.get("summary", {}).get(k, {}).get("n") else None)
                              for k in ("kicks_per_min", "passes_per_min", "goals_per_min", "kickoff_wait_s",
-                                       "dist_ball_1", "still_frac")})
+                                       "dist_ball_1", "still_frac")},
+                   # tasas agregadas (Σ eventos / Σ minutos; humanos de Sanguchito, reports/x4/pass_stats.json:
+                   # pases/min 9,2, pases/(pases+pérdidas) 0,36, pases por posesión 0,55, patadas 3,5/min, goles 0,37/min)
+                   selfplay_pases={k: (round(v, 3) if v == v else None) for k, v in pooled.items()})
         return out
 
     def save(self, name="last.pt"):
@@ -580,6 +714,9 @@ class Trainer:
                         obs_version=obs_v3.OBS_VERSION, update=int(self.update), decisions=int(self.decisions),
                         vnorm=[float(self.vnorm.mean), float(self.vnorm.sq), float(self.vnorm.w)],
                         pool_wins=[float(x) for x in self.pool_wins],
+                        opt_pi=self.opt_pi.state_dict(), opt_v=self.opt_v.state_dict(),
+                        best_score=float(self.best_score), drift_count=int(self.drift_count),
+                        shaping=float(self.a.shaping), pool_names=[n for n, _ in self.pool[self.n_fixed_pool:]],
                         args={k: plain(v) for k, v in vars(self.a).items()}),
                    self.out / name)
 
@@ -597,7 +734,7 @@ class Trainer:
     def train(self):
         a = self.a
         t0 = time.time()
-        for u in range(a.updates):
+        for u in range(self.update, a.updates):
             self.update = u + 1
             tr = time.time()
             buf, stats = self.rollout()
@@ -607,6 +744,9 @@ class Trainer:
                        rollout_s=round(tl - tr, 2), learn_s=round(time.time() - tl, 2),
                        dps=round(stats["decisions"] / max(1e-6, time.time() - tr)), goals=stats["goals"],
                        matches=stats["matches"], shaping_abs=round(stats["shaping"], 3), forfeits=stats["forfeits"],
+                       passes=stats["passes"],
+                       passes_per_min=round(stats["passes"] / max(1e-9, stats["decisions"] * 3 / 3600), 3),
+                       pass_bonus_abs=round(stats["pass_bonus"], 3),
                        pool_wins={n: round(float(w), 3) for (n, _), w in zip(self.pool, self.pool_wins)},
                        **{k: (round(v, 5) if isinstance(v, float) else v) for k, v in info.items()})
             self.log.write(json.dumps(row) + "\n")
@@ -627,9 +767,21 @@ class Trainer:
                     self.best_score = ev["vs_bc"]["score"]
                     self.save("best.pt")
                     ev["new_best"] = True
+                reasons = drift_reasons(ev, a)
+                self.drift_count = self.drift_count + 1 if reasons else 0
+                ev["drift"] = reasons
                 with open(self.out / "eval.jsonl", "a", encoding="utf-8") as fh:
                     fh.write(json.dumps(ev) + "\n")
                 print("EVAL " + json.dumps(ev), flush=True)
+                if a.stop_on_drift and self.drift_count >= a.stop_on_drift:
+                    # criterio de corte pre-registrado: se detiene y deja constancia (volver a best.pt, subir λ o bajar lr)
+                    self.save("stopped.pt")
+                    (self.out / "stopped.json").write_text(json.dumps(dict(
+                        update=self.update, decisions=self.decisions, reasons=reasons, eval=ev,
+                        what_next="volver a best.pt, subir --lambda-dist o bajar --lr (docs/POD_RUNBOOK.md §4)"),
+                        indent=1, ensure_ascii=False), encoding="utf-8")
+                    print(f"CORTE POR DERIVA en la actualización {self.update}: {reasons}", flush=True)
+                    break
         self.save()
         return time.time() - t0
 

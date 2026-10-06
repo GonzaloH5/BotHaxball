@@ -132,7 +132,10 @@ def bradley_terry(names, results, iters=200):
     return {nm: round(float(400 * np.log10(p[idx[nm]])), 1) for nm in names}
 
 
-def human_compare(episodes, samples_path=ROOT / "data" / "human_metrics_sanguchito.samples.npz", split="train"):
+HUMAN_SAMPLES = ROOT / "data" / "human_metrics_sanguchito.samples.npz"   # de `tools.x4_metrics --out .../human_metrics_sanguchito.json`
+
+
+def human_compare(episodes, samples_path=HUMAN_SAMPLES, split="train"):
     if not Path(samples_path).exists() or not episodes:
         return None
     ref = np.load(samples_path)

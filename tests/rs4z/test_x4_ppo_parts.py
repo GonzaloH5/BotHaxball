@@ -91,3 +91,66 @@ def test_kickoff_deadline_reports_the_forfeiting_team():
             lost = int(ev["forfeit"][0])
             break
     assert lost == team and env.ri[0, K.RI_KO_TEAM] == 1 - team
+
+
+def _touch(n, *slots):
+    t = np.zeros((n, 8), bool)
+    for s in slots:
+        t[0, s] = True
+    return t
+
+
+def test_pass_tracker_counts_passes_losses_and_goal_possession():
+    from learn.x4_ppo import PassTracker, pass_bonus_reward
+    tr = PassTracker(1)
+    none = np.zeros((1, 8), bool)
+    g0 = np.zeros(1, np.int64)
+    ball = lambda x: np.array([[x, 0.0]])
+    assert tr.step(_touch(1, 0), none, ball(0.0), g0)[0][0] == 0          # primer toque del rojo 0
+    assert tr.step(_touch(1, 1), none, ball(100.0), g0)[0][0] == 1        # pase 0 → 1 (100 px)
+    assert tr.step(_touch(1, 2), none, ball(110.0), g0)[0][0] == 0        # 1 → 2 con 10 px: no es pase
+    assert tr.step(none, _touch(1, 3), ball(300.0), g0)[0][0] == 1        # pase 2 → 3 con patada
+    assert tr.poss_passes[0].tolist() == [2, 0]
+    done, scored = tr.step(none, none, ball(1200.0), np.array([1]))       # gol del rojo
+    assert scored[0] == 2 and tr.poss_passes[0].tolist() == [0, 0]
+    r = pass_bonus_reward(np.array([1]), scored, 0.05)
+    assert np.allclose(r, [[0.1, -0.1]])
+    tr.step(_touch(1, 0), none, ball(0.0), g0)
+    tr.step(_touch(1, 4), none, ball(50.0), g0)                           # toca el azul: cambia la posesión
+    assert tr.poss_passes[0].tolist() == [0, 0] and tr.last[0] == 4
+    tr.step(_touch(1, 5, 1), none, ball(200.0), g0)                       # dividida
+    assert tr.last[0] == -1
+    assert np.allclose(pass_bonus_reward(np.array([1]), np.array([3]), 0.0), 0.0)
+
+
+def test_drift_reasons_follow_the_preregistered_criterion():
+    from learn.x4_ppo import drift_reasons, parse_args
+    a = parse_args(["--bc", "x", "--out", "y"])
+    ok = dict(vs_bc=dict(score=0.5), human_w1_mean=0.5, selfplay=dict(dist_ball_1=120.0))
+    assert drift_reasons(ok, a) == []
+    bad = dict(vs_bc=dict(score=0.3), human_w1_mean=1.4, selfplay=dict(dist_ball_1=260.0))
+    assert len(drift_reasons(bad, a)) == 3
+    assert drift_reasons(dict(vs_bc=dict(score=0.5), human_w1_mean=None, selfplay={}), a) == []
+
+
+def test_resume_continues_from_last_checkpoint(tmp_path):
+    from pathlib import Path
+    import torch
+    from learn.x4_ppo import Trainer, parse_args
+    bc = Path(__file__).resolve().parents[2] / "runs" / "x4_bc" / "final_sangu_rsone" / "best.pt"
+    if not bc.exists():
+        import pytest
+        pytest.skip("falta el checkpoint de la imitación")
+    common = ["--bc", str(bc), "--out", str(tmp_path), "--device", "cpu", "--envs", "4", "--rollout", "4",
+              "--critic-warmup", "1", "--bank-recordings", "0", "--eval-every", "0", "--threads", "1",
+              "--snapshot-every", "2", "--epochs", "1", "--minibatches", "1"]
+    t1 = Trainer(parse_args(common + ["--updates", "2"]))
+    t1.train()
+    ck = torch.load(tmp_path / "last.pt", map_location="cpu")
+    assert ck["update"] == 2 and ck["pool_names"] == ["snap_00002"] and "opt_pi" in ck
+    t2 = Trainer(parse_args(common + ["--updates", "3", "--resume"]))
+    assert t2.update == 2 and t2.decisions == ck["decisions"] and len(t2.pool) == 2
+    for p_old, p_new in zip(t1.policy.parameters(), t2.policy.parameters()):
+        assert torch.equal(p_old.detach().cpu(), p_new.detach().cpu())
+    t2.train()
+    assert torch.load(tmp_path / "last.pt", map_location="cpu")["update"] == 3

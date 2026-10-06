@@ -1,0 +1,308 @@
+{
+ "humanos_train": {
+  "unidades": 357,
+  "minutos": 1801.2,
+  "pases_por_min": {
+   "valor": 9.1622,
+   "ic90": [
+    9.0097,
+    9.3152
+   ]
+  },
+  "pases_por_min_juego_abierto": {
+   "valor": 11.9639,
+   "ic90": [
+    11.7854,
+    12.134
+   ]
+  },
+  "perdidas_por_min": {
+   "valor": 16.6694,
+   "ic90": [
+    16.4849,
+    16.8614
+   ]
+  },
+  "pases_sobre_pases_mas_perdidas": {
+   "valor": 0.3547,
+   "ic90": [
+    0.3498,
+    0.3598
+   ]
+  },
+  "pases_por_posesion": {
+   "valor": 0.5496,
+   "ic90": [
+    0.5379,
+    0.5621
+   ]
+  },
+  "patadas_por_min_y_jugador": {
+   "valor": 3.5228,
+   "ic90": [
+    3.4956,
+    3.5515
+   ]
+  },
+  "goles_por_min": {
+   "valor": 0.3731,
+   "ic90": [
+    0.3446,
+    0.4003
+   ]
+  },
+  "largo_de_pase_p50": {
+   "valor": 334.5112,
+   "ic90": [
+    331.201,
+    337.9066
+   ]
+  }
+ },
+ "humanos_test": {
+  "unidades": 77,
+  "minutos": 375.9,
+  "pases_por_min": {
+   "valor": 9.7009,
+   "ic90": [
+    9.3177,
+    10.0927
+   ]
+  },
+  "pases_por_min_juego_abierto": {
+   "valor": 12.4402,
+   "ic90": [
+    12.0143,
+    12.8833
+   ]
+  },
+  "perdidas_por_min": {
+   "valor": 16.3694,
+   "ic90": [
+    15.9404,
+    16.808
+   ]
+  },
+  "pases_sobre_pases_mas_perdidas": {
+   "valor": 0.3721,
+   "ic90": [
+    0.3592,
+    0.3855
+   ]
+  },
+  "pases_por_posesion": {
+   "valor": 0.5926,
+   "ic90": [
+    0.5606,
+    0.6272
+   ]
+  },
+  "patadas_por_min_y_jugador": {
+   "valor": 3.5737,
+   "ic90": [
+    3.5171,
+    3.6299
+   ]
+  },
+  "goles_por_min": {
+   "valor": 0.3564,
+   "ic90": [
+    0.3019,
+    0.4146
+   ]
+  },
+  "largo_de_pase_p50": {
+   "valor": 330.6259,
+   "ic90": [
+    320.7557,
+    336.3819
+   ]
+  }
+ },
+ "runs/x4_bc/final_sangu_rsone/best.pt": {
+  "unidades": 16,
+  "minutos": 49.7,
+  "safety": 8,
+  "finished": 16,
+  "pases_por_min": {
+   "valor": 3.1374,
+   "ic90": [
+    2.7601,
+    3.5076
+   ]
+  },
+  "pases_por_min_juego_abierto": {
+   "valor": 5.5774,
+   "ic90": [
+    4.6766,
+    6.4262
+   ]
+  },
+  "perdidas_por_min": {
+   "valor": 13.6357,
+   "ic90": [
+    11.8142,
+    15.2189
+   ]
+  },
+  "pases_sobre_pases_mas_perdidas": {
+   "valor": 0.1871,
+   "ic90": [
+    0.1705,
+    0.204
+   ]
+  },
+  "pases_por_posesion": {
+   "valor": 0.2301,
+   "ic90": [
+    0.2056,
+    0.2563
+   ]
+  },
+  "patadas_por_min_y_jugador": {
+   "valor": 2.2198,
+   "ic90": [
+    1.9792,
+    2.4203
+   ]
+  },
+  "goles_por_min": {
+   "valor": 0.1006,
+   "ic90": [
+    0.0402,
+    0.161
+   ]
+  },
+  "largo_de_pase_p50": {
+   "valor": 311.5905,
+   "ic90": [
+    295.5443,
+    342.3875
+   ]
+  }
+ },
+ "runs/x4_bc/B_d6_15_gap/best.pt": {
+  "unidades": 16,
+  "minutos": 51.4,
+  "safety": 23,
+  "finished": 16,
+  "pases_por_min": {
+   "valor": 0.876,
+   "ic90": [
+    0.6108,
+    1.1438
+   ]
+  },
+  "pases_por_min_juego_abierto": {
+   "valor": 2.2868,
+   "ic90": [
+    1.6939,
+    2.9776
+   ]
+  },
+  "perdidas_por_min": {
+   "valor": 3.5625,
+   "ic90": [
+    2.9743,
+    4.1353
+   ]
+  },
+  "pases_sobre_pases_mas_perdidas": {
+   "valor": 0.1974,
+   "ic90": [
+    0.1561,
+    0.2339
+   ]
+  },
+  "pases_por_posesion": {
+   "valor": 0.2459,
+   "ic90": [
+    0.185,
+    0.3054
+   ]
+  },
+  "patadas_por_min_y_jugador": {
+   "valor": 0.5037,
+   "ic90": [
+    0.4303,
+    0.5756
+   ]
+  },
+  "goles_por_min": {
+   "valor": 0.0973,
+   "ic90": [
+    0.0398,
+    0.1531
+   ]
+  },
+  "largo_de_pase_p50": {
+   "valor": 247.8586,
+   "ic90": [
+    184.895,
+    390.6317
+   ]
+  }
+ },
+ "runs/x4_ppo/cpu_final_lam0.2/last.pt": {
+  "unidades": 16,
+  "minutos": 51.9,
+  "safety": 73,
+  "finished": 16,
+  "pases_por_min": {
+   "valor": 2.7572,
+   "ic90": [
+    2.3923,
+    3.124
+   ]
+  },
+  "pases_por_min_juego_abierto": {
+   "valor": 5.6949,
+   "ic90": [
+    5.0219,
+    6.3883
+   ]
+  },
+  "perdidas_por_min": {
+   "valor": 8.5414,
+   "ic90": [
+    7.3931,
+    9.7006
+   ]
+  },
+  "pases_sobre_pases_mas_perdidas": {
+   "valor": 0.244,
+   "ic90": [
+    0.2113,
+    0.2759
+   ]
+  },
+  "pases_por_posesion": {
+   "valor": 0.3228,
+   "ic90": [
+    0.268,
+    0.381
+   ]
+  },
+  "patadas_por_min_y_jugador": {
+   "valor": 1.5738,
+   "ic90": [
+    1.4306,
+    1.717
+   ]
+  },
+  "goles_por_min": {
+   "valor": 0.7327,
+   "ic90": [
+    0.6179,
+    0.8551
+   ]
+  },
+  "largo_de_pase_p50": {
+   "valor": 297.7903,
+   "ic90": [
+    262.2992,
+    352.4898
+   ]
+  }
+ }
+}

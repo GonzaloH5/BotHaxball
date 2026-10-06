@@ -5,7 +5,8 @@ jugador a ≤ 30 px) en campo rival. Se deja al portador, sus compañeros más c
 a la pelota (2v1 o 3v2; el resto se desactiva) y la política juega `--horizon` decisiones con latencia de sala.
 Se mide qué pasa primero: pase completado (toca un compañero después del portador), pérdida (toca un rival o
 la pelota sale), gol o nada. Es una medida relativa entre políticas (BC contra snapshots del RL), no un
-número humano: en Liu 2019 la tasa de pase en la sonda 2v1 crece con el entrenamiento.
+número humano: en Liu 2019 la tasa de pase en la sonda 2v1 crece con el entrenamiento. Como referencia aproximada se
+informa además qué hicieron los humanos desde esos mismos estados en la grabación (`human_baseline`, con los 8 jugadores).
 
   python -m learn.x4_probes --policy runs/x4_bc/final/best.pt --n 256 --out reports/x4/probes_bc.json
 """
@@ -50,6 +51,54 @@ def pick_states(data, n_att, n_def, n, rng, min_x=150.0):
         out.append((int(t), int(team), int(c), active))
         if len(out) >= n:
             break
+    return out
+
+
+def human_baseline(data, states, horizon=100, stride=3):
+    """Lo que pasó en la grabación desde los mismos estados (referencia humana aproximada: en la grabación juegan
+    los 8 jugadores, no 2v1 ni 3v2). Mismas reglas que `run`: toque = contacto o patada en la ventana del muestreo;
+    primero que ocurra entre pase completado, pérdida, salida (saque del script) o gol."""
+    out = {}
+    passes_any = 0
+    goals = 0
+    T = data.ticks
+    for t, team, c, _ in states:
+        last, passes, res = c, 0, "nada"
+        rec = data.rec_of_tick[t]
+        for j in range(1, horizon + 1):
+            u = t + stride * j
+            if u >= T or data.rec_of_tick[u] != rec or np.any(data.pid[u] != data.pid[t]):
+                res = "corte"
+                break
+            if data.state[u] == 2:          # gol (animación); el arco por el lado de la pelota
+                bx = data.ball[u, 0]
+                res = "gol" if (bx > 0) == (team == 0) else "gol_en_contra"
+                break
+            if data.state[u] != 1 or data.rkind[u] > 0:
+                res = "salida"
+                break
+            b = data.ball[u, :2]
+            d = np.hypot(data.pos[u, :, 0] - b[0], data.pos[u, :, 1] - b[1])
+            touch = d <= CONTACT
+            touch |= data.kick_ev[max(u - stride + 1, 0):u + 1].any(0)
+            who = np.flatnonzero(touch)
+            if len(who) == 0:
+                continue
+            if any(TEAM[q] != team for q in who):
+                res = "pase_y_perdida" if passes else "perdida"
+                break
+            q = who[np.argmin(d[who])]
+            if q != last:
+                passes += 1
+                last = q
+        if res == "nada" and passes:
+            res = "pase"
+        out[res] = out.get(res, 0) + 1
+        passes_any += passes > 0
+        goals += res == "gol"
+    n = len(states)
+    out.update(n=n, con_pase=int(passes_any), tasa_pase=round(passes_any / max(1, n), 3),
+               tasa_gol=round(goals / max(1, n), 3))
     return out
 
 
@@ -137,7 +186,9 @@ def main():
     for name, (na, nd) in (("2v1", (2, 1)), ("3v2", (3, 2))):
         states = pick_states(data, na, nd, a.n, rng)
         report[name] = run(model, data, states, horizon=a.horizon, seed=1 + na)
+        report[name + "_humanos_4v4"] = human_baseline(data, states, horizon=a.horizon)
         print(name, json.dumps(report[name]), flush=True)
+        print(name, "humanos (4v4, misma situación)", json.dumps(report[name + "_humanos_4v4"]), flush=True)
     Path(a.out).parent.mkdir(parents=True, exist_ok=True)
     Path(a.out).write_text(json.dumps(report, indent=1, ensure_ascii=False), encoding="utf-8")
 
