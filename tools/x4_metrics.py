@@ -75,7 +75,8 @@ def episodes_from_ticks(npz, map_id=None, stride=3):
     """Tramos 4v4 estables de una grabación del caché `x4_ticks` (uno por plantel continuo)."""
     d = dict(np.load(npz)) if not isinstance(npz, dict) else npz
     frame = d["frame"]
-    ok = (d["n_red"] == 4) & (d["n_blue"] == 4) & np.isin(d["state"], (0, 1))
+    finite = np.isfinite(d["ball"][:, :5]).all(1) & np.isfinite(d["pos"]).all((1, 2)) & np.isfinite(d["vel"]).all((1, 2))
+    ok = (d["n_red"] == 4) & (d["n_blue"] == 4) & np.isin(d["state"], (0, 1)) & finite
     if map_id is not None:
         ok &= d["map_id"] == map_id
     pid = d["pid"]
