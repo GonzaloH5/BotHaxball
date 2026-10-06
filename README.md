@@ -4,6 +4,15 @@ Bot de HaxBall 4v4 (Real Soccer) con juego colectivo de nivel humano competitivo
 
 **Estado (2026-10-06):** reinicio desde cero. Todo el método anterior de aprendizaje está archivado: entrenadores, recompensas, currículos, RS-Pro, gates, modelos y reportes. Desde ahora, cada decisión de diseño se justifica con trabajos publicados: ver `docs/PLAN.md` (borrador, pendiente de aprobación).
 
+## Pipeline X4 (sesión del 2026-10-06)
+
+Dataset de 645 grabaciones humanas 4v4: 498 de Sanguchito y 147 de RS ONE, unas 93 h.
+- **Caché y particiones:** caché compacto por tick (`tools/x4_ticks.py`), índice y particiones por sesión (`tools/x4_index.py`, `reports/x4/`).
+- **Observación v3** (`env/rs4z/obs_v3.py`, paridad JS en `deploy/rs4z/obs_v3.js`).
+- **Imitación y RL:** imitación con retardo de sala y RL MAPPO con ancla KL (`learn/`).
+- **Evaluación:** parecido humano, fuerza contra un pool y sondas (`tools/x4_metrics.py`, `learn/x4_eval.py`, `learn/x4_probes.py`).
+- **Más detalle:** estado en `docs/REPORTE_2026-10-06_noche.md`, plan en `docs/PLAN.md` y comandos en `docs/POD_RUNBOOK.md`.
+
 ## Qué queda en el repo
 
 Solo infraestructura verificada contra el juego real. No contiene ningún método de aprendizaje.
@@ -13,7 +22,7 @@ Solo infraestructura verificada contra el juego real. No contiene ningún métod
 | `sim/physics.py`, `sim/stadium.py` | Motor de física de HaxBall (numba) y carga de mapas `.hbs`. |
 | `env/rs4z/` | Simulador vectorizado de partidos: física + árbitro del script de la sala (contrato RS4-Z-2), latencia por jugador y observación `obs_v2`. |
 | `stadiums/` | Mapas objetivo: `haxarg_2k23.hbs` (liga HaxArg) y `sanguchito_rs_x4.hbs` (sala SANGUCHITO RS X4, exportado de su grabación). `rs_one.hbs` es el mapa de la mayoría de las grabaciones. `classic*.hbs` son para los tests de física. |
-| `replays_real/stadiums/` | Grabaciones humanas 4v4 (gitignored). `rsx4` tiene 156: unas 147 en RS ONE y 7 en SANGUCHITO RS X4 (`SanguREC-*`). `haxarg2k23` tiene 2. |
+| `replays_real/stadiums/` | Grabaciones 4v4 versionadas. `rsx4` tiene 649: 500 de SANGUCHITO RS X4 (`SanguREC-*`) y el resto de RS ONE. `haxarg2k23` tiene las 2 pruebas con bots del 2026-10-06. |
 | `data/rs4_jsonl`, `data/haxarg_jsonl` | Grabaciones convertidas a JSONL por tick (gitignored; se regeneran con `tools.rs4_jsonl_cache`). |
 | `bridge/` | Node: `replay_to_jsonl.js` (grabación → JSONL), `record.js`, `latency_probe.js` y `compare_sim.py` (sim vs grabación). |
 | `tools/rs4z_conformance.py`, `rs4z_restart_conformance.py` | Conformidad del simulador contra las grabaciones: física a 1 y 60 ticks, reloj, y saques con los jugadores forzados (`--map`, `--pattern`). |
@@ -34,7 +43,7 @@ Los trabajos pesados (datasets, entrenamiento, evaluación) se corren en el pod.
 
 - La física y el árbitro del simulador reproducen las grabaciones: en el replay de 2K23 del usuario, el error p90 a 60 ticks es de 0,009 px.
 - Después de cada reposicionamiento, la masa inversa de los jugadores es 0,5. El script la pasa a 0,3 en la primera patada de saque.
-- En una sala real, los bots cliente actúan unos 15 ticks (250 ms) detrás del estado del host.
+- En una sala real, los bots cliente actuaban 9–12 ticks detrás del estado del host (`reports/room_latency/`, medido con 7 bots y antes del arreglo de hilos de ONNX).
 - SANGUCHITO RS X4 tiene la misma física que RS ONE (pelota 8,325, patada 5,85, cancha 1150×670), pero otras paredes, arcos (x = ±1159), discos y script de sala. Está soportado como `map="sanguchito_rs_x4"` (bandera `FIX_SANGU`) y validado contra sus 7 grabaciones: `reports/sanguchito_conformance.md`.
 - Las grabaciones mezclan variantes de estadio (Classic, entrenamiento, la tanda de penales de Sanguchito). Las herramientas usan solo los tramos jugados en el estadio del mapa (`tools.rs4z_conformance.stadium_frames`).
 

@@ -176,6 +176,25 @@ Para B la muestra era chica (48 sondas).
 | El simulador no cedía laterales | sí los cede; era la herramienta | traza tick a tick |
 | Estimar el retardo de cada humano por verosimilitud (plan E1) | no se pudo con este modelo: la NLL sube de forma monótona, sin codo | `reports/x4/human_delay_probe.json` |
 
-## Qué queda para el pod (en orden)
+## Qué queda (en orden)
 
-Ver `docs/POD_RUNBOOK.md` y `docs/PLAN.md` §5.
+1. **En el pod:**
+   - E3 desde `runs/x4_bc/final_sangu_rsone/best.pt` con λ=0,2 y lote grande (`docs/POD_RUNBOOK.md` §4), mirando el criterio de corte desde la primera evaluación;
+   - en paralelo, reentrenar la imitación más larga en GPU (§3): la NLL todavía bajaba.
+2. **B1 (2K23):** grabar partidos humanos en esa sala y ajustar el script. Con las 2 pruebas con bots no coincide.
+3. **RS ONE:** resolver los saques (v2 contra v2_lateral; el lateral se desvía 3,4 px al liberar) antes de volver a sumarlo al RL.
+4. **Sondas 2v1/3v2** sobre los snapshots del RL. Ya existen para la BC: 27% y 25% de pase.
+5. **E4 en la sala:** solo cuando E3 pase sus criterios, con `--trace` para volver a medir la latencia ya sin contención de ONNX.
+
+## Archivos principales de esta sesión
+
+| Qué | Dónde |
+|---|---|
+| Plan revisado | `docs/PLAN.md` |
+| Comandos para el pod | `docs/POD_RUNBOOK.md` |
+| Auditoría del dataset | `reports/x4/dataset_audit.md`, `index.json`, `splits.json` |
+| Conformidad | `reports/x4/conformance_x4.md` y los JSON `restart_conformance_*`, `physics_conformance_*` |
+| Referencia humana | `reports/x4/human_metrics_sanguchito.json` |
+| Evaluaciones de la imitación | `reports/x4/eval_bc_final.json`, `probes_bc_final.json`, `eval_bc_B.json` |
+| Código nuevo | `tools/x4_ticks.py`, `x4_index.py`, `x4_metrics.py`, `bridge/replay_meta.js`, `env/rs4z/obs_v3.py`, `learn/` (`x4_data`, `x4_policy`, `x4_bc`, `x4_ppo`, `x4_eval`, `x4_probes`, `x4_scripted`, `x4_delay_probe`), `export/to_onnx_x4.py`, `export/x4_room_fixture.py`, `deploy/rs4z/obs_v3.js` |
+| Tests nuevos | `tests/rs4z/test_obs_v3.py`, `test_x4_ppo_parts.py`, `test_x4_real_conformance.py`, 3 nuevos en `test_rs4z_sangu.py`, `deploy/test_x4_room_state.js`, `deploy/test_ort_threads.js`. En total pasan 75 de Python y 10 de Node; los de Node que necesitan `onnxruntime-node` o `ws` no se pudieron instalar acá. |
