@@ -109,6 +109,22 @@ def test_corner_kick_outward_in_y_does_not_release():
     assert env2.ri[0, K.RI_TEAM] == -1
 
 
+def test_corner_direction_is_judged_before_the_tick():
+    """La sala juzga la dirección con la posición del pateador al patear: si recién cruza la vertical de la
+    pelota durante el tick, la patada sigue siendo hacia afuera y no libera."""
+    env = _env()
+    players = list(FAR)
+    sy = np.sign(CORNER_SPOT[1])
+    players[0] = (CORNER_SPOT[0] - 0.7, CORNER_SPOT[1] + sy * 23.5)   # apenas del lado de la cancha en x
+    env.place(0, ball_pos=(0.0, 0.0), ball_vel=(0.0, 0.0), player_pos=np.asarray(players, dtype=float),
+              player_vel=np.array([(3.0, 0.0)] + [(0.0, 0.0)] * 7))     # se mueve hacia afuera durante el tick
+    env.start_restart(0, C.CORNER, 0, CORNER_SPOT)
+    env.vel[0, env.fp] = (3.0, 0.0)
+    env.step(_act(p0=9))
+    assert env.player_pos[0, 0, 0] > CORNER_SPOT[0], "después del tick el pateador quedó detrás de la pelota"
+    assert env.ri[0, K.RI_TEAM] == 0, "la patada se juzga antes del tick: hacia afuera, no libera"
+
+
 def test_goal_kick_velocity_uses_goal_kick_speed():
     env = _env()
     spot = (PRM["goal_kick_x"], PRM["goal_kick_y"])

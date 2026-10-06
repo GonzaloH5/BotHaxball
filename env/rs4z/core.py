@@ -101,7 +101,7 @@ class RS4ZEnv:
         self._s_kick = np.zeros((N, P), dtype=np.bool_)
         self._s_t4 = np.zeros((N, P), dtype=np.bool_)
         self._s_contact = np.zeros((N, P), dtype=np.bool_)
-        self._s_kinfo = np.zeros((N, P, 3))
+        self._s_kinfo = np.zeros((N, P, 5))
         self.episode = np.zeros(N, dtype=np.int64)
         self.start_match(np.arange(N))
 

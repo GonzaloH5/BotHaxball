@@ -34,6 +34,7 @@ def parse_delay(text):
 @torch.no_grad()
 def evaluate(model, data, t, p, delay, batch=8192):
     model.eval()
+    dev = next(model.parameters()).device
     nll, acc, acc_move, acc_kick, kick_tp, kick_fp, kick_fn = [], [], [], [], 0, 0, 0
     changed = data.label[t, p] != data.label[t - 3, p]     # el humano cambió de tecla respecto de hace 3 ticks
     ctx_all = data.ctx[t, p]
@@ -41,10 +42,11 @@ def evaluate(model, data, t, p, delay, batch=8192):
     for i in range(0, len(t), batch):
         tt, pp = t[i:i + batch], p[i:i + batch]
         d = np.full(len(tt), delay, np.int64) if np.isscalar(delay) else delay[i:i + batch]
-        obs = torch.from_numpy(XD.featurize(data, tt, pp, d))
-        y = torch.from_numpy(data.label[tt, pp].astype(np.int64))
+        obs = torch.from_numpy(XD.featurize(data, tt, pp, d)).to(dev)
+        y = torch.from_numpy(data.label[tt, pp].astype(np.int64)).to(dev)
         logits = model(obs)
-        l = F.cross_entropy(logits, y, reduction="none")
+        l = F.cross_entropy(logits, y, reduction="none").cpu()
+        logits, y = logits.cpu(), y.cpu()
         pred = logits.argmax(-1)
         nll.append(l.numpy())
         acc.append((pred == y).numpy())
@@ -97,6 +99,7 @@ def main():
     ap.add_argument("--threads", type=int, default=3)
     ap.add_argument("--init", default="", help="checkpoint para continuar")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     a = ap.parse_args()
     torch.set_num_threads(a.threads)
     torch.manual_seed(a.seed)
@@ -120,6 +123,8 @@ def main():
     model = SetPolicy(hidden=a.hidden)
     if a.init:
         model.load_state_dict(torch.load(a.init, map_location="cpu")["model"])
+    dev = torch.device(a.device)
+    model.to(dev)
     opt = torch.optim.AdamW(model.parameters(), lr=a.lr, weight_decay=1e-4)
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=a.lr, total_steps=a.steps, pct_start=0.05)
     base = baseline(dev, dev_t, dev_p, train.label[train.valid[::7]].ravel().astype(np.int64))
@@ -130,8 +135,8 @@ def main():
     seen = 0
     for step in range(1, a.steps + 1):
         obs, y, ctx, _ = sampler.batch(a.batch)
-        logits = model(torch.from_numpy(obs))
-        loss = F.cross_entropy(logits, torch.from_numpy(y))
+        logits = model(torch.from_numpy(obs).to(dev, non_blocking=True))
+        loss = F.cross_entropy(logits, torch.from_numpy(y).to(dev, non_blocking=True))
         opt.zero_grad(set_to_none=True)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -140,13 +145,13 @@ def main():
         seen += len(y)
         if step % a.eval_every == 0 or step == a.steps:
             ev = evaluate(model, dev, dev_t, dev_p, eval_delay)
-            ev.update(step=step, samples=seen, train_loss=float(loss), seconds=round(time.time() - t0),
+            ev.update(step=step, samples=seen, train_loss=float(loss.detach()), seconds=round(time.time() - t0),
                       samples_per_s=round(seen / (time.time() - t0)))
             log["evals"].append(ev)
             print(json.dumps({k: (round(v, 4) if isinstance(v, float) else v) for k, v in ev.items()
                               if k != "per_context"}), flush=True)
-            ckpt = dict(model=model.state_dict(), hidden=a.hidden, obs_version="x4-obs-v3", step=step,
-                        delay=a.delay, maps=maps)
+            ckpt = dict(model={k: v.cpu() for k, v in model.state_dict().items()}, hidden=a.hidden,
+                        obs_version="x4-obs-v3", obs_dim=int(obs.shape[1]), step=step, delay=a.delay, maps=maps)
             torch.save(ckpt, out / "last.pt")
             if best is None or ev["nll"] < best:
                 best = ev["nll"]

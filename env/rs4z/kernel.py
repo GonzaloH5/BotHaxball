@@ -190,7 +190,7 @@ def physics_tick(pos, vel, mask, group, radius, inv, bcoef, damping, kick_cancel
     """Un tick de un partido; copia del cuerpo de `sim.physics.step_batch` sin powershot.
 
     Devuelve el gol del tick (+1 rojo, -1 azul). Libera el saque inicial cuando la pelota se mueve.
-    kinfo[p] = (distancia a la pelota, vx, vy) del pateador antes del tick (lo usa el script de Sanguchito).
+    kinfo[p] = (distancia a la pelota, vx, vy, pelota − pateador en x, en y) antes del tick (script de Sanguchito).
     """
     K = pos.shape[0]
     # máscara de la pelota: el script le agrega c0 en córner y saque de arco (segmentos de impulso del mapa)
@@ -218,6 +218,8 @@ def physics_tick(pos, vel, mask, group, radius, inv, bcoef, damping, kick_cancel
                     kinfo[p, 0] = d
                     kinfo[p, 1] = vel[k, 0]
                     kinfo[p, 2] = vel[k, 1]
+                    kinfo[p, 3] = dx         # pelota − pateador antes del tick (dirección que juzga la sala)
+                    kinfo[p, 4] = dy
                     nx = dx / d
                     ny = dy / d
                     vel[0, 0] += nx * kstr * inv[0]
@@ -667,14 +669,15 @@ def post_tick(goal, kicked, contact, pos, vel, group, radius, inv, kick_cancel, 
         dead_ball = kind != LATERAL and (any_kick or moved)
         sangu_kick = -1
         if (flags & FIX_SANGU) and kind != LATERAL:
-            # sólo cuenta la patada del ejecutor que manda la pelota hacia la cancha: en x siempre; en el córner
-            # también en y (498 grabaciones: las 1524 patadas que liberan tienen la componente y hacia adentro,
-            # las 12 ignoradas con x hacia adentro la tienen hacia afuera; `reports/x4/conformance_x4.md`)
+            # sólo cuenta la patada del ejecutor que manda la pelota hacia la cancha, juzgada con la posición del
+            # pateador al patear (antes del tick): en x siempre; en el córner también en y. En 498 grabaciones esta
+            # regla separa las 2746 patadas que liberan de las 346 ignoradas sin errores; con la posición después
+            # del tick fallaba en 43 (`reports/x4/conformance_x4.md`).
             sx_spot = 1.0 if rf[RF_SPOT_X] >= 0.0 else -1.0
             sy_spot = 1.0 if rf[RF_SPOT_Y] >= 0.0 else -1.0
             for p in range(P):
-                if kicked[p] and team[p] == owner and (pos[0, 0] - pos[fp + p, 0]) * sx_spot < 0.0:
-                    if kind == CORNER and (pos[0, 1] - pos[fp + p, 1]) * sy_spot > 0.0:
+                if kicked[p] and team[p] == owner and kinfo[p, 3] * sx_spot < 0.0:
+                    if kind == CORNER and kinfo[p, 4] * sy_spot > 0.0:
                         continue
                     sangu_kick = p
                     break
