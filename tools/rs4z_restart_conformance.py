@@ -266,6 +266,13 @@ def env_pi(name):
     return C.PI[name]
 
 
+def _w1(a, b):
+    if not a or not b:
+        return None
+    q = np.linspace(0.005, 0.995, 199)
+    return float(np.mean(np.abs(np.quantile(np.asarray(a, float), q) - np.quantile(np.asarray(b, float), q))))
+
+
 def _pct(values, qs=(50, 90, 100)):
     if not values:
         return None
@@ -298,6 +305,10 @@ def main():
             n=len(rs), detected=len(started), executed=len(executed),
             room_delay=dict(collections.Counter(r["real_delay"] for r in rs)),
             sim_delay=dict(collections.Counter(r["sim_start_off"] for r in started)),
+            # demora de colocación: cuantiles y W1 entre la de la sala y la simulada (mismas salidas)
+            delay_room_q=_pct([r["real_delay"] for r in started], (10, 50, 90)),
+            delay_sim_q=_pct([r["sim_start_off"] for r in started], (10, 50, 90)),
+            delay_w1=_w1([r["real_delay"] for r in started], [r["sim_start_off"] for r in started]),
             kind_ok=sum(r["sim_kind"] == r["real_kind"] for r in started),
             taker_ok=sum(r["taker_ok"] for r in started),
             spot_err=_pct([r["spot_err"] for r in started]),
