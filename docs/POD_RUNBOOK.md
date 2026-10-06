@@ -60,9 +60,12 @@ python -m learn.x4_ppo --bc runs/x4_bc/final/best.pt --out runs/x4_ppo/lam006 --
     --human-starts 0.4 --pool-frac 0.2 --eval-every 25
 ```
 
-- **Barrido corto de λ** (plan E3): repetir con `--lambda-dist 0.02` y `--lambda-dist 0.1`, con `--out` distintos.
+- **Punto de partida:** la imitación entrenada en CPU esa noche está versionada en `runs/x4_bc/final_sangu_rsone/best.pt` (164M muestras, Sanguchito + RS ONE, retardo 6–15). Con `--bc runs/x4_bc/final_sangu_rsone/best.pt` se puede empezar sin el paso 3, aunque conviene reentrenarla más larga en GPU.
+- **Barrido corto de λ** (plan E3): `--lambda-dist` en {0,02; 0,06; 0,1; 0,2}, con `--out` distintos. El 0,2 es el valor inicial de VPT; se agregó porque con 0,06 la política se alejó de la BC hacia la pasividad en una corrida chica de CPU.
+- **Penalización por saque vencido:** `--forfeit-penalty 0.1` (por defecto). Evita el equilibrio "nadie saca" (`docs/PLAN.md` E3). No hay que bajarla a 0 sin mirar `forfeits` en `log.jsonl` y `selfplay.kickoff_wait_s` en `eval.jsonl`.
+- **Memoria:** con `--envs 1024 --rollout 64` el buffer ocupa ~2 GB de RAM. Si falta, usar `--rollout 32`.
 - **Qué mirar:**
-  - `runs/x4_ppo/*/eval.jsonl`: `vs_bc.score` (victorias contra la BC con latencia de sala), `human_w1_mean` y `selfplay_safety` (saques iniciales que nadie ejecuta);
+  - `runs/x4_ppo/*/eval.jsonl`: `vs_bc.score` (victorias contra la BC con latencia de sala), `human_w1_mean`, `selfplay_safety` (saques iniciales que nadie ejecuta) y `selfplay` (patadas, pases y goles por minuto, espera del saque inicial; humanos p50: 3,2 / 8,8 / 0,25 / 3,9 s);
   - `log.jsonl`: `kl_bc`, `entropy` y `clipfrac`.
 - **Shaping:** se retira solo cuando `vs_bc.score` ≥ 0,75.
 - **Checkpoints:**
