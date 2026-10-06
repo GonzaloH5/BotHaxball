@@ -4,8 +4,15 @@ Comandos para correr en el pod (1× RTX 3060, unos 8 hilos útiles) el pipeline 
 
 ## 0. Código y dependencias
 
+El código tiene que ser el de la rama `claude/funny-franklin-iwtrqe` (en `reinicio` no están `learn/`, la cola ni el bot X4).
+Llega al pod de una de dos maneras:
+- con git en el pod: `git fetch origin && git checkout claude/funny-franklin-iwtrqe && git pull --ff-only` (trae también
+  las grabaciones de `replays_real/`, que están versionadas);
+- o desde la PC con `python -m tools.pod_sync --extra replays_real/stadiums/rsx4 replays_real/stadiums/haxarg2k23`,
+  **corrido desde una copia que esté en esa rama** (sube los archivos de la copia desde donde se corre; desde `reinicio`
+  subiría el código viejo).
+
 ```bash
-git fetch origin claude/funny-franklin-iwtrqe && git checkout claude/funny-franklin-iwtrqe
 pip install numpy numba torch orjson onnx onnxruntime pytest
 (cd bridge && npm ci) && (cd deploy && npm ci)
 python -m pytest -q tests                 # 101 tests (1 se saltea sin el caché de §1)
@@ -82,7 +89,8 @@ Requisitos (los verifica el preflight, que es el primer paso de la cola y la det
 - `reports/x4/pass_chain_human.json` y `runs/x4_epv/epv.pt` (versionados);
 - `NUMBA_NUM_THREADS` definido, ≥ 5 GB libres, la GPU con memoria para la actualización real (1024 × 64).
 
-Qué mirar mientras corre (`runs/x4_cola/rl_principal/`):
+Qué mirar mientras corre (`runs/x4_cola/rl_epv/` o `runs/x4_cola/rl_checkpoint/`, según qué brazo ganó el A/B, anotado en
+`queue_state.json` → `shaping_elegido`; `runs/x4_cola/rl_recuperacion/` si hubo un corte):
 - `eval.jsonl` (cada 50 actualizaciones; la fila 0 es la BC): `cadena_pase.indice` (1 = promedio humano) con su `indice_ic90`,
   `indice_sin_valor` (sin las métricas del valor de posesión, que el shaping EPV optimiza), `fallan` y `sin_datos`,
   `cadena_pase_vs_bc` (contra la BC como rival fijo), `vs_bc.score`, `human_w1_mean`, `humanos_dev`
@@ -110,14 +118,26 @@ con `--seed 20261007`.
 
 ## 5. Sala
 
+La cola deja `deploy/rs4z/x4_rl.onnx` y `deploy/rs4z/x4_rl.json` **en el pod**: el checkpoint certificado o, si ninguno
+aprobó, el de mayor índice (ver `veredicto` en `runs/x4_cola/queue_state.json`: sólo "competitivo_en_pases" es para
+competir). El bot corre en la PC, también con el código de la rama `claude/funny-franklin-iwtrqe`:
+
 ```bash
-# la cola deja deploy/rs4z/x4_rl.onnx (el checkpoint certificado o, si ninguno aprobó, el de mayor índice, marcado
-# como no competitivo en runs/x4_cola/queue_state.json)
+# 1. traer los dos archivos del pod a la PC (el .json tiene lo que el bot necesita: versión de la obs, temperatura, mapas)
+scp -P <puerto> "<usuario>@<ip>:/workspace/HaxballRL/deploy/rs4z/x4_rl.*" deploy/rs4z/
+# 2. la ruta completa del bot sin sala: metadatos, observación de sala en cuadros reales de Sanguchito, ONNX y muestreo
+node deploy/test_x4_model_runtime.js deploy/rs4z/x4_rl.onnx
+# 3. a la sala
 node deploy/rs4z/join_bots.js --join <link> --count 7 --model deploy/rs4z/x4_rl.onnx --map sanguchito_rs_x4 --trace
 ```
 
-- El RL se entrena sólo en Sanguchito: el modelo del RL va sólo en esa sala (`--map sanguchito_rs_x4`). En RS ONE y 2K23 se
-  sigue con la BC hasta que el RL incluya esos mapas (el trainer informa `vs_bc_rs_one` sólo como monitor de olvido).
+- Puerto, usuario e IP del pod son los de `HAXBALL_POD_PORT` y `HAXBALL_POD` (`tools/pod_sync.py`).
+- Con modelos X4 el bot muestrea con la temperatura del modelo (1, la misma con la que se evalúa y se certifica). No usar
+  `--temp 0` ni `!greedy`: en greedy juega otra política, y en la BC bajar la temperatura empeoró la cadena de pase.
+- El RL se entrena sólo en Sanguchito: el modelo del RL va sólo en esa sala (`--map sanguchito_rs_x4`). Si la sala es de
+  otro mapa, el bot lo avisa al empezar (`AVISO: la sala ... es rs_one, pero el modelo se entrenó en sanguchito_rs_x4`). En
+  RS ONE y 2K23 se sigue con la BC hasta que el RL incluya esos mapas (el trainer informa `vs_bc_rs_one` sólo como monitor
+  de olvido).
 - El bot detecta el mapa por el nombre del estadio (`SANGUCHITO`, `2K23`/`HAXARG`; si no, RS ONE). `--map <nombre>` lo fuerza (también desde `join_bots.js`).
 - Cada bot usa un hilo de ONNX (`--ort-threads`, por defecto 1). Así se evita la contención que el 2026-10-06 hizo decidir cada 9–10 ticks en vez de cada 3.
 - La traza (`--trace`) más la grabación del host sirven para medir latencia con `tools.rs4z_room_latency` y para conformidad.

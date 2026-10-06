@@ -233,6 +233,16 @@ Ninguno de estos estaba a la vista con "el comando corre". Cada uno tiene test o
   checkpoint sin el brazo. Ahora lo hereda (`test_recovery_keeps_the_pass_arm_of_the_main_run`).
 - **El export a ONNX no se probaba hasta el final.** Sin `onnx` u `onnxruntime` en el pod, la cola fallaba después de
   horas de corrida. Ahora el preflight exporta la BC y la verifica.
+- **El bot de sala jugaba en greedy.** Sin `--temp`, `deploy/bot.js` elegía la acción más probable, pero la política se
+  entrena, se evalúa y se certifica muestreando con temperatura 1, y en la BC bajar la temperatura empeoró la cadena de pase
+  (0,45 → 0,42 con 0,7 → 0,29 con 0,5). Ahora, con modelos X4, el bot usa la temperatura del modelo (1, escrita por
+  `export/to_onnx_x4.py`).
+- **El modelo del RL decía servir para los tres mapas.** El export listaba todos los mapas de la observación; ahora lista
+  los del entrenamiento (sólo Sanguchito) y el bot avisa si la sala es de otro mapa.
+- **El runbook no llevaba el modelo a la sala.** No decía que el modelo queda en el pod y el bot corre en la PC, ni que las
+  dos máquinas tienen que usar el código de esta rama (en `reinicio`, `bot.js` no conoce los modelos X4). Ahora `§0` y `§5`
+  lo dicen, con un test de la ruta completa del bot antes de ir a la sala (`deploy/test_x4_model_runtime.js`). También
+  nombraba una carpeta `rl_principal` que la cola no crea.
 - **Documentación desalineada con el código:** el gate de §1 (decía índice ≥ 1, etapas ≥ 0,9 y la regla del IC90; el
   código usa los umbrales calibrados), el índice de la BC en §2 (0,45 era de la primera versión del índice; con la actual,
   ~0,57), el paso A/B que faltaba en §4, las decisiones de cada tramo y los docstrings de la certificación, de la cola y
@@ -290,6 +300,20 @@ límite de uso; la revisión se rehízo completa en una sesión local, sin GPU y
 - **Correcciones verificadas de punta a punta.** Una certificación chica (4 partidos) sale con 3, "no aprueba". Registra
   la falla de las sondas, que acá no tienen datos, sin cambiar el veredicto, y repetida con la misma semilla da los mismos
   números. El export a ONNX que ahora corre el preflight funciona: diferencia máxima con torch de 2,3e-5.
+- **Cola en seco, de punta a punta, con procesos reales** (CPU, partidos chicos, sin el preflight, que necesita Linux y
+  el caché), desde el A/B en paralelo hasta el veredicto:
+  - el A/B corrió los dos brazos en paralelo y eligió con la media de las evaluaciones (el brazo EPV quedó inválido por
+    perder contra la BC en una evaluación de 8 partidos);
+  - el principal siguió en la misma carpeta hasta la actualización 8 y no se marcó fallo técnico;
+  - la certificación salió con 3 y registró la falla informativa de las sondas;
+  - el export escribió `temperature: 1.0` y `maps: ["sanguchito_rs_x4"]`;
+  - el veredicto fue "no_competitivo".
+- **Ruta del bot con ese modelo exportado** (`deploy/test_x4_model_runtime.js`, con `onnxruntime-node`, que en la sesión
+  de la nube no se pudo instalar):
+  - 400 decisiones sobre cuadros reales de Sanguchito, de la observación de sala a ONNX con las opciones de sesión del bot;
+  - logits iguales a los de torch (184 decisiones con referencia, diferencia máxima 6,7e-6);
+  - el muestreo sigue la política (distancia de variación total 0,002);
+  - la paridad de la observación de sala da 3.088 observaciones, diferencia máxima 7,4e-7 (`deploy/test_x4_room_state.js`).
 - **Ruido del índice** (`reports/x4/ab_cpu_reeval.json`, 24 partidos de self-play): BC 0,575 [0,548; 0,623], EPV 0,583
   [0,552; 0,629], franjas 0,640 [0,582; 0,689].
 - **Calibración del gate** (`reports/x4/gate_calibracion_humanos.json`): aprueban 95 de 100 muestras humanas de 150 min y

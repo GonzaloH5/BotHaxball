@@ -2,6 +2,8 @@
 
 Bot de HaxBall 4v4 (Real Soccer) con juego colectivo de nivel humano competitivo.
 
+**Biblioteca de juego:** [Conocimiento sobre Real Soccer X4](docs/conocimiento/real_soccer_x4/README.md): fundamentos, uso de X, roles, ataque, defensa, pelota parada, estilos, meta, cualidades y análisis de replays, con fuentes y grado de evidencia.
+
 **Estado (2026-10-06):** reinicio desde cero. Todo el método anterior de aprendizaje está archivado: entrenadores, recompensas, currículos, RS-Pro, gates, modelos y reportes. Desde ahora, cada decisión de diseño se justifica con trabajos publicados: ver `docs/PLAN.md` (borrador, pendiente de aprobación).
 
 ## Pipeline X4 (sesión del 2026-10-06)

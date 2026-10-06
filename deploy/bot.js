@@ -43,7 +43,10 @@ const report = data => { if (MANAGED && process.connected) process.send(data); }
 if (MANAGED) process.on('disconnect',()=>{try{managedRoom?.setKeyState(0);managedRoom?.leave();}finally{process.exit(0);}});
 const MODEL = arg("--model", path.join(__dirname, "model.onnx"));
 const META = JSON.parse(fs.readFileSync(MODEL.replace(/\.onnx$/, ".json"), "utf8"));
-let temperature = parseFloat(arg("--temp", "0.0"));
+// X4: la política se entrenó, se evaluó y se certifica muestreando con temperatura 1 (learn/x4_eval.py,
+// learn/x4_certify.py); en greedy juega otra política (en la BC, bajar la temperatura empeoró la cadena de pase). Sin
+// --temp se usa la del modelo (META.temperature, 1 por defecto). Los modelos anteriores siguen en greedy.
+let temperature = parseFloat(arg("--temp", META.obs_version === "x4-obs-v3" ? String(META.temperature ?? 1) : "0.0"));
 const joinId = arg("--join", null);
 // ms de extrapolación como cliente; por defecto se mide en vivo (ver inputDelayTicks)
 const extrapMs = arg("--extrap", null) != null ? parseFloat(arg("--extrap")) : null;
@@ -91,6 +94,7 @@ const VIEW_LAG = parseFloat(arg("--view-lag", "12"));
 // achicar el atraso de la vista; el retraso automático descuenta lo extrapolado.
 const EXTRAP_MS = parseFloat(arg("--extrapolate", "0"));
 const { RS4ZTracker, decodeOwnAction } = require("./rs4z/room_state");
+const { mapFromStadiumName } = require("./rs4z/obs_v3");
 const RULES = arg("--rules", "auto");
 const REPO = path.resolve(__dirname, "..");
 
@@ -134,6 +138,7 @@ function BotPlugin(session, managed = false) {
   const rs4z = RS4Z ? new RS4ZTracker({ ...PUBLIC_CUES, ball_radii: META.ball_radii, kick_strengths: META.kick_strengths,
     obs_version: META.obs_version, map: arg("--map", null) }) : null;
   let rs4zPrev = -1;
+  let mapCheckedFor = null;
   let stadiumDumped = false;
   let policyActive = false;
   const resetPolicy = () => {
@@ -410,6 +415,16 @@ function BotPlugin(session, managed = false) {
       stadiumDumped = true;
       try { fs.writeFileSync(DUMP_STADIUM, Utils.exportStadium(room.stadium)); } catch (e) { console.error("no pude guardar el mapa:", e.message); }
     }
+    if (X4 && mapCheckedFor !== room.stadium) {
+      // el modelo del RL se entrena sólo en Sanguchito (META.maps): en otra sala juega con un mapa que no vio
+      mapCheckedFor = room.stadium;
+      const map = arg("--map", null) || mapFromStadiumName(room.stadium.name);
+      if (META.maps && !META.maps.includes(map)) {
+        console.warn(`AVISO: la sala "${room.stadium.name}" es ${map}, pero el modelo se entrenó en ${META.maps.join(", ")}`);
+      } else {
+        console.log(`mapa de la sala "${room.stadium.name}": ${map}`);
+      }
+    }
     const ball = dsc(gs.physicsState.discs[0]);
     const frame = {
       state: gs.state, kickoffTeam: teamIdx(gs.goalConcedingTeam ? gs.goalConcedingTeam.id : 1),
@@ -563,7 +578,7 @@ function BotPlugin(session, managed = false) {
   const session = await ort.InferenceSession.create(MODEL, ortSessionOptions(arg("--ort-threads", "1")));
   const plugin = new BotPlugin(session, MANAGED);
   console.log(X4
-    ? `modelo ${MODEL} (X4 4v4, obs v3, ${META.stage}, mapas ${(META.maps || []).join(", ")})`
+    ? `modelo ${MODEL} (X4 4v4, obs v3, ${META.stage}, mapas ${(META.maps || []).join(", ")}, temperatura ${temperature})`
     : RS4Z
     ? `modelo ${MODEL} (RS4-Z 4v4 Real Soccer ONE, obs v2, ${META.stage} ${(META.samples / 1e6).toFixed(0)}M muestras)`
     : UNIVERSAL

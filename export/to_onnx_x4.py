@@ -34,9 +34,16 @@ def main():
     x = torch.zeros(4, obs_v3.OBS_DIM)
     torch.onnx.export(model, (x,), str(out), input_names=["obs"], output_names=["logits"],
                       dynamic_axes={"obs": {0: "n"}, "logits": {0: "n"}}, opset_version=17, dynamo=False)
+    # mapas en los que se entrenó: la imitación los guarda en "maps"; el RL (learn/x4_ppo.py), en sus argumentos
+    # ("sanguchito_rs_x4:1.0,..."). El bot avisa si la sala es de otro mapa.
+    maps = ck.get("maps")
+    if not maps and isinstance(ck.get("args"), dict) and ck["args"].get("maps"):
+        maps = [m.split(":")[0] for m in str(ck["args"]["maps"]).split(",") if m]
     meta = dict(obs_version=obs_v3.OBS_VERSION, obs_dim=obs_v3.OBS_DIM, n_actions=18, frame_skip=3,
                 max_delay=int(obs_v3.MAX_DELAY), default_delay=10, ball_radii=[8.0, 9.0], kick_strengths=[5.65, 5.85],
-                maps=list(ck.get("maps") or obs_v3.MAP_NAMES), stage=a.stage or Path(a.ckpt).parent.name,
+                # la política se evalúa y se certifica muestreando con temperatura 1 (deploy/bot.js la usa por defecto)
+                temperature=1.0,
+                maps=list(maps or obs_v3.MAP_NAMES), stage=a.stage or Path(a.ckpt).parent.name,
                 source=str(a.ckpt), step=ck.get("step") or ck.get("update"), delay=ck.get("delay"))
     out.with_suffix(".json").write_text(json.dumps(meta, indent=1), encoding="utf-8")
     import onnxruntime as ort
