@@ -137,3 +137,18 @@ def test_epv_labels_respect_censoring():
     ep2 = _episode(400)                           # sin gol: los últimos 10 s quedan censurados
     yr, yb, ok = episode_labels(ep2, horizon_s=10.0)
     assert ok[:200].all() and not ok[200:].any()
+
+
+def test_team_filter_splits_events():
+    ep = _episode(200)
+    ep.pos[:, 1] = [150.0, 100.0]
+    ep.pos[:, 4] = [300.0, 500.0]
+    ep.ball[:20, :2] = ep.pos[:20, 0] + [20.0, 0]
+    ep.kicked[19, 0] = True
+    _move_ball(ep, 19, 40, ep.ball[19, :2], [130.0, 100.0])
+    ep.ball[40:, :2] = [130.0, 100.0]
+    both = PC.unit_counts([ep])
+    red = PC.unit_counts([ep], team=0)
+    blue = PC.unit_counts([ep], team=1)
+    assert red["passes"] == both["passes"] == 1 and blue["passes"] == 0
+    assert abs(red["minutes"] - both["minutes"] / 2) < 1e-9

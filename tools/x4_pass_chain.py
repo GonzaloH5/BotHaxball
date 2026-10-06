@@ -271,15 +271,16 @@ def _new_counts():
                 dec=0, dec_val_sum=0.0, dec_press=0, dec_press_lost=0, dec_prog=0, dec_prog_pass=0)
 
 
-def unit_counts(episodes, epv=None):
-    """Totales de un conjunto de tramos (una unidad de bootstrap)."""
+def unit_counts(episodes, epv=None, team=None):
+    """Totales de un conjunto de tramos (una unidad de bootstrap). `team` (0 rojo, 1 azul): sólo los eventos de ese
+    equipo (para medir a una política contra un rival fijo); None = los dos."""
     c = _new_counts()
     for ep in episodes:
-        _add_episode(c, ep, epv)
+        _add_episode(c, ep, epv, team)
     return c
 
 
-def _add_episode(c, ep, epv):
+def _add_episode(c, ep, epv, only=None):
     T = len(ep.ball)
     if T < 2:
         return
@@ -288,9 +289,16 @@ def _add_episode(c, ep, epv):
     owner, dist = E["owner"], E["dist"]
     loss_time, sgn = E["loss_time"], E["sgn"]
     open_ = ep.open_play
-    c["minutes"] += T * DT / 60.0
-    c["open_minutes"] += float(open_.sum()) * DT / 60.0
-    c["goals"] += int(np.abs(ep.goal_ev).sum()) if ep.goal_ev is not None else int(ep.goals)
+    # con un solo equipo, las tasas por minuto se cuentan por "medio partido" (comparables con las de los dos equipos)
+    share = 1.0 if only is None else 0.5
+    c["minutes"] += share * T * DT / 60.0
+    c["open_minutes"] += share * float(open_.sum()) * DT / 60.0
+    if ep.goal_ev is None:
+        c["goals"] += int(ep.goals)
+    elif only is None:
+        c["goals"] += int(np.abs(ep.goal_ev).sum())
+    else:
+        c["goals"] += int((ep.goal_ev == (1 if only == 0 else -1)).sum())
     r_ctrl = XM.PLAYER_R + ep.ball_r + 15.0
 
     # --- posesión controlada por muestreo: equipo y portador de la última corrida
@@ -302,7 +310,7 @@ def _add_episode(c, ep, epv):
         carrier[i] = last
     ctrl = (carrier >= 0) & open_
     ctrl &= dist[np.arange(T), np.maximum(carrier, 0)] <= r_ctrl
-    c["ctrl_samples"] += int(ctrl.sum())
+    c["ctrl_samples"] += int(ctrl.sum()) if only is None else int((ctrl & (TEAM[np.maximum(carrier, 0)] == only)).sum())
 
     # --- disponibilidad de compañeros en cada muestreo con control (para desmarques) y muestras de estado
     avail = np.zeros((T, 8), bool)
@@ -314,6 +322,8 @@ def _add_episode(c, ep, epv):
             avail[idx, sl] = av
             avail[idx, carrier[idx]] = False
     for team in (0, 1):
+        if only is not None and team != only:
+            continue
         idx = np.flatnonzero(ctrl & (TEAM[np.maximum(carrier, 0)] == team))[::STATE_EVERY]
         if not len(idx):
             continue
@@ -346,6 +356,8 @@ def _add_episode(c, ep, epv):
         received_at.setdefault(p["b"], []).append(p["c"])
     speed = np.hypot(ep.vel[..., 0], ep.vel[..., 1])
     for q in range(8):
+        if only is not None and TEAM[q] != only:
+            continue
         closed_for = 0
         for i in range(1, T):
             if not ctrl[i] or TEAM[carrier[i]] != TEAM[q] or carrier[i] == q:
@@ -364,6 +376,8 @@ def _add_episode(c, ep, epv):
     passes = E["passes"]
     for k, p in enumerate(passes):
         r, cc, a, b, team = p["r"], p["c"], p["a"], p["b"], p["team"]
+        if only is not None and team != only:
+            continue
         s = sgn(team)
         osl = slice(4, 8) if team == 0 else slice(0, 4)
         br, bc = ep.ball[r, :2] * s, ep.ball[cc, :2] * s
@@ -443,6 +457,8 @@ def _add_episode(c, ep, epv):
     # pases fallidos
     for f in E["failed"]:
         team = f["team"]
+        if only is not None and team != only:
+            continue
         s = sgn(team)
         c["failed"] += 1
         osl = slice(4, 8) if team == 0 else slice(0, 4)
@@ -450,7 +466,7 @@ def _add_episode(c, ep, epv):
             c["press_att"] += 1
         end = min(f["end"], T - 1)
         c["epv_att_sum"] += s * (E["phi"][end] - E["phi"][f["r"]])
-    c["shots"] += len(E["shots"])
+    c["shots"] += sum(1 for sh in E["shots"] if only is None or sh["team"] == only)
 
     # --- posesiones (corridas seguidas del mismo equipo)
     runs = E["runs"]
@@ -461,6 +477,9 @@ def _add_episode(c, ep, epv):
         while j + 1 < len(runs) and TEAM[runs[j + 1]["o"]] == team:
             j += 1
         start = runs[i]["a"]
+        if only is not None and team != only:
+            i = j + 1
+            continue
         lt = loss_time(team, runs[j]["b"])
         g = E["next_after"](E["goal_for"][team], start)
         scored = g < T and g <= lt
@@ -489,6 +508,8 @@ def _add_episode(c, ep, epv):
         if not (ctrl[a0] or (a0 + 1 < T and ctrl[a0 + 1])) or not open_[a0]:
             continue
         team = TEAM[o]
+        if only is not None and team != only:
+            continue
         s = sgn(team)
         osl = slice(4, 8) if team == 0 else slice(0, 4)
         sl = slice(0, 4) if team == 0 else slice(4, 8)
@@ -570,6 +591,46 @@ def rates(units):
     )
 
 
+# soporte de cada métrica: ("tasa", exposición) para eventos por minuto (se exige que con el ritmo humano se esperen
+# ≥ N_MIN eventos en esa exposición: así un 0 del agente sí cuenta como déficit) o ("n", denominador) para fracciones,
+# medias y medianas (≥ N_MIN observaciones). Las métricas de estado muestrean cada 0,25 s: se cuenta 1 de cada 4.
+N_MIN = 20
+_RATE_OPEN = ("pases_por_min", "progresivos_por_min", "rompe_lineas_por_min", "al_espacio_por_min",
+              "cambios_orientacion_por_min", "paredes_por_min", "salidas_presion_por_min", "asistencias_por_min",
+              "tiros_por_min")
+_DEN = dict(lineas_disponibles="state4", linea_progresiva_frac="state4", apoyo_frac="state4", control_espacio="state4",
+            separacion_media="state4", desmarques_utiles_frac="desm", reofrece_tras_pasar_frac="reofrece_n",
+            precision_pase="attempts", precision_bajo_presion="press_att", epv_por_intento="attempts",
+            atras_frac="passes", largo_pase_p50="passes", velocidad_pase_p50="passes", retencion_tras_recibir="rec",
+            retencion_bajo_presion="rec_press", control_orientado_frac="rec", anticipacion_receptor="rec",
+            de_primera_frac="rec", tiempo_con_pelota_p50="rec", progreso_tras_pase_avance="adv_n",
+            tiro_tras_pase_avance_frac="adv_n", devolucion_inmediata_frac="next_pass_n", epv_por_posesion="poss",
+            pases_por_posesion="poss", circulacion_inutil_frac="poss3", epv_por_decision="dec",
+            perdida_sin_pase_bajo_presion="dec_press", pase_con_linea_progresiva="dec_prog",
+            presion_al_portador_p50="state4")
+
+
+def support(units):
+    """Exposición (minutos de juego abierto y de posesión) y denominadores de cada métrica."""
+    S = lambda k: sum(u[k] for u in units)
+    den = dict(state4=S("state_samples") / 4.0, attempts=S("passes") + S("failed"))
+    for k in ("desm", "reofrece_n", "press_att", "passes", "rec", "rec_press", "adv_n", "next_pass_n", "poss", "poss3",
+              "dec", "dec_press", "dec_prog"):
+        den[k] = S(k)
+    return dict(open_minutes=S("open_minutes"), poss_minutes=S("ctrl_samples") * DT / 60.0, den=den)
+
+
+def reliable(metric, sup, human_value):
+    """¿Hay datos suficientes para juzgar la métrica?"""
+    if sup is None:
+        return True
+    if metric in _RATE_OPEN:
+        return human_value is not None and human_value * sup["open_minutes"] >= N_MIN
+    if metric == "desmarques_por_min_posesion":
+        return human_value is not None and human_value * sup["poss_minutes"] >= N_MIN
+    return sup["den"].get(_DEN.get(metric), 0) >= N_MIN
+
+
 def bootstrap(units, n=1000, seed=0):
     rng = np.random.default_rng(seed)
     point = rates(units)
@@ -602,12 +663,51 @@ def _r(x):
     return round(x, 4) if np.isfinite(x) else None
 
 
-def gate(agent, human, spread):
-    """Veredicto por métrica y global. `agent` y `human`: salidas de `bootstrap`; `spread`: `unit_spread` humano.
-    Eficacia: valor del agente ≥ promedio humano ("mas") o ≤ ("menos"). Estilo: dentro de p10–p90 humano."""
-    rows, ok_all, by_stage = {}, True, {}
+def _ratio(kind, a, h):
+    if a is None or h in (None, 0):
+        return None
+    r = a / h if kind == "mas" else h / a if a else 2.0
+    return float(np.clip(r, 0.25, 2.0))
+
+
+def chain_index(values, human, sup=None):
+    """Índice de la cadena: media geométrica de agente/humano (invertida en las "menos") sobre las métricas de eficacia
+    con datos suficientes, cada razón en [0,25; 2]. 1 = promedio humano."""
+    logs = []
+    for m, _, kind in METRICS:
+        if kind == "banda" or not reliable(m, sup, human[m]["valor"]):
+            continue
+        r = _ratio(kind, values.get(m), human[m]["valor"])
+        if r is not None:
+            logs.append(np.log(r))
+    return float(np.exp(np.mean(logs))) if logs else None
+
+
+def index_ci(units, human, n=300, seed=0):
+    """(índice, p5, p95) por bootstrap de unidades."""
+    rng = np.random.default_rng(seed)
+    sup = support(units)
+    point = chain_index(rates(units), human, sup)
+    draws = []
+    for _ in range(n):
+        pick = [units[i] for i in rng.integers(0, len(units), len(units))]
+        v = chain_index(rates(pick), human, sup)
+        if v is not None:
+            draws.append(v)
+    if point is None or not draws:
+        return None, None, None
+    return round(point, 4), round(float(np.percentile(draws, 5)), 4), round(float(np.percentile(draws, 95)), 4)
+
+
+def gate(agent, human, spread, sup=None, strict=False):
+    """Veredicto por métrica y global. `agent` y `human`: salidas de `bootstrap`; `spread`: `unit_spread` humano;
+    `sup`: `support` de las unidades del agente. Eficacia: valor del agente ≥ promedio humano ("mas") o ≤ ("menos").
+    Estilo: dentro de p10–p90 humano. Una métrica sin datos suficientes no se aprueba; `strict` exige que todas tengan
+    datos (certificación); si no, alcanza con el 80% (evaluaciones del entrenamiento, más chicas)."""
+    rows, by_stage = {}, {}
     for m, stage, kind in METRICS:
         a, h = agent[m]["valor"], human[m]["valor"]
+        enough = reliable(m, sup, h)
         if a is None or h is None:
             ok = False
         elif kind == "mas":
@@ -619,18 +719,20 @@ def gate(agent, human, spread):
             ok = lo is not None and lo <= a <= hi
         rows[m] = dict(etapa=stage, tipo=kind, agente=a, agente_ic90=agent[m]["ic90"], humano=h,
                        humano_ic90=human[m]["ic90"], banda_humana=spread[m] if kind == "banda" else None,
-                       razon=_r(a / h) if a is not None and h not in (None, 0) else None, ok=bool(ok))
-        ok_all &= bool(ok)
+                       razon=_r(a / h) if a is not None and h not in (None, 0) else None, ok=bool(ok and enough),
+                       datos_suficientes=bool(enough))
         st = by_stage.setdefault(stage, [0, 0])
-        st[0] += bool(ok)
+        st[0] += bool(ok and enough)
         st[1] += 1
+    judged = [m for m in rows if rows[m]["datos_suficientes"]]
+    frac_rel = len(judged) / len(rows)
+    ok_judged = all(rows[m]["ok"] for m in judged)
+    aprobado = ok_judged and (frac_rel == 1.0 if strict else frac_rel >= 0.8)
     eff = [m for m, _, k in METRICS if k != "banda"]
     frac = sum(rows[m]["ok"] for m in eff) / len(eff)
-    # índice de la cadena: media geométrica de agente/humano (invertida en las "menos"), cada razón en [0,05; 2]
-    ratios = [float(np.clip(rows[m]["razon"] if METRIC_KIND[m] == "mas" else 1.0 / max(rows[m]["razon"], 1e-6), 0.05, 2.0))
-              for m in eff if rows[m]["razon"] is not None]
-    return dict(aprobado=bool(ok_all), fraccion_eficacia_ok=round(frac, 3),
-                indice_cadena=round(float(np.exp(np.mean(np.log(ratios)))), 4) if ratios else None,
+    idx = chain_index({m: rows[m]["agente"] for m in rows}, human, sup)
+    return dict(aprobado=bool(aprobado), fraccion_eficacia_ok=round(frac, 3), fraccion_con_datos=round(frac_rel, 3),
+                indice_cadena=round(idx, 4) if idx is not None else None,
                 por_etapa={k: f"{v[0]}/{v[1]}" for k, v in by_stage.items()}, metricas=rows)
 
 
@@ -658,11 +760,11 @@ def human_units(split, map_name="sanguchito_rs_x4", epv=None, family=None, limit
 
 
 def policy_units(red, blue=None, matches=32, minutes=3.0, seed=11, epv=None, map_name="sanguchito_rs_x4",
-                 delays=(8, 9, 10, 11)):
+                 delays=(8, 9, 10, 11), obs_delay=None):
     """Partidos simulados (self-play si `blue` es None) → unidades por partido."""
     from learn.x4_eval import play
     r = play(red, blue or red, map_name=map_name, matches=matches, minutes=minutes, seed=seed, record=matches,
-             delays=delays)
+             delays=delays, obs_delay=obs_delay)
     return [unit_counts([ep], epv) for ep in r["episodes"]], r
 
 
@@ -712,7 +814,8 @@ def main():
                        metricas=m)
             if ref:
                 h = ref[a.gate_ref]
-                row["gate"] = gate(m, h["metricas"], h["banda"])
+                row["gate"] = gate(m, h["metricas"], h["banda"], support(u), strict=True)
+                row["indice_ic90"] = index_ci(u, h["metricas"])
             report[spec] = row
             print(spec, json.dumps({k: v for k, v in row.get("gate", {}).items() if k != "metricas"}), flush=True)
     Path(a.out).parent.mkdir(parents=True, exist_ok=True)

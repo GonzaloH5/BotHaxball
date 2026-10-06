@@ -341,8 +341,13 @@ def drift_reasons(ev, a, base=None, defense_hi=None):
     if ko is not None and ko > lim_ko:
         out.append(f"saques iniciales sin ejecutar por partido {ko} > {round(lim_ko, 2)} (equilibrio 'nadie saca')")
     pc = ev.get("cadena_pase") or {}
-    if base.get("indice") and pc.get("indice") is not None and pc["indice"] < a.drift_pass_ratio * base["indice"]:
-        out.append(f"cadena_pase.indice {pc['indice']} < {a.drift_pass_ratio} × {round(base['indice'], 3)} (inicial)")
+    hi = (pc.get("indice_ic90") or [None, None])[1]
+    # caída clara: el índice está por debajo de la fracción pedida de la evaluación 0 y su intervalo del 90% entero
+    # queda por debajo del valor inicial (con evaluaciones chicas el índice es ruidoso)
+    if (base.get("indice") and pc.get("indice") is not None and pc["indice"] < a.drift_pass_ratio * base["indice"]
+            and hi is not None and hi < base["indice"]):
+        out.append(f"cadena_pase.indice {pc['indice']} (IC90 hasta {hi}) < {a.drift_pass_ratio} × "
+                   f"{round(base['indice'], 3)} (inicial)")
     press = (pc.get("metricas") or {}).get("presion_al_portador_p50", [None])[0]
     if defense_hi and press is not None and press > 1.3 * defense_hi:
         out.append(f"presión al portador p50 {press} px > 1,3 × p90 humano {defense_hi} (la defensa dejó de presionar)")
@@ -432,14 +437,14 @@ def parse_args(argv=None):
     ap.add_argument("--match-minutes", default="1:3")
     ap.add_argument("--splits", default=str(ROOT / "reports" / "x4" / "splits.json"))
     ap.add_argument("--bank-recordings", type=int, default=200, help="grabaciones para estados humanos (0 = ninguna)")
-    ap.add_argument("--eval-every", type=int, default=25)
+    ap.add_argument("--eval-every", type=int, default=50)
     ap.add_argument("--eval-matches", type=int, default=32, help="partidos por lado contra la BC en cada evaluación")
-    ap.add_argument("--eval-minutes", type=float, default=2.0)
+    ap.add_argument("--eval-minutes", type=float, default=3.0)
     ap.add_argument("--shaping-retire", type=float, default=0.75,
                     help="victorias contra la BC a partir de las cuales el shaping se retira para siempre (0 = nunca)")
     ap.add_argument("--human-gate", type=float, default=1.0,
                     help="W1 normalizada media máxima (métricas clave) para que un checkpoint cuente como mejor")
-    ap.add_argument("--eval-selfplay", type=int, default=16,
+    ap.add_argument("--eval-selfplay", type=int, default=24,
                     help="partidos de self-play por evaluación (parecido humano y cadena de pase)")
     ap.add_argument("--rsone-every", type=int, default=100, help="monitor de olvido en RS ONE cada N actualizaciones")
     ap.add_argument("--dev-recordings", type=int, default=15,
@@ -937,10 +942,13 @@ class Trainer:
         self.policy.eval()
         w = dr = l = gf = ga = 0
         od = a.delay_feature_fixed if a.delay_feature != "true" else None      # como el bot en la sala
+        vs_bc_eps = []                  # (episodio, equipo del aprendiz) para la cadena de pase contra un rival fijo
+        rec_n = 0 if strength_only or self.pass_ref is None else min(8, a.eval_matches)
         for side, (red, blue) in enumerate(((me, bc), (bc, me))):
             r = play(red, blue, map_name="sanguchito_rs_x4", matches=a.eval_matches, minutes=a.eval_minutes,
-                     delays=delays, seed=1000 + self.update * 2 + side + 100_000 * seed_offset, record=0,
+                     delays=delays, seed=1000 + self.update * 2 + side + 100_000 * seed_offset, record=rec_n,
                      obs_delay=od)
+            vs_bc_eps += [(ep, side) for ep in r["episodes"]]
             g = r["goals"] if side == 0 else r["goals"][:, ::-1]
             d = g[:, 0] - g[:, 1]
             w += int((d > 0).sum()); dr += int((d == 0).sum()); l += int((d < 0).sum())
@@ -977,6 +985,10 @@ class Trainer:
                    selfplay_pases={k: (round(v, 3) if v == v else None) for k, v in pooled.items()})
         if self.pass_ref is not None:
             out["cadena_pase"] = self.pass_chain(selfplay["episodes"])
+            if vs_bc_eps:
+                # informativo: el aprendiz contra la defensa humano-símil de la BC (no se puede inflar con una defensa
+                # blanda propia, como en self-play)
+                out["cadena_pase_vs_bc"] = self.pass_chain([e for e, _ in vs_bc_eps], teams=[t for _, t in vs_bc_eps])
         if self.dev_set is not None:
             out["humanos_dev"] = self.dev_metrics()
         if a.rsone_every and self.update % a.rsone_every == 0:
@@ -1006,16 +1018,22 @@ class Trainer:
         acc = float((lp.argmax(-1) == lab).float().mean())
         return dict(nll=round(nll, 4), nll_bc=round(nll_bc, 4), kl_bc=round(kl, 4), acc=round(acc, 4))
 
-    def pass_chain(self, episodes):
-        """Cadena de pase del self-play contra la referencia humana (tools/x4_pass_chain.py): índice (media
-        geométrica de agente/humano en las métricas de eficacia; 1 = promedio humano), gate y métricas."""
+    def pass_chain(self, episodes, teams=None):
+        """Cadena de pase contra la referencia humana (tools/x4_pass_chain.py): índice (media geométrica de
+        agente/humano en las métricas de eficacia; 1 = promedio humano), gate y métricas. `teams`: equipo a medir en
+        cada episodio (None = los dos, self-play)."""
         from tools import x4_pass_chain as PC
-        units = [PC.unit_counts([ep], self.epv) for ep in episodes]
+        teams = teams or [None] * len(episodes)
+        units = [PC.unit_counts([ep], self.epv, team=t) for ep, t in zip(episodes, teams)]
         m = PC.bootstrap(units, n=200, seed=int(self.update))
-        g = PC.gate(m, self.pass_ref["metricas"], self.pass_ref["banda"])
-        return dict(indice=g["indice_cadena"], aprobado=g["aprobado"], fraccion_eficacia_ok=g["fraccion_eficacia_ok"],
+        sup = PC.support(units)
+        g = PC.gate(m, self.pass_ref["metricas"], self.pass_ref["banda"], sup)
+        idx, lo, hi = PC.index_ci(units, self.pass_ref["metricas"], n=200, seed=int(self.update))
+        return dict(indice=idx, indice_ic90=[lo, hi], aprobado=g["aprobado"],
+                    fraccion_eficacia_ok=g["fraccion_eficacia_ok"], fraccion_con_datos=g["fraccion_con_datos"],
                     por_etapa=g["por_etapa"], pases=m["pases"]["valor"],
-                    fallan=sorted(k for k, v in g["metricas"].items() if not v["ok"]),
+                    fallan=sorted(k for k, v in g["metricas"].items() if not v["ok"] and v["datos_suficientes"]),
+                    sin_datos=sorted(k for k, v in g["metricas"].items() if not v["datos_suficientes"]),
                     metricas={k: [v["agente"], v["humano"]] for k, v in g["metricas"].items()})
 
     def save(self, name="last.pt"):

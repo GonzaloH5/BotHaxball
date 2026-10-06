@@ -38,10 +38,12 @@ def main():
     ap.add_argument("--probe-n", type=int, default=256)
     ap.add_argument("--epv", default=str(ROOT / "runs" / "x4_epv" / "epv.pt"))
     ap.add_argument("--reference", default=str(ROOT / "reports" / "x4" / "pass_chain_human.json"))
+    ap.add_argument("--obs-delay", type=int, default=10, help="retardo que informa el bot en la sala (-1 = el verdadero)")
     ap.add_argument("--threads", type=int, default=4)
     ap.add_argument("--seed", type=int, default=20261006)
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
+    a.obs_delay = None if a.obs_delay < 0 else a.obs_delay
     torch.set_num_threads(a.threads)
     from learn.x4_epv import EPV
     from learn.x4_eval import Policy, human_compare, play
@@ -53,12 +55,15 @@ def main():
     report = dict(ckpt=a.ckpt, matches=a.matches, minutes=a.minutes)
 
     # 1. cadena de pase en self-play
-    units, r = PC.policy_units(me, None, a.matches, a.minutes, seed=a.seed, epv=epv)
+    units, r = PC.policy_units(me, None, a.matches, a.minutes, seed=a.seed, epv=epv, obs_delay=a.obs_delay)
     m = PC.bootstrap(units, n=1000, seed=a.seed)
     report["cadena_pase"] = dict(metricas=m, safety=int(r["safety"].sum()))
-    report["gate_sanguchito"] = PC.gate(m, ref["sanguchito_test"]["metricas"], ref["sanguchito_test"]["banda"])
+    sup = PC.support(units)
+    report["gate_sanguchito"] = PC.gate(m, ref["sanguchito_test"]["metricas"], ref["sanguchito_test"]["banda"], sup,
+                                        strict=True)
+    report["indice_ic90"] = PC.index_ci(units, ref["sanguchito_test"]["metricas"], n=500, seed=a.seed)
     if "liga_rs_one" in ref:
-        report["gate_liga"] = PC.gate(m, ref["liga_rs_one"]["metricas"], ref["liga_rs_one"]["banda"])
+        report["gate_liga"] = PC.gate(m, ref["liga_rs_one"]["metricas"], ref["liga_rs_one"]["banda"], sup, strict=True)
     hum = human_compare(r["episodes"]) or {}
     key = ("passes_per_min", "possession_s", "pass_length", "depth", "width", "dist_ball_2", "still_frac",
            "key_changes_per_s", "kickoff_wait_s", "restart_s_lateral")
@@ -66,14 +71,20 @@ def main():
     vals = [w1[k] for k in key if w1.get(k) is not None]
     report["human_w1_mean"] = round(float(np.mean(vals)), 3) if vals else None
 
-    # 2. fuerza contra la BC (los dos lados)
+    # 2. fuerza contra la BC (los dos lados) y cadena de pase del agente contra esa defensa humano-símil
     w = d = l = 0
+    units_bc = []
     for side, (red, blue) in enumerate(((me, bc), (bc, me))):
-        rr = play(red, blue, matches=a.strength_matches, minutes=a.minutes, seed=a.seed + 1 + side, record=0)
+        rr = play(red, blue, matches=a.strength_matches, minutes=a.minutes, seed=a.seed + 1 + side,
+                  record=a.strength_matches, obs_delay=a.obs_delay)
         g = rr["goals"] if side == 0 else rr["goals"][:, ::-1]
         diff = g[:, 0] - g[:, 1]
         w += int((diff > 0).sum()); d += int((diff == 0).sum()); l += int((diff < 0).sum())
+        units_bc += [PC.unit_counts([ep], epv, team=side) for ep in rr["episodes"]]
     report["vs_bc"] = dict(wins=w, draws=d, losses=l, score=round((w + 0.5 * d) / max(1, w + d + l), 3))
+    mb = PC.bootstrap(units_bc, n=1000, seed=a.seed)
+    report["cadena_pase_vs_bc"] = dict(metricas=mb, gate=PC.gate(mb, ref["sanguchito_test"]["metricas"],
+                                                                 ref["sanguchito_test"]["banda"], PC.support(units_bc)))
 
     # 4. sondas (informativas)
     from learn import x4_data as XD
@@ -97,6 +108,7 @@ def main():
     # las sondas son informativas: la política juega 2v1/3v2 y los humanos, desde el mismo estado, 4v4
     report["informativo"] = dict(cadena_pase_vs_liga=report.get("gate_liga", {}).get("aprobado"),
                                  indice_vs_liga=report.get("gate_liga", {}).get("indice_cadena"),
+                                 indice_vs_bc=report["cadena_pase_vs_bc"]["gate"]["indice_cadena"],
                                  sonda_2v1=[probes["2v1"]["tasa_pase"], probes["2v1_humanos"]["tasa_pase"]],
                                  sonda_3v2=[probes["3v2"]["tasa_pase"], probes["3v2_humanos"]["tasa_pase"]])
     report["aprobado"] = all(checks.values())

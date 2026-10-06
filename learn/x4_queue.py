@@ -78,7 +78,7 @@ class Queue:
         return ["learn.x4_ppo", "--bc", a.bc, "--out", self.root / name, "--device", a.device, "--envs", a.envs,
                 "--rollout", a.rollout, "--updates", a.updates, "--lambda-dist", "0.2", "--lambda-decay", "0.9995",
                 "--lambda-min", "0.05", "--critic-warmup", "20", "--human-starts", "0.4", "--pool-frac", "0.2",
-                "--eval-every", "25", "--resume", *extra]
+                "--eval-every", "50", "--resume", *extra]
 
     def evals(self, name):
         p = self.root / name / "eval.jsonl"
