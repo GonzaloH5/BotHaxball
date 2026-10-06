@@ -13,6 +13,10 @@ Receta y fuentes (docs/PLAN.md §2, revisión §8):
   cada franja, el resto al marcar; suma cero, escalado por `--shaping` y retirable (MARLadona arXiv
   2409.20326). El pase NO se premia (Liu 2022, arXiv 2105.12196).
 * Precalentar el crítico con el actor congelado (`--critic-warmup`; plan E2, motivado por Wołczyk 2024).
+* [inferencia] Penalización de suma cero `--forfeit-penalty` (0,1) al equipo que deja vencer un saque o el saque
+  inicial (plazo de entrenamiento). Sin ella, en self-play quedarse quieto en el saque inicial vale exactamente 0
+  (reloj congelado y el saque pasa al rival, que es la misma política): una corrida en CPU desde la BC dejó de
+  sacar a las 50 actualizaciones. En la sala no hay plazo y quedarse quieto no es una opción.
 * Arranques desde estados humanos grabados (`--human-starts`; Salimans & Chen arXiv 1812.03381, Backplay
   arXiv 1807.06919): juego abierto y saques del split de entrenamiento.
 * Rivales (TiZero arXiv 2302.07515, OpenAI Five arXiv 1912.06680): `--pool-frac` de los partidos contra el
@@ -215,6 +219,15 @@ class Arena:
 C_GOAL_X = 1150.0
 
 
+def forfeit_reward(forfeit, penalty):
+    """(N, 2) suma cero: −penalty al equipo que perdió un saque por plazo (forfeit = equipo, −1 ninguno)."""
+    out = np.zeros((len(forfeit), 2))
+    rows = np.flatnonzero(forfeit >= 0)
+    out[rows, forfeit[rows]] -= penalty
+    out[rows, 1 - forfeit[rows]] += penalty
+    return out
+
+
 # ------------------------------------------------------------------------------------- trainer
 def load_policy(path, device):
     ck = torch.load(path, map_location="cpu")
@@ -242,6 +255,8 @@ def parse_args(argv=None):
     ap.add_argument("--ent", type=float, default=0.0)
     ap.add_argument("--lambda-dist", default="0.06", help="valores de λ (KL a la BC) sorteados por partido")
     ap.add_argument("--shaping", type=float, default=1.0)
+    ap.add_argument("--forfeit-penalty", type=float, default=0.1,
+                    help="penalización (suma cero) por dejar vencer un saque o el saque inicial")
     ap.add_argument("--shaping-anneal", type=float, default=0.0, help="decisiones hasta llevar el shaping a 0 (0 = fijo)")
     ap.add_argument("--critic-warmup", type=int, default=20, help="actualizaciones sólo del crítico al empezar")
     ap.add_argument("--human-starts", type=float, default=0.4)
@@ -367,7 +382,7 @@ class Trainer:
         a = self.a
         T = a.rollout
         buf = []
-        stats = dict(goals=0, matches=0, shaping=0.0, kickoff_wait=[], decisions=0)
+        stats = dict(goals=0, matches=0, shaping=0.0, kickoff_wait=[], decisions=0, forfeits=0)
         shaping_scale = 1.0
         if a.shaping_anneal > 0:
             shaping_scale = max(0.0, 1.0 - self.decisions / a.shaping_anneal)
@@ -399,6 +414,8 @@ class Trainer:
                 team_r[:, 1] -= np.sign(goal)
                 sh = arena.shaping(goal) * shaping_scale
                 team_r += sh
+                team_r += forfeit_reward(ev["forfeit"], a.forfeit_penalty)
+                stats["forfeits"] += int((ev["forfeit"] >= 0).sum())
                 rw[t] = team_r[:, TEAM]
                 arena.ep_goals[:, 0] += goal > 0
                 arena.ep_goals[:, 1] += goal < 0
@@ -538,10 +555,20 @@ class Trainer:
         return out
 
     def save(self, name="last.pt"):
+        # sólo tipos planos: los checkpoints se cargan con torch.load(weights_only=True)
+        def plain(v):
+            if isinstance(v, np.ndarray):
+                return v.tolist()
+            if isinstance(v, np.generic):
+                return v.item()
+            if isinstance(v, (list, tuple)):
+                return [plain(x) for x in v]
+            return v
         torch.save(dict(model=self.policy.state_dict(), critic=self.critic.state_dict(), hidden=self.hidden,
-                        obs_version=obs_v3.OBS_VERSION, update=self.update, decisions=self.decisions,
-                        vnorm=(self.vnorm.mean, self.vnorm.sq, self.vnorm.w), pool_wins=self.pool_wins.tolist(),
-                        args={k: (v.tolist() if isinstance(v, np.ndarray) else v) for k, v in vars(self.a).items()}),
+                        obs_version=obs_v3.OBS_VERSION, update=int(self.update), decisions=int(self.decisions),
+                        vnorm=[float(self.vnorm.mean), float(self.vnorm.sq), float(self.vnorm.w)],
+                        pool_wins=[float(x) for x in self.pool_wins],
+                        args={k: plain(v) for k, v in vars(self.a).items()}),
                    self.out / name)
 
     def snapshot(self):
@@ -567,7 +594,7 @@ class Trainer:
             row = dict(update=self.update, decisions=self.decisions, critic_only=u < a.critic_warmup,
                        rollout_s=round(tl - tr, 2), learn_s=round(time.time() - tl, 2),
                        dps=round(stats["decisions"] / max(1e-6, time.time() - tr)), goals=stats["goals"],
-                       matches=stats["matches"], shaping_abs=round(stats["shaping"], 3),
+                       matches=stats["matches"], shaping_abs=round(stats["shaping"], 3), forfeits=stats["forfeits"],
                        pool_wins={n: round(float(w), 3) for (n, _), w in zip(self.pool, self.pool_wins)},
                        **{k: (round(v, 5) if isinstance(v, float) else v) for k, v in info.items()})
             self.log.write(json.dumps(row) + "\n")

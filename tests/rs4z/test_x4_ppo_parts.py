@@ -71,3 +71,23 @@ def test_bc_sees_2k23_as_rs_one():
     sangu = _arena(n=1)
     o2 = obs_v3.observe(sangu.env)
     assert Trainer.bc_view(sangu, o2) is o2
+
+
+def test_forfeit_penalty_is_zero_sum():
+    from learn.x4_ppo import forfeit_reward
+    r = forfeit_reward(np.array([-1, 0, 1]), 0.1)
+    assert np.allclose(r, [[0, 0], [-0.1, 0.1], [0.1, -0.1]])
+
+
+def test_kickoff_deadline_reports_the_forfeiting_team():
+    ar = _arena(n=1)
+    env = ar.env
+    env.kickoff_deadline = 30
+    team = int(env.ri[0, K.RI_KO_TEAM])
+    lost = -1
+    for _ in range(15):
+        ev = env.step(np.zeros((1, 8), np.int64))
+        if ev["forfeit"][0] >= 0:
+            lost = int(ev["forfeit"][0])
+            break
+    assert lost == team and env.ri[0, K.RI_KO_TEAM] == 1 - team

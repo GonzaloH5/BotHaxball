@@ -83,7 +83,11 @@ def play(red, blue, *, map_name="sanguchito_rs_x4", matches=16, minutes=3.0, del
          record=4, max_decisions=None):
     """Partidos completos red vs blue. Devuelve goles por partido, eventos de seguridad y episodios grabados."""
     rng = np.random.default_rng(seed)
-    env = RS4ZEnv(matches, map=map_name, frame_skip=3, max_delay=15, deadline=0, kickoff_deadline=0, seed=seed)
+    # sin plazos de saque (como la sala); el saque inicial que nadie ejecuta se libera por seguridad a los
+    # KICKOFF_SAFETY ticks y se cuenta en `safety` (si no, el reloj congelado detendría el partido para siempre)
+    from env.rs4z import contract as C
+    env = RS4ZEnv(matches, map=map_name, frame_skip=3, max_delay=15, deadline=0, kickoff_deadline=C.KICKOFF_SAFETY,
+                  seed=seed)
     ticks = int(minutes * 3600)
     env.start_match(np.arange(matches), delay=rng.choice(delays, size=(matches, 8)), match_ticks=ticks)
     recs = [XM.EpisodeRecorder(env, row=r) for r in range(min(record, matches))]
