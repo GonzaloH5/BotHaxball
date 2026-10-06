@@ -699,41 +699,74 @@ def index_ci(units, human, n=300, seed=0):
     return round(point, 4), round(float(np.percentile(draws, 5)), 4), round(float(np.percentile(draws, 95)), 4)
 
 
+# Umbrales calibrados con humanos reales (reports/x4/gate_calibracion_humanos.json): muestras de grabaciones humanas de
+# entrenamiento del mismo tamaño que la evaluación, juzgadas contra la referencia de prueba, tienen que aprobar.
+# certificación (~150 min de juego abierto): índice ≥ 0,95, cada etapa ≥ 0,85, cada métrica ≥ 0,70 → aprueban el 96%;
+# evaluaciones del entrenamiento (~55 min): índice ≥ 0,93, etapa ≥ 0,80, métrica ≥ 0,65 → aprueban el 92%.
+THRESHOLDS = dict(certificacion=dict(indice=0.95, etapa=0.85, metrica=0.70),
+                  entrenamiento=dict(indice=0.93, etapa=0.80, metrica=0.65))
+
+
 def gate(agent, human, spread, sup=None, strict=False):
-    """Veredicto por métrica y global. `agent` y `human`: salidas de `bootstrap`; `spread`: `unit_spread` humano;
-    `sup`: `support` de las unidades del agente. Eficacia: valor del agente ≥ promedio humano ("mas") o ≤ ("menos").
-    Estilo: dentro de p10–p90 humano. Una métrica sin datos suficientes no se aprueba; `strict` exige que todas tengan
-    datos (certificación); si no, alcanza con el 80% (evaluaciones del entrenamiento, más chicas)."""
-    rows, by_stage = {}, {}
+    """Veredicto pre-registrado (docs/PRELANZAMIENTO.md §1): "al menos al nivel del humano promedio", con la misma
+    tolerancia que separa dos muestras de humanos reales del mismo tamaño. `agent` y `human`: salidas de `bootstrap`;
+    `spread`: `unit_spread` humano; `sup`: `support` de las unidades del agente; `strict`: certificación. Aprueba si,
+    sobre las métricas con datos suficientes:
+
+    1. global: índice de la cadena ≥ THRESHOLDS["indice"] (media geométrica agente/humano de las de eficacia);
+    2. cada etapa de la cadena: su índice ≥ THRESHOLDS["etapa"] (ningún eslabón queda por debajo);
+    3. ninguna métrica de eficacia por debajo de THRESHOLDS["metrica"] veces la humana (o encima de 1/x en las "menos");
+    4. las de estilo dentro del p10–p90 humano entre grabaciones;
+    5. datos suficientes en el 80% de las métricas (`strict`: en todas).
+
+    No se pide "≥ promedio" en cada una de las 30 métricas: un humano promedio real lo cumple casi nunca (1 de 30
+    muestras de 150 min), porque la mitad de las métricas le quedan abajo por ruido y por diferencias entre grupos."""
+    th = THRESHOLDS["certificacion" if strict else "entrenamiento"]
+    rows, stage_logs = {}, {}
     for m, stage, kind in METRICS:
         a, h = agent[m]["valor"], human[m]["valor"]
+        lo_a, hi_a = agent[m]["ic90"]
         enough = reliable(m, sup, h)
         if a is None or h is None:
             ok = False
+            at_least = False
         elif kind == "mas":
-            ok = a >= h
+            at_least = a >= h
+            ok = (_ratio(kind, a, h) or 0.0) >= th["metrica"]
         elif kind == "menos":
-            ok = a <= h
+            at_least = a <= h
+            ok = (_ratio(kind, a, h) or 0.0) >= th["metrica"]
         else:
             lo, hi = spread[m]
-            ok = lo is not None and lo <= a <= hi
+            ok = at_least = lo is not None and lo <= a <= hi
+        sig_worse = (kind == "mas" and hi_a is not None and h is not None and hi_a < h) or \
+                    (kind == "menos" and lo_a is not None and h is not None and lo_a > h)
         rows[m] = dict(etapa=stage, tipo=kind, agente=a, agente_ic90=agent[m]["ic90"], humano=h,
                        humano_ic90=human[m]["ic90"], banda_humana=spread[m] if kind == "banda" else None,
                        razon=_r(a / h) if a is not None and h not in (None, 0) else None, ok=bool(ok and enough),
+                       al_menos_humano=bool(at_least), significativamente_peor=bool(sig_worse),
                        datos_suficientes=bool(enough))
-        st = by_stage.setdefault(stage, [0, 0])
-        st[0] += bool(ok and enough)
-        st[1] += 1
+        if kind != "banda" and enough:
+            r = _ratio(kind, a, h)
+            if r is not None:
+                stage_logs.setdefault(stage, []).append(np.log(r))
     judged = [m for m in rows if rows[m]["datos_suficientes"]]
     frac_rel = len(judged) / len(rows)
-    ok_judged = all(rows[m]["ok"] for m in judged)
-    aprobado = ok_judged and (frac_rel == 1.0 if strict else frac_rel >= 0.8)
-    eff = [m for m, _, k in METRICS if k != "banda"]
-    frac = sum(rows[m]["ok"] for m in eff) / len(eff)
     idx = chain_index({m: rows[m]["agente"] for m in rows}, human, sup)
-    return dict(aprobado=bool(aprobado), fraccion_eficacia_ok=round(frac, 3), fraccion_con_datos=round(frac_rel, 3),
-                indice_cadena=round(idx, 4) if idx is not None else None,
-                por_etapa={k: f"{v[0]}/{v[1]}" for k, v in by_stage.items()}, metricas=rows)
+    stages = {k: round(float(np.exp(np.mean(v))), 4) for k, v in stage_logs.items()}
+    checks = dict(indice_global=idx is not None and idx >= th["indice"],
+                  etapas=bool(stages) and all(v >= th["etapa"] for v in stages.values()),
+                  ninguna_muy_por_debajo=all(rows[m]["ok"] for m in judged if rows[m]["tipo"] != "banda"),
+                  estilo_en_banda=all(rows[m]["ok"] for m in judged if rows[m]["tipo"] == "banda"),
+                  datos=frac_rel == 1.0 if strict else frac_rel >= 0.8)
+    eff = [m for m, _, k in METRICS if k != "banda"]
+    return dict(aprobado=bool(all(checks.values())), checks=checks,
+                indice_cadena=round(idx, 4) if idx is not None else None, indice_por_etapa=stages,
+                fraccion_al_menos_humano=round(sum(rows[m]["al_menos_humano"] for m in eff) / len(eff), 3),
+                fraccion_con_datos=round(frac_rel, 3),
+                por_etapa={k: f"{sum(rows[m]['ok'] for m in rows if rows[m]['etapa'] == k)}/"
+                              f"{sum(1 for m in rows if rows[m]['etapa'] == k)}" for k in dict.fromkeys(METRIC_STAGE.values())},
+                metricas=rows)
 
 
 # ------------------------------------------------------------------------------- humanos y políticas

@@ -33,10 +33,17 @@ en la partición de prueba, `reports/x4/epv.json`).
   "jugador competente": más pases (16,1 contra 12,8 por minuto de juego abierto), más precisión (0,73 contra 0,69), más
   paredes (1,9 contra 0,8) y defensas más cerradas (presión al portador 77 contra 98 px).
 
-**Gate** (`tools.x4_pass_chain.gate`): cada métrica de eficacia del agente ≥ el promedio humano (≤ en las "menos"); cada
-métrica de estilo dentro del p10–p90 humano entre grabaciones. Una métrica sólo se juzga con datos suficientes (≥ 20
-eventos esperados al ritmo humano o ≥ 20 observaciones); el **índice de la cadena** es la media geométrica de
-agente/humano (1 = promedio humano) sobre las métricas juzgables, con intervalo por bootstrap de partidos.
+**Gate** (`tools.x4_pass_chain.gate`, pre-registrado). Sobre las métricas con datos suficientes (≥ 20 eventos esperados
+al ritmo humano, o ≥ 20 observaciones), aprueba si se cumplen las cinco condiciones:
+1. **global:** índice de la cadena ≥ 1 (media geométrica de agente/humano en las métricas de eficacia; 1 = promedio humano);
+2. **cada eslabón:** el índice de cada etapa de la tabla ≥ 0,9 (ninguna parte del proceso queda claramente por debajo);
+3. **ninguna métrica de eficacia significativamente peor** que el promedio humano (todo su IC90 por debajo);
+4. **estilo:** cada métrica de estilo dentro del p10–p90 humano entre grabaciones;
+5. **datos:** el 80% de las métricas juzgables en las evaluaciones del entrenamiento; el 100% en la certificación.
+
+Por qué no "≥ promedio en cada una de las 30 métricas": un agente exactamente promedio quedaría por debajo en la mitad por
+puro ruido de muestreo; esa regla exigiría ser mejor que el promedio en todo. La regla de arriba exige nivel promedio en el
+conjunto y en cada eslabón, y no tolera ningún déficit claro.
 
 ## 2. Dónde estamos: la imitación (BC) de partida
 
@@ -67,9 +74,45 @@ Diagnóstico (`reports/x4/bc_diagnose.json`, `pass_chain_bc_final_lowdelay.json`
 | Brazo de pases (actualización 1000) | si el índice sigue < 0,85, +0,05 por pase de las posesiones que terminan en gol (TiZero); no premia circulación inútil |
 | Penalización por espera en saques | evita el equilibrio "nadie saca" (sólo esperas; el mal lateral ya cuesta la pelota) |
 
-## 4. Plan de corrida (cola pre-registrada)
+## 4. Plan de corrida (cola pre-registrada, `learn/x4_queue.py`)
 
-(se completa con la revisión)
+Una sola orden en el pod (`docs/POD_RUNBOOK.md` §4). Cada paso tiene su condición y su acción; nada espera a una persona.
+
+| Paso | Qué hace | Si sale bien | Si sale mal |
+|---|---|---|---|
+| 1. Preflight | GPU, hilos, disco, datos, referencias humanas, EPV, BC; mini-corrida con evaluación 0 y reanudación; una actualización y una evaluación de tamaño real con su tiempo y memoria | sigue | la cola se detiene sin gastar GPU (`preflight.json` dice qué falló) |
+| 2. RL principal (`rl_principal`) | 3000 actualizaciones × 1024 partidos × 64 decisiones (~196M decisiones) | certificación | corte por deriva → paso 3 |
+| 3. Recuperación (sólo si hubo corte) | desde `best_pase.pt` o `best.pt` del principal (o la BC), λ 0,4 y lr 1e-4 | certificación | si también se corta: veredicto "revisar" y fin (no se gasta más) |
+| 4. Extensión (una sola vez) | si ningún checkpoint aprobó el gate de pases y el índice de la cadena sube en las últimas 8 evaluaciones (pendiente > 0), sigue hasta 6000 | certificación | — |
+| 5. Certificación | `learn/x4_certify.py` sobre el último `pase_aprobado_*`, `best_pase.pt` y `best.pt`, en ese orden: 64 partidos de self-play de 3 min, 64 por lado contra la BC, sondas | el primero que aprueba se exporta a `deploy/rs4z/x4_rl.onnx`, veredicto "competitivo_en_pases" | se exporta el de mayor índice, veredicto "no_competitivo" (sirve para probar, no para competir) |
+
+**Dentro de la corrida** (cada 50 actualizaciones hay una evaluación; la evaluación 0 es la BC con el mismo protocolo):
+- **Corte por deriva** (dos evaluaciones seguidas con alguna de estas condiciones; deja `stopped.json` con el motivo):
+  - pierde contra la BC (`vs_bc.score` < 0,4);
+  - se aleja del parecido humano (W1 media > máx(1; la inicial + 0,5));
+  - se aleja de la pelota (distancia del más cercano > máx(200 px; 1,6 × la inicial));
+  - deja de sacar (saques iniciales sin ejecutar por partido > máx(1; 3 × los iniciales));
+  - la cadena de pase cae (índice < 0,8 × el inicial y todo su IC90 por debajo del inicial);
+  - la defensa deja de presionar (presión al portador p50 > 1,3 × el p90 humano).
+- **Brazo de pases** en la actualización 1000 (~65M decisiones): si el índice de la cadena es < 0,85, se activa +0,05 por pase
+  de las posesiones que terminan en gol, desde ahí hasta el final (se registra en `eval.jsonl` → `brazo_pases_activado`).
+- **Checkpoints:** `best.pt` (fuerza con parecido humano, confirmada con otra evaluación; `best.json` dice si le gana a la BC
+  con margen), `best_pase.pt` (mejor índice de la cadena sin perder contra la BC), `pase_aprobado_*.pt` (gate aprobado en dos
+  evaluaciones seguidas), `last.pt` cada 10 actualizaciones y después de cada evaluación, `evals/` con la política y los
+  partidos de cada evaluación.
+
+**Qué debería verse en cada tramo** (señales tempranas; si no aparecen, la corrida igual sigue hasta un corte o el final,
+pero quedan registradas para decidir la próxima):
+
+| Tramo | Debería pasar | Señal en los logs | Alarma |
+|---|---|---|---|
+| 0–20 (crítico solo) | la política es la BC; el crítico aprende el valor | `explained_var` sube desde ~0; `kl_bc` = 0 | `explained_var` negativa o `nonfinite_skipped` > 0 |
+| 20–250 (~16M) | menos pérdidas tontas: la BC suelta la pelota; el shaping de valor castiga cada pérdida | `retencion_tras_recibir` y `precision_pase` suben; `tiempo_con_pelota_p50` sube hacia 0,4 s; `kl_bc` 0,01–0,05 | `presion_al_portador_p50` sube (la defensa se afloja); `dist_ball_1` sube; `kickoff_frac` sube |
+| 250–1000 (~65M) | más pases que sirven: progresivos, que rompen líneas, salidas de presión; pool con rivales distintos | índice de la cadena hacia 0,7–0,9; `epv_por_intento` positivo; `vs_bc.score` > 0,5 | el índice no sube desde la evaluación 0 → brazo de pases en 1000 |
+| 1000–3000 (~196M) | λ baja a 0,05: más libertad; combinaciones (paredes, al espacio) y aprovechar la ventaja | índice ≥ 1 y etapas ≥ 0,9; `pase_aprobado_*` | `human_w1_mean` sube (estilo artificial); `humanos_dev.nll` sube mucho (se olvida lo humano) |
+
+[inferencia] Las cifras de cada tramo son expectativas, no garantías: salen del diagnóstico de la BC y del A/B de CPU (§7), a
+una escala 30 veces menor.
 
 ## 5. Problemas encontrados y corregidos
 

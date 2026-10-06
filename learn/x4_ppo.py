@@ -1029,9 +1029,9 @@ class Trainer:
         sup = PC.support(units)
         g = PC.gate(m, self.pass_ref["metricas"], self.pass_ref["banda"], sup)
         idx, lo, hi = PC.index_ci(units, self.pass_ref["metricas"], n=200, seed=int(self.update))
-        return dict(indice=idx, indice_ic90=[lo, hi], aprobado=g["aprobado"],
-                    fraccion_eficacia_ok=g["fraccion_eficacia_ok"], fraccion_con_datos=g["fraccion_con_datos"],
-                    por_etapa=g["por_etapa"], pases=m["pases"]["valor"],
+        return dict(indice=idx, indice_ic90=[lo, hi], aprobado=g["aprobado"], checks=g["checks"],
+                    indice_por_etapa=g["indice_por_etapa"], fraccion_al_menos_humano=g["fraccion_al_menos_humano"],
+                    fraccion_con_datos=g["fraccion_con_datos"], por_etapa=g["por_etapa"], pases=m["pases"]["valor"],
                     fallan=sorted(k for k, v in g["metricas"].items() if not v["ok"] and v["datos_suficientes"]),
                     sin_datos=sorted(k for k, v in g["metricas"].items() if not v["datos_suficientes"]),
                     metricas={k: [v["agente"], v["humano"]] for k, v in g["metricas"].items()})
@@ -1183,12 +1183,16 @@ class Trainer:
         eps = self.last_eval_episodes
         if eps:
             arr = {}
+            # tipos compactos (~13 MB por evaluación de 24 partidos de 3 min): posiciones y velocidades en float16
+            # (resolución ≤ 1 px en la cancha), enteros chicos en int8/int16
+            dtypes = dict(ball=np.float32, pos=np.float16, vel=np.float16, move=np.int8, restart_kind=np.int8,
+                          restart_team=np.int8, restart_age=np.int16, goal_ev=np.int8)
             for i, ep in enumerate(eps):
                 for k in ("ball", "pos", "vel", "kicked", "open_play", "restart_kind", "restart_team", "kickoff",
                           "goal_ev", "move", "kick_key", "restart_age"):
                     v = getattr(ep, k)
                     if v is not None:
-                        arr[f"{i}/{k}"] = v.astype(np.float32) if v.dtype == np.float64 else v
+                        arr[f"{i}/{k}"] = np.asarray(v).astype(dtypes.get(k, np.asarray(v).dtype))
                 arr[f"{i}/ball_r"] = np.float32(ep.ball_r)
             np.savez_compressed(d / f"ep_{self.update:05d}.npz", **arr)
 

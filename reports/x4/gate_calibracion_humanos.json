@@ -1,0 +1,67 @@
+{
+ "umbrales": {
+  "certificacion": {
+   "indice": 0.95,
+   "etapa": 0.85,
+   "metrica": 0.7
+  },
+  "entrenamiento": {
+   "indice": 0.93,
+   "etapa": 0.8,
+   "metrica": 0.65
+  }
+ },
+ "resultados": {
+  "train_55min": {
+   "aprobados": 87,
+   "n": 100,
+   "indice": [
+    0.989,
+    0.892,
+    1.069
+   ],
+   "etapa_min": 0.914,
+   "fallas": {
+    "indice_global": 6,
+    "etapas": 3,
+    "ninguna_muy_por_debajo": 5,
+    "estilo_en_banda": 1,
+    "datos": 0
+   }
+  },
+  "train_150min": {
+   "aprobados": 95,
+   "n": 100,
+   "indice": [
+    0.991,
+    0.935,
+    1.047
+   ],
+   "etapa_min": 0.941,
+   "fallas": {
+    "indice_global": 4,
+    "etapas": 0,
+    "ninguna_muy_por_debajo": 1,
+    "estilo_en_banda": 0,
+    "datos": 0
+   }
+  },
+  "train_todo": {
+   "aprobados": 1,
+   "n": 1,
+   "indice": [
+    0.993,
+    0.993,
+    0.993
+   ],
+   "etapa_min": 0.977,
+   "fallas": {
+    "indice_global": 0,
+    "etapas": 0,
+    "ninguna_muy_por_debajo": 0,
+    "estilo_en_banda": 0,
+    "datos": 0
+   }
+  }
+ }
+}

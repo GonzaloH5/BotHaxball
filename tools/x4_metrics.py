@@ -179,6 +179,24 @@ class EpisodeRecorder:
                        goal_ev=np.array(cols[11], np.int8))
 
 
+def episodes_from_npz(path, stride=3):
+    """Partidos de self-play guardados por el trainer en <out>/evals/ep_*.npz (`Trainer.keep_eval`)."""
+    d = np.load(path)
+    idx = sorted({int(k.split("/")[0]) for k in d.files})
+    out = []
+    for i in idx:
+        g = lambda k, dt=None: (d[f"{i}/{k}"].astype(dt) if dt else d[f"{i}/{k}"]) if f"{i}/{k}" in d.files else None
+        T = len(d[f"{i}/ball"])
+        out.append(Episode(stride=stride, ball=g("ball", np.float64), ball_r=float(d[f"{i}/ball_r"]),
+                           pos=g("pos", np.float64), vel=g("vel", np.float64), move=g("move", np.int64),
+                           kick_key=g("kick_key"), kicked=g("kicked"), open_play=g("open_play"),
+                           restart_kind=g("restart_kind", np.int64), restart_age=g("restart_age", np.int64),
+                           kickoff=g("kickoff"), goals=int(np.abs(g("goal_ev", np.int64)).sum()) if g("goal_ev") is not None else 0,
+                           segment=np.zeros(T, np.int64), restart_team=g("restart_team", np.int64),
+                           goal_ev=g("goal_ev", np.int8)))
+    return out
+
+
 # ------------------------------------------------------------------------------------- métricas
 def _touch_owner(ep):
     """Dueño de la pelota en cada muestreo: lugar con patada en la ventana o en contacto; -1 si ninguno,

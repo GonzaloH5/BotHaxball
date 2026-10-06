@@ -8,7 +8,7 @@ Comandos para correr en el pod (1× RTX 3060, unos 8 hilos útiles) el pipeline 
 git fetch origin claude/funny-franklin-iwtrqe && git checkout claude/funny-franklin-iwtrqe
 pip install numpy numba torch orjson onnx onnxruntime pytest
 (cd bridge && npm ci) && (cd deploy && npm ci)
-python -m pytest -q tests                 # 81 tests
+python -m pytest -q tests                 # 91 tests
 node deploy/test_x4_room_state.js         # paridad sala ↔ dataset de la obs v3
 export NUMBA_NUM_THREADS=8 OMP_NUM_THREADS=1
 ```
@@ -52,69 +52,60 @@ Criterio de avance:
 - En lazo cerrado le gana al scripted.
 - Sus métricas de parecido humano (`human` en el reporte de `x4_eval`) no se alejan de la referencia más que unas pocas veces el techo prueba-vs-entrenamiento de `reports/x4/human_metrics_sanguchito.json`.
 
-## 4. RL con ancla KL (E2 + E3)
+## 4. RL con ancla KL (E2 + E3): la cola pre-registrada
 
-**Antes de lanzar, el preflight** (2–5 min). Verifica GPU, caché, particiones, referencia humana y checkpoint, y corre una mini-corrida real (StateBank, rollouts, actualización, snapshot, evaluación y reanudación) con medición de RAM y memoria de GPU:
-
-```bash
-python -m learn.x4_preflight --bc runs/x4_bc/final_sangu_rsone/best.pt --device cuda --out runs/preflight.json
-```
-
-En GPU el preflight también corre una actualización sintética con el buffer de la corrida real (1024 partidos × 64 pasos, `escala_real`) y reporta el pico de RAM y de memoria de GPU. Si esa prueba falla por memoria, usar `--rollout 32`.
-
-Si termina en `PREFLIGHT OK`, lanzar dentro de `tmux` (sobrevive a que se corte el SSH) con un bucle de hasta 5 intentos que reanuda si el proceso muere:
+Todo el plan de la corrida (pasos, umbrales y qué hacer en cada caso) está en `docs/PRELANZAMIENTO.md` y lo ejecuta sola
+`learn/x4_queue.py`: preflight → RL principal → recuperación si se corta por deriva → una extensión si el índice de la cadena
+de pase sigue subiendo → certificación contra humanos → export a ONNX. Es idempotente: si el pod se reinicia, se relanza el
+mismo comando y sigue donde estaba (`runs/x4_cola/queue_state.json`).
 
 ```bash
-tmux new -s rl
-OUT=runs/x4_ppo/lam02; mkdir -p runs/x4_ppo
-for i in 1 2 3 4 5; do
-  python -m learn.x4_ppo --bc runs/x4_bc/final_sangu_rsone/best.pt --out $OUT --device cuda \
-      --envs 1024 --rollout 64 --updates 3000 --lambda-dist 0.2 --lambda-decay 0.9995 --lambda-min 0.05 \
-      --critic-warmup 20 --human-starts 0.4 --pool-frac 0.2 --eval-every 25 --resume && break
-  [ -f $OUT/stopped.json ] && break
-  echo "intento $i falló; reintento en 60 s"; sleep 60
-done 2>&1 | tee -a $OUT.console.log
+tmux new -s cola
+cd /workspace/HaxballRL      # o donde esté el repo
+export NUMBA_NUM_THREADS=8 OMP_NUM_THREADS=1
+python -m learn.x4_queue --root runs/x4_cola --device cuda 2>&1 | tee -a runs/x4_cola.console.log
 ```
 
-Para salir de tmux sin cortar la corrida: `Ctrl-b d`. Para volver: `tmux attach -t rl`. Con `--resume`, la primera vez arranca de cero. Sin `--resume`, el trainer se niega a usar una carpeta que ya tiene `last.pt`, para no pisar su `best.pt`.
+Para salir de tmux sin cortar la corrida: `Ctrl-b d`. Para volver: `tmux attach -t cola`.
 
-- **Reanudación:** `--resume` continúa desde `<out>/last.pt` con optimizadores, normalización del valor, pool de snapshots, `best.pt` y contadores. `last.pt` se guarda cada 10 actualizaciones y después de cada evaluación, de forma atómica (un corte durante la escritura no lo rompe; si igual no se puede leer, se reanuda desde el snapshot más reciente). Si la corrida se corta, el bucle la relanza.
-- Una corrida cortada por deriva no se reanuda sola: con `stopped.json` presente, `--resume` termina con un mensaje. Para seguirla igual: `--continue-after-stop`.
-- **Seguir desde otra corrida:** `--init runs/x4_ppo/<otra>/best.pt` toma política, crítico y normalización de ese checkpoint; el ancla KL, el rival de `vs_bc` y el pool siguen siendo `--bc`. Después de un corte por deriva: otro `--out` con `--init runs/x4_ppo/lam02/best.pt` y `--lambda-dist 0.4` (o `--lr` menor).
-- **Corte automático** (criterio pre-registrado, `--stop-on-drift 2`): la corrida se detiene sola cuando dos evaluaciones seguidas cumplen cualquiera de:
-  - `vs_bc.score` < 0,4;
-  - `human_w1_mean` > 1,0;
-  - `selfplay.dist_ball_1` > 200 px (la BC está en ~110 y los humanos en 84).
+Requisitos (los verifica el preflight, que es el primer paso de la cola y la detiene si algo falla):
+- `data/x4_ticks/` y `data/human_metrics_sanguchito.samples.npz` (§1);
+- `reports/x4/pass_chain_human.json` y `runs/x4_epv/epv.pt` (versionados);
+- `NUMBA_NUM_THREADS` definido, ≥ 5 GB libres, la GPU con memoria para la actualización real (1024 × 64).
 
-  Deja `stopped.pt` y `stopped.json` con el motivo. Qué hacer después: volver a `best.pt`, subir λ o bajar `--lr`.
-- **Mapas:** por defecto, solo Sanguchito (`--maps sanguchito_rs_x4:1.0`). Es el único mapa con saques verificados. Sumar `rs_one`/`haxarg_2k23` recién cuando su conformidad de saques esté resuelta (`reports/x4/conformance_x4.md`).
-- **Punto de partida:** la imitación entrenada en CPU esa noche está versionada en `runs/x4_bc/final_sangu_rsone/best.pt` (164M muestras, Sanguchito + RS ONE, retardo 6–15). Se puede empezar sin el paso 3, aunque conviene reentrenarla más larga en GPU: la NLL todavía bajaba y pasa poco (ver "Pases").
-- **Barrido corto de λ** (plan E3): `--lambda-dist` en {0,06; 0,2; 0,4}, con y sin `--lambda-decay 0.9995`, con `--out` distintos. Por defecto se usa 0,2 (VPT), porque en dos corridas chicas de CPU con 0,06 la política se alejó de la pelota y empeoró contra la BC desde la actualización 50.
-- **Penalización por saque vencido:** `--forfeit-penalty 0.1` (por defecto). Evita el equilibrio "nadie saca" (`docs/PLAN.md` E3). No hay que bajarla a 0 sin mirar `forfeits` en `log.jsonl` y `selfplay.kickoff_wait_s` en `eval.jsonl`.
-- **Pases** (el objetivo de juego colectivo):
-  - Referencia humana agregada (`reports/x4/pass_stats.json`): 9,2 pases/min, 0,36 de pases/(pases+pérdidas) y 0,55 pases por posesión.
-  - La BC de partida está en 3,1 / 0,19 / 0,23.
-  - Se sigue en `eval.jsonl` → `selfplay_pases`, que usa la misma definición que la referencia humana. En `log.jsonl`, `rollout_passes_per_min_kernel` cuenta toques sucesivos de compañeros en los rollouts: da 40–57% más que la métrica humana y solo sirve para ver la tendencia.
-  - **Criterio pre-registrado** (plan E3): si a 100–300M decisiones `selfplay_pases.pases_por_min` < 6 o `pases_sobre_pases_mas_perdidas` < 0,28, se lanza el brazo de TiZero en paralelo: el mismo comando con `--pass-bonus 0.05` y otro `--out`.
-- **Memoria:** con `--envs 1024 --rollout 64` el pico es de unos 3,2 GB de RAM (rollout más copia para la actualización), más ~1 GB del StateBank de estados humanos. La actualización sube el rollout entero a la GPU (~1 GB). Si falta memoria, usar `--rollout 32`. El preflight informa los picos.
-- **Pool de rivales:** un snapshot cada `--snapshot-every` actualizaciones, como máximo `--pool-max 10` además de la BC. Cuando se llena, sale del pool (el archivo queda) el snapshot al que el aprendiz más le gana.
-- **Qué mirar:**
-  - `runs/x4_ppo/*/eval.jsonl`: `vs_bc.score` (victorias contra la BC con latencia de sala), `human_w1_mean`, `selfplay_safety` (saques iniciales que nadie ejecuta), `selfplay` (patadas, pases y goles por minuto, espera del saque inicial; humanos p50: 3,2 / 8,8 / 0,25 / 3,9 s), `selfplay_pases` y `drift`;
-  - `log.jsonl`: `kl_bc`, `entropy`, `clipfrac`, `forfeits` y `rollout_passes_per_min_kernel`.
-- **Shaping:** se retira para siempre cuando `vs_bc.score` ≥ 0,75 en `--retire-patience 2` evaluaciones seguidas.
-- **Evaluación:** el azar de la evaluación depende solo de la semilla y de la actualización, así dos checkpoints se comparan con los mismos partidos.
-- **Checkpoints:**
-  - `best.pt`: el de mejor `vs_bc.score` entre los que cumplen `--human-gate`. Un candidato se confirma con una segunda evaluación de fuerza con otras semillas y se guarda con el promedio de las dos (evita quedarse con un pico de suerte);
-  - `snap_*.pt`: snapshots que entran al pool;
-  - `last.pt`: para reanudar.
+Qué mirar mientras corre (`runs/x4_cola/rl_principal/`):
+- `eval.jsonl` (cada 50 actualizaciones; la fila 0 es la BC): `cadena_pase.indice` (1 = promedio humano) con su `indice_ic90`,
+  `fallan` y `sin_datos`, `cadena_pase_vs_bc` (contra la BC como rival fijo), `vs_bc.score`, `human_w1_mean`, `humanos_dev`
+  (NLL y KL sobre estados humanos fijos), `selfplay_kickoff_safety`, `drift`, `new_best`, `new_best_pase`,
+  `pase_aprobado`, `brazo_pases_activado`.
+- `log.jsonl` (cada actualización): `kl_bc`, `explained_var`, `grad_norm_pi`, `lambda_eff`, `dist_ball_1`, `still_frac`,
+  `kick_frac`, `kickoff_frac`, `forfeits_by`, `epv_shaping_abs`, `nonfinite_skipped`.
+- `evals/`: la política y los partidos de self-play de cada evaluación (para reanalizar).
+- `run_meta.jsonl`: versión del código, GPU e hilos de cada lanzamiento.
+
+Checkpoints:
+- `best.pt` (+ `best.json` con `beats_bc`): mejor fuerza contra la BC entre los que cumplen el parecido humano, confirmada
+  con una segunda evaluación;
+- `best_pase.pt`: mejor índice de la cadena entre los que no pierden contra la BC;
+- `pase_aprobado_*.pt`: aprobó el gate de pases en dos evaluaciones seguidas (candidatos a certificación);
+- `last.pt` (reanudar), `snap_*.pt` (pool), `stopped.pt` / `stopped.json` (corte por deriva).
+
+Uso manual del trainer (fuera de la cola): `python -m learn.x4_ppo --help`. `--resume` continúa una carpeta; sin
+`--resume` el trainer se niega a usar una carpeta con `last.pt`; con `stopped.json` presente no reanuda salvo
+`--continue-after-stop`; `--init` arranca desde otro checkpoint de PPO manteniendo la BC como ancla.
+
+Certificación manual de un checkpoint: `python -m learn.x4_certify --ckpt <ckpt> --device cuda --out reports/x4/cert.json`.
 
 ## 5. Sala
 
 ```bash
-python -m export.to_onnx_x4 --ckpt runs/x4_ppo/lam02/best.pt --out deploy/rs4z/x4_ppo.onnx
-node deploy/rs4z/join_bots.js --join <link> --count 7 --model deploy/rs4z/x4_ppo.onnx --trace
+# la cola deja deploy/rs4z/x4_rl.onnx (el checkpoint certificado o, si ninguno aprobó, el de mayor índice, marcado
+# como no competitivo en runs/x4_cola/queue_state.json)
+node deploy/rs4z/join_bots.js --join <link> --count 7 --model deploy/rs4z/x4_rl.onnx --map sanguchito_rs_x4 --trace
 ```
 
+- El RL se entrena sólo en Sanguchito: el modelo del RL va sólo en esa sala (`--map sanguchito_rs_x4`). En RS ONE y 2K23 se
+  sigue con la BC hasta que el RL incluya esos mapas (el trainer informa `vs_bc_rs_one` sólo como monitor de olvido).
 - El bot detecta el mapa por el nombre del estadio (`SANGUCHITO`, `2K23`/`HAXARG`; si no, RS ONE). `--map <nombre>` lo fuerza (también desde `join_bots.js`).
 - Cada bot usa un hilo de ONNX (`--ort-threads`, por defecto 1). Así se evita la contención que el 2026-10-06 hizo decidir cada 9–10 ticks en vez de cada 3.
 - La traza (`--trace`) más la grabación del host sirven para medir latencia con `tools.rs4z_room_latency` y para conformidad.

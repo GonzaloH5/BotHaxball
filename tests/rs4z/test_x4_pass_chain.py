@@ -92,12 +92,23 @@ def test_gate_directions():
     agent = {m: dict(valor=1.0, ic90=[0.9, 1.1]) for m in names}
     g = PC.gate(agent, human, band)
     assert g["aprobado"] and abs(g["indice_cadena"] - 1.0) < 1e-9
+    # significativamente peor en una "mas", peor en una "menos" y fuera de banda en una de estilo
     agent["pases_por_min"] = dict(valor=0.5, ic90=[0.4, 0.6])
     agent["circulacion_inutil_frac"] = dict(valor=2.0, ic90=[1.8, 2.2])
     agent["largo_pase_p50"] = dict(valor=3.0, ic90=[2.0, 4.0])
     g = PC.gate(agent, human, band)
     bad = {k for k, v in g["metricas"].items() if not v["ok"]}
-    assert bad == {"pases_por_min", "circulacion_inutil_frac", "largo_pase_p50"} and g["indice_cadena"] < 1.0
+    assert bad == {"pases_por_min", "circulacion_inutil_frac", "largo_pase_p50"} and not g["aprobado"]
+    assert g["indice_cadena"] < 1.0
+    # un poco por debajo (dentro de la tolerancia humana) no reprueba la métrica ni el gate
+    agent = {m: dict(valor=1.0, ic90=[0.9, 1.1]) for m in names}
+    agent["precision_pase"] = dict(valor=0.9, ic90=[0.85, 0.95])
+    g = PC.gate(agent, human, band, strict=True)
+    assert g["metricas"]["precision_pase"]["ok"] and not g["metricas"]["precision_pase"]["al_menos_humano"]
+    assert g["metricas"]["precision_pase"]["significativamente_peor"] and g["aprobado"]
+    # todo un 10% por debajo: el índice global queda en 0,9 < 0,95 y reprueba la certificación
+    agent = {m: dict(valor=0.9, ic90=[0.85, 0.95]) for m in names}
+    assert not PC.gate(agent, human, band, strict=True)["aprobado"]
 
 
 def test_epv_is_antisymmetric():
