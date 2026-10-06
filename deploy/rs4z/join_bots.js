@@ -30,6 +30,7 @@ for (let k = 1; k <= count; k++) {
     if (arg("--temp", null)) botArgs.push("--temp", arg("--temp"));
     if (arg("--ort-threads", null)) botArgs.push("--ort-threads", arg("--ort-threads"));
     if (arg("--delay", null)) botArgs.push("--delay", arg("--delay"));
+    if (arg("--map", null)) botArgs.push("--map", arg("--map"));
     if (arg("--extrapolate", null)) botArgs.push("--extrapolate", arg("--extrapolate"));
     if (k === 1) botArgs.push("--dump-stadium", path.join(logs, `room_stadium_${prefix}.hbs`));
     const child = spawn(process.execPath, botArgs, { stdio: ["ignore", out, out] });

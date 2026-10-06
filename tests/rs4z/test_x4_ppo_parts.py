@@ -154,3 +154,53 @@ def test_resume_continues_from_last_checkpoint(tmp_path):
         assert torch.equal(p_old.detach().cpu(), p_new.detach().cpu())
     t2.train()
     assert torch.load(tmp_path / "last.pt", map_location="cpu")["update"] == 3
+
+
+def _tiny_trainer(tmp_path, extra=()):
+    from pathlib import Path
+    from learn.x4_ppo import Trainer, parse_args
+    bc = Path(__file__).resolve().parents[2] / "runs" / "x4_bc" / "final_sangu_rsone" / "best.pt"
+    if not bc.exists():
+        import pytest
+        pytest.skip("falta el checkpoint de la imitación")
+    common = ["--bc", str(bc), "--out", str(tmp_path), "--device", "cpu", "--envs", "6", "--rollout", "4",
+              "--critic-warmup", "1", "--bank-recordings", "0", "--eval-every", "0", "--threads", "1",
+              "--epochs", "1", "--minibatches", "1"]
+    return Trainer(parse_args(common + list(extra)))
+
+
+def test_pool_cap_reindexes_running_matches(tmp_path):
+    t = _tiny_trainer(tmp_path, ["--updates", "1", "--snapshot-every", "0", "--pool-max", "2"])
+    for k in range(3):
+        t.update = k + 1
+        t.snapshot()
+    # pool: bc + 2 snapshots; el que más le gana el aprendiz se descarta
+    assert len(t.pool) == 3 and len(t.pool_wins) == 3
+    ar = t.arenas[0]
+    t.pool_wins[:] = [0.5, 0.9, 0.2]
+    ar.opp[:] = [-1, 0, 1, 2, 2, 1]
+    ar.learner[1:] = np.array([True] * 4 + [False] * 4)
+    t.drop_from_pool(1)
+    assert [n for n, _ in t.pool] == ["bc", "snap_00003"]
+    assert list(ar.opp) == [-1, 0, -1, 1, 1, -1]
+    assert ar.learner[2].all() and ar.learner[5].all() and not ar.learner[3].all()
+    assert ar.pool_size == 2 and np.allclose(t.pool_wins, [0.5, 0.2])
+
+
+def test_resume_refuses_a_run_stopped_by_drift(tmp_path):
+    import pytest
+    (tmp_path / "stopped.json").write_text("{}")
+    with pytest.raises(SystemExit):
+        _tiny_trainer(tmp_path, ["--updates", "1", "--resume"])
+    t = _tiny_trainer(tmp_path, ["--updates", "1", "--resume", "--continue-after-stop"])
+    assert t.update == 0
+
+
+def test_evaluation_is_reproducible_and_confirms_best(tmp_path):
+    t = _tiny_trainer(tmp_path, ["--updates", "1", "--eval-matches", "2", "--eval-minutes", "0.1",
+                                 "--eval-selfplay", "1"])
+    t.update = 5
+    a = t.evaluate(strength_only=True)
+    b = t.evaluate(strength_only=True)
+    assert a == b
+    assert t.policy.training

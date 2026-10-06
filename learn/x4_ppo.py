@@ -32,6 +32,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import time
 from pathlib import Path
 
@@ -380,6 +381,13 @@ def parse_args(argv=None):
     ap.add_argument("--drift-max-w1", type=float, default=1.0)
     ap.add_argument("--drift-max-dist", type=float, default=200.0)
     ap.add_argument("--resume", action="store_true", help="continuar desde <out>/last.pt si existe")
+    ap.add_argument("--continue-after-stop", action="store_true",
+                    help="con --resume, seguir aunque la corrida se haya cortado por deriva (stopped.json)")
+    ap.add_argument("--init", default="", help="checkpoint de PPO (p. ej. best.pt de otra corrida) para inicializar "
+                                               "política, crítico y normalización; --bc sigue siendo el ancla")
+    ap.add_argument("--pool-max", type=int, default=10, help="snapshots máximos en el pool (además de la BC)")
+    ap.add_argument("--retire-patience", type=int, default=2,
+                    help="evaluaciones seguidas ≥ --shaping-retire para retirar el shaping")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--threads", type=int, default=4)
     a = ap.parse_args(argv)
@@ -431,19 +439,42 @@ class Trainer:
         self.update = 0
         self.best_score = -1.0
         self.drift_count = 0
+        self.retire_count = 0
         self.n_fixed_pool = len(self.pool)     # BC + --pool; los snapshots se agregan después
+        if a.init:
+            ck = torch.load(a.init, map_location="cpu")
+            self.policy.load_state_dict(ck["model"])
+            if "critic" in ck:
+                self.critic.load_state_dict(ck["critic"])
+            if "vnorm" in ck:
+                self.vnorm.mean, self.vnorm.sq, self.vnorm.w = ck["vnorm"]
+            print(f"política inicializada desde {a.init} (ancla: {a.bc})", flush=True)
         if a.eval_every and a.human_gate > 0:
             from learn.x4_eval import HUMAN_SAMPLES
             if not HUMAN_SAMPLES.exists():
                 raise SystemExit(f"falta la referencia humana {HUMAN_SAMPLES}: correr `python -m tools.x4_metrics "
                                  "--map sanguchito_rs_x4 --out reports/x4/human_metrics_sanguchito.json` (runbook §1); "
                                  "sin ella best.pt nunca se guarda")
+        if a.resume and (self.out / "stopped.json").exists() and not a.continue_after_stop:
+            # un relanzamiento automático (bucle de reintentos del runbook) no debe seguir una corrida cortada por deriva
+            raise SystemExit(f"{self.out / 'stopped.json'} existe: la corrida se cortó por deriva. Para seguir igual, "
+                             "--continue-after-stop; si no, volver a best.pt (docs/POD_RUNBOOK.md §4)")
         if a.resume and (self.out / "last.pt").exists():
             self._resume(self.out / "last.pt")
         self.log = open(self.out / "log.jsonl", "a", encoding="utf-8")
 
     def _resume(self, path):
-        ck = torch.load(path, map_location="cpu")
+        cands = [path] + sorted(self.out.glob("snap_*.pt"), reverse=True)
+        ck = None
+        for c in cands:
+            try:
+                ck = torch.load(c, map_location="cpu")
+                path = c
+                break
+            except Exception as e:  # noqa: BLE001  (archivo truncado: se prueba el snapshot más reciente)
+                print(f"no pude cargar {c}: {type(e).__name__}: {e}", flush=True)
+        if ck is None:
+            raise SystemExit(f"--resume: ningún checkpoint legible en {self.out}")
         self.policy.load_state_dict(ck["model"])
         self.critic.load_state_dict(ck["critic"])
         if "opt_pi" in ck:
@@ -452,10 +483,18 @@ class Trainer:
         self.vnorm.mean, self.vnorm.sq, self.vnorm.w = ck["vnorm"]
         self.update, self.decisions = int(ck["update"]), int(ck["decisions"])
         self.best_score = float(ck.get("best_score", -1.0))
+        best = self.out / "best.pt"
+        if best.exists():
+            try:
+                self.best_score = max(self.best_score, float(torch.load(best, map_location="cpu").get("best_score", -1.0)))
+            except Exception:  # noqa: BLE001
+                pass
         self.drift_count = int(ck.get("drift_count", 0))
+        self.retire_count = int(ck.get("retire_count", 0))
         self.a.shaping = float(ck.get("shaping", self.a.shaping))
         for name in ck.get("pool_names", []):
-            self.pool.append((name, load_policy(self.out / f"{name}.pt", self.dev)))
+            if (self.out / f"{name}.pt").exists():
+                self.pool.append((name, load_policy(self.out / f"{name}.pt", self.dev)))
         wins = list(ck.get("pool_wins", []))
         self.pool_wins = np.array(wins + [0.5] * (len(self.pool) - len(wins)))[:len(self.pool)]
         for ar in self.arenas:
@@ -606,74 +645,88 @@ class Trainer:
             m = lm
             for i, x in enumerate((ob, cr, ac, lp, bl, adv, ret, np.broadcast_to(la[..., None], lm.shape))):
                 cols[i].append(x[m])
-        ob, cr, ac, lp, bl, adv, ret, lam = (np.concatenate(c) for c in cols)
+        buf.clear()                                   # libera el rollout antes de armar los tensores
+        ob, cr, ac, lp, bl, adv, ret, lam = (c[0] if len(c) == 1 else np.concatenate(c) for c in cols)
+        del cols
         if a.lambda_decay != 1.0:   # VPT: el coeficiente del KL decae con las actualizaciones
             lam = np.maximum(lam * a.lambda_decay ** self.update, a.lambda_min)
         self.vnorm.update(ret)
         ret_n = (ret - self.vnorm.mu) / self.vnorm.std
         adv = (adv - adv.mean()) / (adv.std() + 1e-8)
         n = len(ac)
-        idx = np.arange(n)
-        info = dict(samples=n, pi_loss=0.0, v_loss=0.0, kl_bc=0.0, entropy=0.0, clipfrac=0.0, approx_kl=0.0)
-        steps = 0
         dev = self.dev
-        T = lambda x, dt=torch.float32: torch.as_tensor(x, dtype=dt, device=dev)
+        # una sola subida al dispositivo por actualización (~1 GB con 1024×64) y minibatches indexados ahí
+        f32 = lambda x: torch.as_tensor(np.ascontiguousarray(x, dtype=np.float32), device=dev)
+        G = dict(ob=f32(ob), cr=f32(cr), lp=f32(lp), bl=f32(bl), adv=f32(adv), ret=f32(ret_n), lam=f32(lam),
+                 ac=torch.as_tensor(np.ascontiguousarray(ac, dtype=np.int64), device=dev))
+        del ob, cr, bl
+        gen = torch.Generator(device=dev)
+        gen.manual_seed(int(a.seed) * 1_000_003 + int(self.update))
+        sums = torch.zeros(6, device=dev)   # pi_loss, v_loss, kl_bc, entropy, clipfrac, approx_kl
+        steps = 0
         for _ in range(a.epochs):
-            self.rng.shuffle(idx)
-            for mb in np.array_split(idx, a.minibatches):
-                v = self.critic(T(cr[mb]))
-                v_loss = F.mse_loss(v, T(ret_n[mb]))
+            perm = torch.randperm(n, device=dev, generator=gen)
+            for mb in perm.chunk(a.minibatches):
+                v = self.critic(G["cr"][mb])
+                v_loss = F.mse_loss(v, G["ret"][mb])
                 self.opt_v.zero_grad(set_to_none=True)
                 v_loss.backward()
                 nn.utils.clip_grad_norm_(self.critic.parameters(), 1.0)
                 self.opt_v.step()
-                info["v_loss"] += float(v_loss.detach())
+                sums[1] += v_loss.detach()
                 if not critic_only:
-                    logits = self.policy(T(ob[mb]))
+                    logits = self.policy(G["ob"][mb])
                     logp_all = F.log_softmax(logits, -1)
-                    act = T(ac[mb], torch.int64)
-                    logp = logp_all.gather(1, act[:, None])[:, 0]
-                    ratio = torch.exp(logp - T(lp[mb]))
-                    A = T(adv[mb])
+                    logp = logp_all.gather(1, G["ac"][mb][:, None])[:, 0]
+                    old = G["lp"][mb]
+                    ratio = torch.exp(logp - old)
+                    A = G["adv"][mb]
                     pg = -torch.min(ratio * A, torch.clamp(ratio, 1 - a.clip, 1 + a.clip) * A)
-                    bc = T(bl[mb])
+                    bc = G["bl"][mb]
                     kl = (bc.exp() * (bc - logp_all)).sum(-1)              # KL(BC‖π) por muestra
                     ent = -(logp_all.exp() * logp_all).sum(-1)
-                    L = T(lam[mb])
+                    L = G["lam"][mb]
                     loss = ((1 - L) * (pg - a.ent * ent) + L * kl).mean()
                     self.opt_pi.zero_grad(set_to_none=True)
                     loss.backward()
                     nn.utils.clip_grad_norm_(self.policy.parameters(), 1.0)
                     self.opt_pi.step()
                     with torch.no_grad():
-                        info["pi_loss"] += float(pg.mean())
-                        info["kl_bc"] += float(kl.mean())
-                        info["entropy"] += float(ent.mean())
-                        info["clipfrac"] += float(((ratio - 1).abs() > a.clip).float().mean())
-                        info["approx_kl"] += float((T(lp[mb]) - logp).mean())
+                        sums[0] += pg.mean()
+                        sums[2] += kl.mean()
+                        sums[3] += ent.mean()
+                        sums[4] += ((ratio - 1).abs() > a.clip).float().mean()
+                        sums[5] += (old - logp).mean()
                 steps += 1
-        for k in ("pi_loss", "v_loss", "kl_bc", "entropy", "clipfrac", "approx_kl"):
-            info[k] /= max(1, steps)
+        vals = (sums / max(1, steps)).tolist()
+        info = dict(samples=n, **dict(zip(("pi_loss", "v_loss", "kl_bc", "entropy", "clipfrac", "approx_kl"), vals)))
         info["ret_mean"] = float(ret.mean())
         return info
 
     @torch.no_grad()
-    def evaluate(self):
+    def evaluate(self, seed_offset=0, strength_only=False):
         """Fuerza contra la BC (latencia de sala, ambos lados, muestreado) y parecido humano en self-play."""
         from learn.x4_eval import ModelPolicy, human_compare, play
         a = self.a
         delays = tuple(int(d) for d in a.delay_values)
-        me = ModelPolicy(self.policy, self.dev, "aprendiz")
-        bc = ModelPolicy(self.bc, self.dev, "bc")
+        gen = torch.Generator(device=self.dev)
+        gen.manual_seed(1_000_003 * int(a.seed) + 7919 * int(self.update) + int(seed_offset))
+        me = ModelPolicy(self.policy, self.dev, "aprendiz", generator=gen)
+        bc = ModelPolicy(self.bc, self.dev, "bc", generator=gen)
         self.policy.eval()
         w = dr = l = gf = ga = 0
         for side, (red, blue) in enumerate(((me, bc), (bc, me))):
             r = play(red, blue, map_name="sanguchito_rs_x4", matches=a.eval_matches, minutes=a.eval_minutes,
-                     delays=delays, seed=1000 + self.update * 2 + side, record=0)
+                     delays=delays, seed=1000 + self.update * 2 + side + 100_000 * seed_offset, record=0)
             g = r["goals"] if side == 0 else r["goals"][:, ::-1]
             d = g[:, 0] - g[:, 1]
             w += int((d > 0).sum()); dr += int((d == 0).sum()); l += int((d < 0).sum())
             gf += int(g[:, 0].sum()); ga += int(g[:, 1].sum())
+        n = max(1, w + dr + l)
+        if strength_only:
+            self.policy.train()
+            return dict(vs_bc=dict(wins=w, draws=dr, losses=l, score=round((w + 0.5 * dr) / n, 3),
+                                   goal_diff=round((gf - ga) / n, 3)))
         selfplay = play(me, me, map_name="sanguchito_rs_x4", matches=a.eval_selfplay, minutes=a.eval_minutes,
                         delays=delays, seed=77 + self.update, record=a.eval_selfplay)
         hum = human_compare(selfplay["episodes"]) or {}
@@ -710,15 +763,18 @@ class Trainer:
             if isinstance(v, (list, tuple)):
                 return [plain(x) for x in v]
             return v
+        tmp = self.out / (name + ".tmp")
         torch.save(dict(model=self.policy.state_dict(), critic=self.critic.state_dict(), hidden=self.hidden,
                         obs_version=obs_v3.OBS_VERSION, update=int(self.update), decisions=int(self.decisions),
                         vnorm=[float(self.vnorm.mean), float(self.vnorm.sq), float(self.vnorm.w)],
                         pool_wins=[float(x) for x in self.pool_wins],
                         opt_pi=self.opt_pi.state_dict(), opt_v=self.opt_v.state_dict(),
                         best_score=float(self.best_score), drift_count=int(self.drift_count),
-                        shaping=float(self.a.shaping), pool_names=[n for n, _ in self.pool[self.n_fixed_pool:]],
+                        shaping=float(self.a.shaping), retire_count=int(self.retire_count),
+                        pool_names=[n for n, _ in self.pool[self.n_fixed_pool:]],
                         args={k: plain(v) for k, v in vars(self.a).items()}),
-                   self.out / name)
+                   tmp)
+        os.replace(tmp, self.out / name)          # atómico: un corte durante la escritura no rompe --resume
 
     def snapshot(self):
         path = self.out / f"snap_{self.update:05d}.pt"
@@ -728,8 +784,65 @@ class Trainer:
         m.eval()
         self.pool.append((path.stem, m))
         self.pool_wins = np.append(self.pool_wins, 0.5)
+        while self.a.pool_max and len(self.pool) - self.n_fixed_pool > self.a.pool_max:
+            # se descarta del pool (el archivo queda) el snapshot al que el aprendiz más le gana, sin contar el recién
+            # agregado: es el de menor peso PFSP
+            j = self.n_fixed_pool + int(np.argmax(self.pool_wins[self.n_fixed_pool:-1]))
+            self.drop_from_pool(j)
         for ar in self.arenas:
             ar.pool_size = len(self.pool)
+
+    def drop_from_pool(self, j):
+        """Quita el rival j del pool y reindexa los partidos en curso: los que jugaban contra j siguen en self-play
+        (el aprendiz toma los 8 lugares), los que jugaban contra un rival posterior apuntan a su nuevo índice."""
+        del self.pool[j]
+        self.pool_wins = np.delete(self.pool_wins, j)
+        for ar in self.arenas:
+            hit = ar.opp == j
+            ar.opp[hit] = -1
+            ar.learner[hit] = True
+            ar.opp[ar.opp > j] -= 1
+            ar.pool_size = len(self.pool)
+
+    def eval_step(self):
+        """Evaluación periódica: retiro del shaping, best.pt confirmado y corte por deriva. Devuelve True si hay que
+        cortar la corrida."""
+        a = self.a
+        ev = self.evaluate()
+        ev.update(update=self.update, decisions=self.decisions, shaping=a.shaping)
+        score = ev["vs_bc"]["score"]
+        if a.shaping > 0 and a.shaping_retire > 0:
+            self.retire_count = self.retire_count + 1 if score >= a.shaping_retire else 0
+            if self.retire_count >= max(1, a.retire_patience):
+                a.shaping = 0.0                       # MARLadona: se retira para siempre
+                ev["shaping_retired"] = True
+        hw = ev["human_w1_mean"]
+        if hw is not None and hw <= a.human_gate and score > self.best_score:
+            # confirmación con otras semillas: el máximo de evaluaciones ruidosas sobreestima (maldición del ganador)
+            conf = self.evaluate(seed_offset=1, strength_only=True)["vs_bc"]["score"]
+            ev["vs_bc_confirmacion"] = conf
+            mean = round((score + conf) / 2, 4)
+            if mean > self.best_score:
+                self.best_score = mean
+                self.save("best.pt")
+                ev["new_best"] = True
+                ev["best_score"] = mean
+        reasons = drift_reasons(ev, a)
+        self.drift_count = self.drift_count + 1 if reasons else 0
+        ev["drift"] = reasons
+        with open(self.out / "eval.jsonl", "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(ev) + "\n")
+        print("EVAL " + json.dumps(ev), flush=True)
+        if a.stop_on_drift and self.drift_count >= a.stop_on_drift:
+            # criterio de corte pre-registrado: se detiene y deja constancia (volver a best.pt, subir λ o bajar lr)
+            self.save("stopped.pt")
+            (self.out / "stopped.json").write_text(json.dumps(dict(
+                update=self.update, decisions=self.decisions, reasons=reasons, eval=ev,
+                what_next="volver a best.pt, subir --lambda-dist o bajar --lr (docs/POD_RUNBOOK.md §4)"),
+                indent=1, ensure_ascii=False), encoding="utf-8")
+            print(f"CORTE POR DERIVA en la actualización {self.update}: {reasons}", flush=True)
+            return True
+        return False
 
     def train(self):
         a = self.a
@@ -745,43 +858,25 @@ class Trainer:
                        dps=round(stats["decisions"] / max(1e-6, time.time() - tr)), goals=stats["goals"],
                        matches=stats["matches"], shaping_abs=round(stats["shaping"], 3), forfeits=stats["forfeits"],
                        passes=stats["passes"],
-                       passes_per_min=round(stats["passes"] / max(1e-9, stats["decisions"] * 3 / 3600), 3),
+                       # contador del kernel (toque de otro compañero): da 40–57% más que la métrica de x4_metrics;
+                       # sirve para ver tendencias, la comparación con humanos es `selfplay_pases` en eval.jsonl
+                       rollout_passes_per_min_kernel=round(stats["passes"] / max(1e-9, stats["decisions"] * 3 / 3600), 3),
                        pass_bonus_abs=round(stats["pass_bonus"], 3),
                        pool_wins={n: round(float(w), 3) for (n, _), w in zip(self.pool, self.pool_wins)},
                        **{k: (round(v, 5) if isinstance(v, float) else v) for k, v in info.items()})
             self.log.write(json.dumps(row) + "\n")
             self.log.flush()
             print(json.dumps(row), flush=True)
-            if self.update % 10 == 0 or self.update == a.updates:
-                self.save()
             if a.snapshot_every and self.update % a.snapshot_every == 0:
                 self.snapshot()
+            stop = False
             if a.eval_every and self.update % a.eval_every == 0 and u >= a.critic_warmup:
-                ev = self.evaluate()
-                ev.update(update=self.update, decisions=self.decisions, shaping=a.shaping)
-                if a.shaping > 0 and a.shaping_retire > 0 and ev["vs_bc"]["score"] >= a.shaping_retire:
-                    a.shaping = 0.0                       # MARLadona: se retira para siempre
-                    ev["shaping_retired"] = True
-                hw = ev["human_w1_mean"]
-                if hw is not None and hw <= a.human_gate and ev["vs_bc"]["score"] > self.best_score:
-                    self.best_score = ev["vs_bc"]["score"]
-                    self.save("best.pt")
-                    ev["new_best"] = True
-                reasons = drift_reasons(ev, a)
-                self.drift_count = self.drift_count + 1 if reasons else 0
-                ev["drift"] = reasons
-                with open(self.out / "eval.jsonl", "a", encoding="utf-8") as fh:
-                    fh.write(json.dumps(ev) + "\n")
-                print("EVAL " + json.dumps(ev), flush=True)
-                if a.stop_on_drift and self.drift_count >= a.stop_on_drift:
-                    # criterio de corte pre-registrado: se detiene y deja constancia (volver a best.pt, subir λ o bajar lr)
-                    self.save("stopped.pt")
-                    (self.out / "stopped.json").write_text(json.dumps(dict(
-                        update=self.update, decisions=self.decisions, reasons=reasons, eval=ev,
-                        what_next="volver a best.pt, subir --lambda-dist o bajar --lr (docs/POD_RUNBOOK.md §4)"),
-                        indent=1, ensure_ascii=False), encoding="utf-8")
-                    print(f"CORTE POR DERIVA en la actualización {self.update}: {reasons}", flush=True)
-                    break
+                stop = self.eval_step()
+            # last.pt después de la evaluación: así best_score, drift_count y el shaping quedan consistentes al reanudar
+            if self.update % 10 == 0 or self.update == a.updates or stop:
+                self.save()
+            if stop:
+                break
         self.save()
         return time.time() - t0
 

@@ -1,4 +1,4 @@
-"""Sincronizar el código del repo con el Pod (sin datos, checkpoints ni deploy/).
+"""Sincronizar el código del repo con el Pod (sin datos ni deploy/; de checkpoints, sólo la imitación X4 versionada).
 
 Los archivos de texto viajan con finales de línea LF: el árbol de Windows usa CRLF
 (core.autocrlf) y en Linux eso aparece como cambios falsos en git. Sólo agrega o
@@ -21,7 +21,8 @@ ROOT = Path(__file__).resolve().parent.parent
 POD = os.environ.get("HAXBALL_POD", "aa368f72-ad42-43ee-b278-61d0a50706de@96.28.88.208")
 PORT = os.environ.get("HAXBALL_POD_PORT", "40900")
 REMOTE = os.environ.get("HAXBALL_POD_REPO", "/workspace/HaxballRL")
-CODE_DIRS = ("sim", "env", "train", "eval", "bots", "tools", "tests", "export", "bridge", "stadiums")
+CODE_DIRS = ("sim", "env", "train", "eval", "bots", "tools", "tests", "export", "bridge", "stadiums",
+             "learn", "docs", "reports", "runs/x4_bc/final_sangu_rsone")   # X4: código, particiones e imitación de partida
 TEXT = {".py", ".yaml", ".yml", ".js", ".json", ".hbs", ".md", ".txt", ".sh", ".cfg", ".toml"}
 
 

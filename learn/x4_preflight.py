@@ -33,6 +33,8 @@ def main():
     ap.add_argument("--envs", type=int, default=128, help="partidos de la mini-corrida")
     ap.add_argument("--target-envs", type=int, default=1024, help="partidos de la corrida real (para la estimación)")
     ap.add_argument("--target-rollout", type=int, default=64)
+    ap.add_argument("--scale-test", choices=("auto", "yes", "no"), default="auto",
+                    help="una actualización sintética con el buffer de la corrida real (auto: sólo en cuda)")
     ap.add_argument("--out", default="")
     a = ap.parse_args()
     report, ok = {}, True
@@ -114,6 +116,8 @@ def main():
             tr2 = Trainer(parse_args(args[:-6] + ["--updates", "4", "--resume", "--eval-every", "0",
                                                   "--bank-recordings", "0"]))
             check("reanudacion", tr2.update == 3, f"reanuda en la actualización {tr2.update}")
+            if a.scale_test == "yes" or (a.scale_test == "auto" and a.device.startswith("cuda")):
+                scale_test(tr2, a, check)
         except SystemExit as e:
             check("mini_corrida", False, f"SystemExit: {e}")
         except Exception as e:  # noqa: BLE001
@@ -121,6 +125,35 @@ def main():
             traceback.print_exc()
             check("mini_corrida", False, f"{type(e).__name__}: {e}")
     return finish(report, ok, a)
+
+
+def scale_test(tr, a, check):
+    """Una actualización (`learn`) con un buffer sintético del tamaño de la corrida real: mide el pico de RAM y de memoria
+    de GPU de la parte más grande (los tensores de un rollout completo suben juntos al dispositivo)."""
+    from learn.x4_ppo import CRITIC_IN
+    from env.rs4z import obs_v3
+    T, N = a.target_rollout, a.target_envs
+    rng = np.random.default_rng(0)
+    try:
+        if a.device.startswith("cuda"):
+            torch.cuda.empty_cache()
+            torch.cuda.reset_peak_memory_stats()
+        u = np.float32(np.log(1 / 18))
+        buf = [(rng.standard_normal((T, N, 8, obs_v3.OBS_DIM), np.float32) * 0.1,
+                rng.standard_normal((T, N, 8, CRITIC_IN), np.float32) * 0.1,
+                rng.integers(0, 18, (T, N, 8)), np.full((T, N, 8), u, np.float32),
+                np.full((T, N, 8, 18), u, np.float32), np.zeros((T, N, 8), np.float32),
+                rng.standard_normal((T, N, 8)).astype(np.float32) * 0.01, rng.random((T, N)) < 0.001,
+                np.ones((T, N, 8), bool), np.full((T, N), 0.2, np.float32), np.zeros((N, 8), np.float32))]
+        t0 = time.time()
+        info = tr.learn(buf)
+        dt = time.time() - t0
+        detail = dict(muestras=info["samples"], learn_s=round(dt, 1),
+                      ram_pico_gb=round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 2**20, 2),
+                      gpu_pico_gb=round(torch.cuda.max_memory_allocated() / 2**30, 2) if a.device.startswith("cuda") else None)
+        check("escala_real", np.isfinite(info["kl_bc"]), detail)
+    except Exception as e:  # noqa: BLE001  (p. ej. falta de memoria: bajar --rollout a 32)
+        check("escala_real", False, f"{type(e).__name__}: {e} (probar --rollout 32 en la corrida real)")
 
 
 def finish(report, ok, a):

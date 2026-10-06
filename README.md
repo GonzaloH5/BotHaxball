@@ -37,7 +37,7 @@ python -m tools.rs4z_conformance --out conformance.json
 node deploy/rs4z/join_bots.js --join <link> --count 7 --model <modelo.onnx>
 ```
 
-Los trabajos pesados (datasets, entrenamiento, evaluación) se corren en el pod. El código se sube con `python -m tools.pod_sync`, usando las variables `HAXBALL_POD` y `HAXBALL_POD_PORT`.
+Los trabajos pesados (datasets, entrenamiento, evaluación) se corren en el pod. El código llega con `git` (rama de trabajo, `docs/POD_RUNBOOK.md` §0) o con `python -m tools.pod_sync`, usando las variables `HAXBALL_POD` y `HAXBALL_POD_PORT`.
 
 ## Hechos medidos del juego real
 

@@ -68,14 +68,20 @@ class Policy:
 class ModelPolicy:
     """Adaptador de un SetPolicy en memoria a la interfaz de `Policy` (muestreado o greedy)."""
 
-    def __init__(self, model, device="cpu", name="modelo", greedy=False):
+    def __init__(self, model, device="cpu", name="modelo", greedy=False, generator=None):
+        """`generator`: un `torch.Generator` del mismo dispositivo para que el muestreo sea reproducible
+        (las evaluaciones de distintos checkpoints ven así el mismo azar)."""
         self.model, self.device, self.name, self.greedy, self.spec = model, device, name, greedy, name
+        self.generator = generator
 
     @torch.no_grad()
     def __call__(self, obs, rng):
         logits = self.model(torch.from_numpy(obs).to(self.device))
         if self.greedy:
             return logits.argmax(-1).cpu().numpy()
+        if self.generator is not None:
+            p = torch.softmax(logits.float(), -1)
+            return torch.multinomial(p, 1, generator=self.generator).squeeze(-1).cpu().numpy()
         return torch.distributions.Categorical(logits=logits).sample().cpu().numpy()
 
 

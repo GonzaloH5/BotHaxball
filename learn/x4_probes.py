@@ -121,11 +121,12 @@ def run(policy, data, states, *, map_name="sanguchito_rs_x4", horizon=100, delay
     last = carrier.copy()
     passes = np.zeros(N, int)
     done = np.zeros(N, bool)
+    dev = next(policy.parameters()).device
     for _ in range(horizon):
         obs = obs_v3.observe(env)
         flat = obs.reshape(N * 8, -1)
-        logits = policy(torch.from_numpy(flat))
-        a = torch.distributions.Categorical(logits=logits).sample().numpy().reshape(N, 8)
+        logits = policy(torch.from_numpy(flat).to(dev))
+        a = torch.distributions.Categorical(logits=logits).sample().cpu().numpy().reshape(N, 8)
         ev = env.step(a)
         bp = env.ball_pos
         pp = env.player_pos
