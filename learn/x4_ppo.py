@@ -51,7 +51,7 @@ TEAM = np.array([0, 0, 0, 0, 1, 1, 1, 1])
 # orden de los 8 jugadores visto desde cada lugar: él, compañeros, rivales (por lugar)
 ORDER = np.array([[p] + [q for q in range(8) if q != p and TEAM[q] == TEAM[p]] + [q for q in range(8) if TEAM[q] != TEAM[p]]
                   for p in range(8)])
-CRITIC_IN = obs_v3.OBS_DIM + obs_v2.CRITIC_DIM + 8 * 18 + 1 + 3     # + λ efectivo + tipo de rival
+CRITIC_IN = obs_v3.OBS_DIM + obs_v2.CRITIC_DIM + 8 * 18 + 1 + 3 + 1     # + λ efectivo + tipo de rival + φ propio
 N_REGIONS = 10
 
 
@@ -713,7 +713,9 @@ class Trainer:
             return arena.lam.astype(np.float32)
         return np.maximum(arena.lam * a.lambda_decay ** self.update, a.lambda_min).astype(np.float32)
 
-    def critic_input(self, arena, obs):
+    def critic_input(self, arena, obs, phi=None):
+        """Entrada del crítico. `phi` (N,): valor de posesión del rojo (EPV); se le da a cada jugador en el marco de su
+        equipo. Con shaping de potencial el valor que aprende el crítico es V − φ (Ng 1999): verlo le ahorra aprenderlo."""
         env = arena.env
         c = obs_v2.critic(env)
         up = upcoming_actions(env)
@@ -722,7 +724,10 @@ class Trainer:
         kind = np.zeros((arena.N, 3), np.float32)
         kind[np.arange(arena.N), np.where(arena.opp < 0, 0, np.where(arena.opp == 0, 1, 2))] = 1.0
         kind = np.broadcast_to(kind[:, None, :], (arena.N, 8, 3))
-        return np.concatenate([obs, c, up, lam, kind], -1).astype(np.float32)
+        if phi is None:
+            phi = self.epv.phi_env(env) if self.epv is not None else np.zeros(arena.N)
+        ph = (np.asarray(phi, np.float32)[:, None] * np.where(TEAM == 0, 1.0, -1.0)[None, :]).astype(np.float32)[..., None]
+        return np.concatenate([obs, c, up, lam, kind, ph], -1).astype(np.float32)
 
     # -------------------------------------------------------------- rollout
     def rollout(self):
@@ -750,10 +755,10 @@ class Trainer:
             lm = np.zeros((T, N, 8), bool)
             la = np.zeros((T, N), np.float32)
             pfsp = self.pfsp()
-            phi = self.epv.phi_env(env) if epv_on else None
+            phi = self.epv.phi_env(env) if self.epv is not None else np.zeros(N)
             for t in range(T):
                 obs = obs_v3.observe(env, delay=arena.delay_obs)
-                crit = self.critic_input(arena, obs)
+                crit = self.critic_input(arena, obs, phi)
                 acts, logp, bc_logp, v = self.act(arena, obs, crit)
                 ob[t], cr[t], ac[t], lp[t], bl[t], vv[t] = obs, crit, acts, logp, bc_logp, v
                 lm[t] = arena.learner & env.active
@@ -777,10 +782,10 @@ class Trainer:
                     sh = arena.shaping(goal) * shaping_scale
                     team_r += sh
                     stats["shaping"] += float(np.abs(sh).sum())
+                phi_new = self.epv.phi_env(env) if self.epv is not None else phi
                 if epv_on:
                     # shaping basado en potencial (Ng 1999; en juegos, Devlin y Kudenko 2011): F = γ·φ(s') − φ(s) para
                     # el rojo, −F para el azul; φ(s') = 0 al terminar el partido
-                    phi_new = self.epv.phi_env(env)
                     f = a.epv_coef * (a.gamma * phi_new * (~ev["match_end"]) - phi)
                     team_r[:, 0] += f
                     team_r[:, 1] -= f
@@ -810,10 +815,10 @@ class Trainer:
                         self.pool_wins[k] = 0.97 * self.pool_wins[k] + 0.03 * res
                 stats["matches"] += len(ends)
                 arena.new_match(ends, pfsp)
-                if epv_on:
+                if self.epv is not None:
                     phi = self.epv.phi_env(env) if len(ends) else phi_new
             obs = obs_v3.observe(env, delay=arena.delay_obs)
-            crit = self.critic_input(arena, obs)
+            crit = self.critic_input(arena, obs, phi)
             with torch.no_grad():
                 last_v = self.critic(torch.from_numpy(crit.reshape(N * 8, -1)).to(self.dev)).view(N, 8).cpu().numpy()
             buf.append((ob, cr, ac, lp, bl, vv, rw, dn, lm, la, last_v))
