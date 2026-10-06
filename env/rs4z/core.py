@@ -218,6 +218,9 @@ class RS4ZEnv:
         self.ri[n, K.RI_ARMED] = 1
         self.ri[n, K.RI_LAST] = last_touch
         self.ri[n, K.RI_LAST_P] = -1
+        self.ri[n, K.RI_C0] = 0
+        self.ri[n, K.RI_GHOLD] = 0
+        self.ri[n, K.RI_PEND] = 0
         self.grav[n] = 0.0
         self.outside[n] = False
         K.clear_piece(self.pos[n], self.radius[n], self.group[n], fp, P, self.active[n], self.team,

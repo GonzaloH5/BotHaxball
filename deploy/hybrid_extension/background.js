@@ -19,7 +19,7 @@ async function connectImpl(){
   if(reconnect){clearTimeout(reconnect);reconnect=null;}disconnect();
   settings=await chrome.storage.local.get(['token','port','shortcut']);
   for(const tab of ports.keys())reply(tab,shortcutMessage());
-  if(typeof settings.token!=='string'||settings.token.length<32){connectionError='Falta emparejar: abrí Emparejar / atajo e ingresá el token del servicio';disconnect();return;}
+  if(typeof settings.token!=='string'||settings.token.length<32){connectionError='Falta el token del servicio. Ingresalo en Conexión.';disconnect();return;}
   const port=Number(settings.port||17841);if(!Number.isInteger(port)||port<1||port>65535){connectionError='Puerto local inválido';disconnect();return;}
   connectionError='';
   const ws=socket=new WebSocket(`ws://127.0.0.1:${port}/rs4`);

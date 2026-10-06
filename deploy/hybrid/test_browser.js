@@ -6,7 +6,7 @@ const {startServer}=require('../hybrid_server');
 const fixtures=require('../test_hybrid');
 function fixtureHtml(source){
   const native=extractClass(source,'P')+';'+extractClass(source,'ta')+';'+extractClass(source,'bc');
-  return `<!doctype html><html><body style="background:#203021;color:white;margin:0"><canvas id="pitch" width="900" height="420"></canvas><input id="chat" placeholder="Chat oficial de prueba"><script>
+  return `<!doctype html><html><body style="background:#203021;color:white;margin:0"><canvas id="pitch" width="900" height="420" style="max-width:100%;height:auto"></canvas><input id="chat" placeholder="Chat oficial de prueba"><script>
     const M=(self,fn)=>fn.bind(self),Ja=class{},D={h:(fn,...args)=>fn?.(...args)};
     const bindings={KeyW:'Up',KeyA:'Left',KeyS:'Down',KeyD:'Right',ArrowUp:'Up',ArrowDown:'Down',ArrowLeft:'Left',ArrowRight:'Right',KeyX:'Kick',Space:'Kick'};
     const m={j:{Jd:{v:()=>({v:code=>bindings[code]})}}};${native}
@@ -76,7 +76,14 @@ async function run({browser='brave',model,out}={}){
     assert.equal(await options.locator('#token').getAttribute('type'),'text');
     await options.getByRole('button',{name:'Ocultar token',exact:true}).click();
     assert.equal(await options.locator('#token').getAttribute('type'),'password');
+    await options.setViewportSize({width:420,height:600});
+    assert(await options.locator('#next-step').isHidden(),'game link stays hidden until service connects');
+    assert(await options.evaluate(()=>document.querySelector('#connect').getBoundingClientRect().bottom<=innerHeight),'primary connection action fits popup without scrolling');
+    assert(await options.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'popup has no horizontal overflow');
     if(out)await options.screenshot({path:path.resolve(out).replace(/\.json$/,'-options.png'),fullPage:true});
+    await options.locator('#show-guide').click();
+    assert(await options.locator('#copy-command').isVisible(),'startup command is reachable from connection form');
+    await options.locator('#startup-guide summary').click();
     await options.locator('#shortcut').focus();await options.keyboard.press('Control+Alt+b');
     assert.equal(await options.locator('#shortcut').inputValue(),'Ctrl + Alt + B');
     await options.getByRole('button',{name:'Guardar atajo',exact:true}).click();
@@ -89,9 +96,14 @@ async function run({browser='brave',model,out}={}){
     await options.locator('#port').fill(String(service.port));await options.locator('#token').fill(service.token);await options.getByRole('button',{name:'Guardar y conectar',exact:true}).click();
     await options.waitForFunction(()=>document.getElementById('status').textContent.includes('Conectado'),null,{timeout:10000});
     assert.equal(await options.evaluate(async()=>RS4Shortcut.label((await chrome.storage.local.get('shortcut')).shortcut)),'Ctrl + Alt + B');
+    assert(await options.locator('#next-step').isVisible(),'connected state offers the next step');
     await options.close();await page.bringToFront();
     await page.waitForFunction(()=>document.querySelector('#rs4-hybrid-panel').shadowRoot.getElementById('model').textContent.includes('0349dd60'),null,{timeout:10000});
     await page.waitForFunction(()=>!document.querySelector('#rs4-hybrid-panel').shadowRoot.getElementById('reason').textContent.includes('Esperando'),null,{timeout:15000});
+    assert(await page.locator('#pair').isVisible());
+    assert(await page.locator('#qualify').isVisible(),'required check is visible with diagnostics collapsed');
+    assert(await page.locator('#toggle').isVisible());
+    assert.equal(await page.locator('details').getAttribute('open'),null);
     await page.getByText('Opciones y diagnóstico',{exact:true}).click();
     assert.equal(await page.locator('#checklist li').count(),7);
     const downloadEvent=page.waitForEvent('download');
@@ -131,6 +143,18 @@ async function run({browser='brave',model,out}={}){
     await page.getByLabel('Esta sala es propia o tengo permiso para usar el bot.').check();
     await page.getByRole('button',{name:'Comprobar configuración',exact:true}).click({timeout:15000});
     await page.waitForFunction(()=>document.querySelector('#rs4-hybrid-panel').shadowRoot.getElementById('metrics').textContent.includes('Preflight aprobado'),null,{timeout:45000});
+    await page.getByText('Opciones y diagnóstico',{exact:true}).click();
+    assert(await page.locator('#toggle').isEnabled(),'handoff works without opening diagnostics');
+    assert((await page.locator('#reason').textContent()).includes('Configuración lista'),'ready state replaces old preparation messages');
+    if(out){
+      await page.screenshot({path:path.resolve(out).replace(/\.json$/,'-ready.png'),fullPage:true});
+      await page.setViewportSize({width:390,height:844});
+      assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'game panel fits narrow viewport');
+      assert(await page.locator('#qualify').isVisible());
+      assert(await page.locator('#toggle').isVisible());
+      await page.screenshot({path:path.resolve(out).replace(/\.json$/,'-mobile.png'),fullPage:true});
+      await page.setViewportSize({width:1280,height:720});
+    }
     await page.keyboard.press('ArrowUp');assert.equal(await page.evaluate(()=>fixture.view.W.ng),0,'release before further test');
     await page.evaluate(()=>window.dispatchEvent(new Event('blur')));
     assert(!await page.getByRole('button',{name:'Ceder al bot',exact:true}).isDisabled(),'qualified button can acquire iframe focus on click');
@@ -181,11 +205,13 @@ async function run({browser='brave',model,out}={}){
     await other.waitForFunction(()=>document.querySelector('#rs4-hybrid-panel')?.shadowRoot.getElementById('reason').textContent.includes('Otra pestaña activa'));
     await other.close();await page.bringToFront();await page.keyboard.press('Escape');
     await page.waitForFunction(()=>document.querySelector('#rs4-hybrid-panel').shadowRoot.getElementById('mode').textContent==='HUMANO');
+    await page.getByText('Opciones y diagnóstico',{exact:true}).click();
+    await page.waitForFunction(()=>!document.querySelector('#rs4-hybrid-panel').shadowRoot.getElementById('reason').textContent.includes('Tomá control humano'));
     await page.screenshot({path:out?path.resolve(out).replace(/\.json$/,'.png'):path.join(profile,'panel.png'),fullPage:true});
     assert.deepEqual(errors,[]);
     const report={browser,passed:true,extensionId,nativeSourceHash:require('./official_profile').SHA256,handoffs:100,
       samePlayer:true,secondConnection:false,customShortcut:'Ctrl + Alt + B',shortcutRepeatIgnored:true,shortcutDisableWorks:true,chatShortcutIgnored:true,backgroundBot:true,pausedRafWithFreshActions:true,focusEvents:'dispatched/headless',secondTabDenied:true,realRoom:false,
-      actionablePrerequisites:true,manualBeforePairing:true,manualBeforePermission:true,unsupportedMapManualWorks:true,protectedMapManualWorks:true,
+      actionablePrerequisites:true,collapsedActivation:true,popupPrimaryAboveFold:true,responsivePanel:true,manualBeforePairing:true,manualBeforePermission:true,unsupportedMapManualWorks:true,protectedMapManualWorks:true,
       qualification:await page.evaluate(()=>document.querySelector('#rs4-hybrid-panel').shadowRoot.getElementById('metrics').textContent)};
     // Kill only this test's local inference socket; leave native controller running.
     await page.getByRole('button',{name:'Ceder al bot',exact:true}).click();

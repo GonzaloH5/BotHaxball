@@ -29,8 +29,8 @@ from env.rs4z.numba_cache import guard
 guard(__file__, ["sim/physics.py", "sim/stadium.py", "env/rs4z/contract.py"])
 from sim.stadium import BLUEKO, C0, C1, PLAYER_MASK, REDKO
 
-from .contract import (CORNER, FIX_CLOCK, FIX_ENGINE, FIX_LATERAL, FIX_MASS, FIX_SANGU, FIX_STRIP, GOAL_KICK, LATERAL,
-                       PI, SD_BLUE, SD_BOTH, SD_RED)
+from .contract import (CORNER, FIX_CLOCK, FIX_ENGINE, FIX_LATERAL, FIX_MASS, FIX_SANGU, FIX_SEGBOOST, FIX_STRIP,
+                       GOAL_KICK, LATERAL, PI, SD_BLUE, SD_BOTH, SD_RED)
 
 # ---------------------------------------------------------------------------- estado entero
 RI_TEAM = 0          # equipo que saca (-1 sin saque)
@@ -50,14 +50,21 @@ RI_SCORE0 = 13
 RI_SCORE1 = 14
 RI_LAST_P = 15       # último jugador con contacto (-1)
 RI_LAT_KICKED = 16   # patada durante el lateral, persiste hasta entrada/reposicionamiento
-RI_SIZE = 17
+RI_C0 = 17           # pelota con c0 en su máscara (FIX_SEGBOOST): -1 saque activo, >0 ticks que faltan, 0 no
+RI_GHOLD = 18        # ticks que la curva del script se mantiene antes de decaer
+RI_PEND = 19         # cobro demorado: ticks hasta que la sala coloca la pelota (0 sin cobro pendiente)
+RI_PEND_KIND = 20
+RI_PEND_TEAM = 21
+RI_SIZE = 22
 # ---------------------------------------------------------------------------- estado real
 RF_SPOT_X = 0
 RF_SPOT_Y = 1
 RF_BOOST = 2         # factor del impulso pendiente
 RF_KSTR = 3          # kickStrength del partido (variante del mapa)
 RF_BALL_INV = 4      # invMass de la pelota
-RF_SIZE = 5
+RF_PEND_X = 5        # punto del cobro pendiente
+RF_PEND_Y = 6
+RF_SIZE = 7
 
 # ---------------------------------------------------------------------------- parámetros
 _LINE_H = PI["line_half_h"]
@@ -107,6 +114,17 @@ _C_GRAV_KVX = PI["corner_grav_kvx"]
 _G_GRAV_KVY = PI["goal_kick_grav_kvy"]
 _GRAV_HOLD = PI["grav_hold_ticks"]
 _FORM_X = PI["form0_x"]  # form{i}_x, form{i}_y consecutivos
+_G_GRAV_KVX = PI["goal_kick_grav_kvx"]
+_GRAV_HOLD_GK = PI["grav_hold_ticks_gk"]
+_G_TOUCH = PI["grav_touch_stop"]
+_BALL_C0_T = PI["ball_c0_ticks"]
+_PEND_LAT_LO = PI["pend_lat_min"]
+_PEND_LAT_HI = PI["pend_lat_max"]
+_PEND_C_LO = PI["pend_corner_min"]
+_PEND_C_HI = PI["pend_corner_max"]
+_PEND_G_LO = PI["pend_gk_min"]
+_PEND_G_HI = PI["pend_gk_max"]
+_PEND_LAT_DISC = PI["pend_lat_disc"]
 
 GROUP_RED = 2
 GROUP_BLUE = 4
@@ -175,6 +193,11 @@ def physics_tick(pos, vel, mask, group, radius, inv, bcoef, damping, kick_cancel
     kinfo[p] = (distancia a la pelota, vx, vy) del pateador antes del tick (lo usa el script de Sanguchito).
     """
     K = pos.shape[0]
+    # máscara de la pelota: el script le agrega c0 en córner y saque de arco (segmentos de impulso del mapa)
+    if ri[RI_C0] != 0:
+        mask[0] |= C0
+    else:
+        mask[0] &= ~C0
     # 1. entradas
     for p in range(P):
         k = fp + p
@@ -289,6 +312,8 @@ def start_piece(kind, taker, spot_x, spot_y, pos, vel, group, radius, inv, kick_
     ri[RI_BOOST] = 0
     ri[RI_GRAV] = 0
     if kind == LATERAL:
+        if ri[RI_C0] < 0:
+            ri[RI_C0] = 0
         for p in range(P):
             if not active[p] or team[p] == taker:
                 continue
@@ -304,6 +329,8 @@ def start_piece(kind, taker, spot_x, spot_y, pos, vel, group, radius, inv, kick_
             inv[fp + p] = prm[_PIECE_INV]
         if flags & FIX_SANGU:
             inv[0] = 0.0  # pelota fija hasta la patada válida del ejecutor
+        if flags & FIX_SEGBOOST:
+            ri[RI_C0] = -1
         if kind == GOAL_KICK:
             for p in range(P):
                 if not active[p] or team[p] == taker:
@@ -406,6 +433,22 @@ def _schedule(kind, pos, vel, grav, k_kicker, prm, ri, rf):
 
 
 @njit(cache=True)
+def _script_curve(kind, grav, p, kinfo, prm, ri, sy):
+    """Curva que el script fija al patear un córner o saque de arco (Sanguchito y familia RS ONE):
+    lineal en la velocidad del pateador antes del tick; córner con componente fija hacia la cancha."""
+    if kind == CORNER:
+        grav[0] = prm[_C_GRAV_KVX] * kinfo[p, 1]
+        grav[1] = -sy * prm[_C_GRAV_Y]
+        ri[RI_GHOLD] = int(prm[_GRAV_HOLD])
+    else:
+        grav[0] = prm[_G_GRAV_KVX] * kinfo[p, 1]
+        grav[1] = prm[_G_GRAV_KVY] * kinfo[p, 2]
+        ri[RI_GHOLD] = int(prm[_GRAV_HOLD_GK])
+    ri[RI_BOOST] = 0
+    ri[RI_GRAV] = int(prm[_GRAV_T])
+
+
+@njit(cache=True)
 def _sangu_kick(kind, pos, vel, grav, fp, p, kinfo, prm, ri, sy):
     """Patada válida del ejecutor en córner o saque de arco de Sanguchito: velocidad y curva del script."""
     k = fp + p
@@ -413,20 +456,14 @@ def _sangu_kick(kind, pos, vel, grav, fp, p, kinfo, prm, ri, sy):
     d0 = kinfo[p, 0]
     vel[0, 0] = s * (pos[0, 0] - pos[k, 0]) / d0
     vel[0, 1] = s * (pos[0, 1] - pos[k, 1]) / d0
-    if kind == CORNER:
-        grav[0] = prm[_C_GRAV_KVX] * kinfo[p, 1]
-        grav[1] = -sy * prm[_C_GRAV_Y]
-    else:
-        grav[0] = 0.0
-        grav[1] = prm[_G_GRAV_KVY] * kinfo[p, 2]
-    ri[RI_BOOST] = 0
-    ri[RI_GRAV] = int(prm[_GRAV_T])
+    _script_curve(kind, grav, p, kinfo, prm, ri, sy)
 
 
 @njit(cache=True)
 def set_piece(side, rand_bit, pos, vel, group, radius, inv, kick_cancel, grav, active, team, fp, P,
-              prm, flags, sd_home, ri, rf, outside, line_w):
-    """Salida cobrada: `RSOneReferee.set_piece` para un partido. Devuelve el tipo iniciado."""
+              prm, flags, sd_home, ri, rf, outside, line_w, rand_u):
+    """Salida cobrada: `RSOneReferee.set_piece` para un partido. Devuelve el tipo iniciado (0 si la sala
+    demora la colocación: queda pendiente `RI_PEND` ticks, con el disco del punto puesto)."""
     bx = pos[0, 0]
     by = pos[0, 1]
     last = ri[RI_LAST]
@@ -462,6 +499,32 @@ def set_piece(side, rand_bit, pos, vel, group, radius, inv, kick_cancel, grav, a
             taker = defender
             spot_x = sx * prm[_GX]
             spot_y = sy * prm[_GY]
+    if kind == LATERAL:
+        lo = prm[_PEND_LAT_LO]
+        hi = prm[_PEND_LAT_HI]
+    elif kind == CORNER:
+        lo = prm[_PEND_C_LO]
+        hi = prm[_PEND_C_HI]
+    else:
+        lo = prm[_PEND_G_LO]
+        hi = prm[_PEND_G_HI]
+    delay = 0
+    if hi > 0.0:
+        delay = int(lo + rand_u * (hi - lo + 1.0))
+        if delay > hi:
+            delay = int(hi)
+    if delay > 0:
+        ri[RI_PEND] = delay
+        ri[RI_PEND_KIND] = kind
+        ri[RI_PEND_TEAM] = taker
+        rf[RF_PEND_X] = spot_x
+        rf[RF_PEND_Y] = spot_y
+        ri[RI_ARMED] = 0
+        if (flags & FIX_ENGINE) and prm[_SPOT_R] > 0.0 and (kind != LATERAL or prm[_PEND_LAT_DISC] > 0.0):
+            pos[SD_BOTH, 0] = spot_x       # la sala despeja el punto mientras demora la colocación
+            pos[SD_BOTH, 1] = spot_y
+            radius[SD_BOTH] = prm[_SPOT_R]
+        return 0
     start_piece(kind, taker, spot_x, spot_y, pos, vel, group, radius, inv, kick_cancel, grav, active,
                 team, fp, P, prm, flags, sd_home, ri, rf, outside)
     return kind
@@ -495,7 +558,7 @@ def forfeit_piece(pos, vel, group, radius, inv, kick_cancel, grav, active, team,
 
 @njit(cache=True)
 def post_tick(goal, kicked, contact, pos, vel, group, radius, inv, kick_cancel, grav, active, team,
-              fp, P, prm, flags, sd_home, ri, rf, outside, line_w, goal_hh, rand_bit, deadline, ev, kinfo):
+              fp, P, prm, flags, sd_home, ri, rf, outside, line_w, goal_hh, rand_bit, deadline, ev, kinfo, rand_u):
     """`RSOneReferee.post_tick` para un partido, más las correcciones v2.
 
     Devuelve 1 si el saque activo venció su plazo de entrenamiento en este tick.
@@ -543,14 +606,16 @@ def post_tick(goal, kicked, contact, pos, vel, group, radius, inv, kick_cancel, 
         if fire:
             vel[0, 0] *= rf[RF_BOOST]
             vel[0, 1] *= rf[RF_BOOST]
-    if ri[RI_GRAV] > 0 and (flags & FIX_SANGU):
-        # Sanguchito: la curva se mantiene `grav_hold_ticks`, después decae; los toques no la cortan
+    if ri[RI_C0] > 0:
+        ri[RI_C0] -= 1           # el script le saca c0 a la pelota `ball_c0_ticks` después de la patada
+    if ri[RI_GRAV] > 0 and (flags & (FIX_SANGU | FIX_SEGBOOST)):
+        # curva del script: se mantiene RI_GHOLD ticks, después decae; en RS ONE un toque la corta
         ri[RI_GRAV] -= 1
-        if ri[RI_GRAV] == 0 or goal != 0:
+        if ri[RI_GRAV] == 0 or goal != 0 or (prm[_G_TOUCH] > 0.0 and any_contact):
             grav[0] = 0.0
             grav[1] = 0.0
             ri[RI_GRAV] = 0
-        elif prm[_GRAV_T] - ri[RI_GRAV] >= prm[_GRAV_HOLD]:
+        elif prm[_GRAV_T] - ri[RI_GRAV] >= ri[RI_GHOLD]:
             grav[0] *= prm[_DECAY]
             grav[1] *= prm[_DECAY]
     elif ri[RI_GRAV] > 0:
@@ -566,6 +631,13 @@ def post_tick(goal, kicked, contact, pos, vel, group, radius, inv, kick_cancel, 
             if ri[RI_GRAV] == 0:
                 grav[0] = 0.0
                 grav[1] = 0.0
+    # cobro demorado: la sala coloca la pelota al vencer la demora
+    if ri[RI_PEND] > 0:
+        ri[RI_PEND] -= 1
+        if ri[RI_PEND] == 0:
+            start_piece(ri[RI_PEND_KIND], ri[RI_PEND_TEAM], rf[RF_PEND_X], rf[RF_PEND_Y], pos, vel, group, radius, inv,
+                        kick_cancel, grav, active, team, fp, P, prm, flags, sd_home, ri, rf, outside)
+            ev[EV_START] = ri[RI_KIND]
     # 2. liberación del saque activo
     late = 0
     if active_sp:
@@ -616,6 +688,11 @@ def post_tick(goal, kicked, contact, pos, vel, group, radius, inv, kick_cancel, 
             if sangu_kick >= 0:
                 _sangu_kick(kind, pos, vel, grav, fp, sangu_kick, kinfo, prm, ri,
                             1.0 if rf[RF_SPOT_Y] >= 0.0 else -1.0)
+        elif released and (flags & FIX_SEGBOOST) and kind != LATERAL:
+            # el impulso lo dan los segmentos c0 del mapa (motor); el script fija la curva y retira c0 después
+            ri[RI_C0] = int(prm[_BALL_C0_T])
+            if own_kick >= 0:
+                _script_curve(kind, grav, own_kick, kinfo, prm, ri, 1.0 if rf[RF_SPOT_Y] >= 0.0 else -1.0)
         elif released and own_kick >= 0 and (kind == CORNER or kind == GOAL_KICK):
             _schedule(kind, pos, vel, grav, fp + own_kick, prm, ri, rf)
         if (flags & FIX_ENGINE) and kind == GOAL_KICK and ri[RI_TICKS] == int(prm[_HOLD]):
@@ -644,7 +721,7 @@ def post_tick(goal, kicked, contact, pos, vel, group, radius, inv, kick_cancel, 
     inside = abs(by) <= line_h + rb and abs(bx) <= line_w + rb
     if inside and ri[RI_TEAM] < 0:
         ri[RI_ARMED] = 1
-    if ri[RI_ARMED] != 0 and ri[RI_TEAM] < 0 and goal == 0:
+    if ri[RI_ARMED] != 0 and ri[RI_TEAM] < 0 and ri[RI_PEND] == 0 and goal == 0:
         if flags & FIX_STRIP:
             side = abs(by) > line_h + rb and abs(bx) <= line_w + rb
         else:
@@ -653,7 +730,7 @@ def post_tick(goal, kicked, contact, pos, vel, group, radius, inv, kick_cancel, 
         if side or end:
             ev[EV_OUT] = 1
             ev[EV_START] = set_piece(side, rand_bit, pos, vel, group, radius, inv, kick_cancel, grav, active,
-                                     team, fp, P, prm, flags, sd_home, ri, rf, outside, line_w)
+                                     team, fp, P, prm, flags, sd_home, ri, rf, outside, line_w, rand_u)
             if (flags & FIX_ENGINE) == 0:
                 # rs_one_v1 protege dentro de set_piece y otra vez al final del post-tick
                 protect_v1(pos, vel, fp, P, active, team, prm, ri, rf, outside)
@@ -722,6 +799,8 @@ def reset_kickoff(ko_team, pos, vel, mask, group, radius, inv, kick_cancel, grav
     ri[RI_LAST] = -1
     ri[RI_LAST_P] = -1
     ri[RI_LAT_KICKED] = 0
+    ri[RI_C0] = 0
+    ri[RI_PEND] = 0
     ri[RI_MASS] = 0 if (flags & FIX_MASS) else 1
     ri[RI_KO] = 1
     ri[RI_KO_TEAM] = ko_team
@@ -783,7 +862,8 @@ def decision_step(pos, vel, mask, group, radius, inv, bcoef, damping, kick_cance
                 ev[n, EV_KO_TAKEN] = 1
             late = post_tick(g, scratch_kick[n], scratch_contact[n], pos[n], vel[n], group[n], radius[n],
                              inv[n], kick_cancel[n], grav[n], active[n], team, fp, P, prm, flags, sd_home,
-                             ri[n], rf[n], outside[n], line_w, goal_hh, rbit, deadline, ev[n], scratch_kinfo[n])
+                             ri[n], rf[n], outside[n], line_w, goal_hh, rbit, deadline, ev[n], scratch_kinfo[n],
+                             (rand[n] * 1000.0) % 1.0)
             for p in range(P):
                 if scratch_kick[n, p]:
                     ev_kicked[n, p] = True

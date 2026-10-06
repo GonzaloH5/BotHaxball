@@ -1,0 +1,10 @@
+const assert=require('node:assert/strict');
+const {clean}=require('./hybrid_extension/presets');
+const safe=clean({mode:'host',name:'Mi sala',password:'secret',token:'headless',port:9999,profiles:[{name:'Arquero',avatar:'GK',flag:'uy',team:1,model:'missing-model',token:'private'}],maxPlayers:12,timeLimit:7,scoreLimit:0,public:true,stadium:'rs_one'});
+assert.equal(safe.profiles[0].model,'missing-model','unavailable models must not be silently replaced');
+assert.equal(safe.maxPlayers,12);assert.equal(safe.scoreLimit,0);assert.equal(safe.public,true);
+assert(!JSON.stringify(safe).includes('secret'));assert(!('password' in safe));assert(!('token' in safe));assert(!('port' in safe));assert(!('token' in safe.profiles[0]));
+assert.deepEqual(clean(JSON.parse(JSON.stringify(safe))),safe,'round-trip preserves all reusable settings');
+assert.equal(clean({profiles:Array.from({length:20},()=>({team:99}))}).profiles.length,8);
+assert.equal(clean({timeLimit:-3}).timeLimit,3);assert.equal(clean(null).profiles.length,1);
+console.log('PASS presets: allowlisted storage, round trip, defaults, limits and unavailable model preservation');

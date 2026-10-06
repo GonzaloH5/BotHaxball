@@ -11,8 +11,8 @@
     notify:status=>{emit('status',status);emit('control',status);}});
   function prerequisites(){
     const room=profile.roomStatus(view);
-    const blocker=compatibilityError||serviceError||(!verified?'Verificando versión del cliente…':!service?'Servicio desconectado: abrí Emparejar / atajo.':room.blocker||
-      (!mapReady?(arbiter.mode==='SUSPENDIDO'&&arbiter.reason?arbiter.reason:'Preparando el mapa RS4…'):!arbiter.permission?'Marcá la casilla de permiso para esta sala.':arbiter.mode==='BOT'?'Tomá control humano antes de comprobar.':''));
+    const blocker=compatibilityError||serviceError||(!verified?'Verificando versión del cliente…':!service?'Servicio desconectado: pulsá Conectar.':room.blocker||
+      (!mapReady?(arbiter.mode==='SUSPENDIDO'&&arbiter.reason?arbiter.reason:'Preparando el mapa RS4…'):!arbiter.permission?'Marcá la casilla de permiso para esta sala.':arbiter.mode==='BOT'?'Tomá control humano antes de comprobar.':arbiter.mode==='SUSPENDIDO'?'Bot suspendido. Presioná Esc para recuperar el control y volver a comprobar.':''));
     return {room,blocker};
   }
   function state(){const {room,blocker}=prerequisites();emit('status',{...arbiter.status(),reason:compatibilityError||arbiter.reason,adapter:verified?profile.VERSION:'no compatible',service,mapReady,qualified,
@@ -153,8 +153,8 @@
     // key event is authoritative for foreground manual control, not for BOT.
     if(arbiter.mode==='HUMANO'&&document.hasFocus()&&!document.hidden)arbiter.focused=true;
     arbiter.key(event.code,true);
-    if(event.code==='Escape')arbiter.transition('HUMANO');
-    if(Shortcut.matches(event,shortcut)&&!editing){event.preventDefault();event.stopImmediatePropagation();shortcutKeys.add(event.code);if(!event.repeat)arbiter.toggle();}
+    if(event.code==='Escape'){arbiter.transition('HUMANO');state();}
+    if(Shortcut.matches(event,shortcut)&&!editing){event.preventDefault();event.stopImmediatePropagation();shortcutKeys.add(event.code);if(!event.repeat){arbiter.toggle();state();}}
   },true);
   document.addEventListener('keyup',event=>{if(event.isTrusted){arbiter.key(event.code,false);
     if(shortcutKeys.delete(event.code)){event.preventDefault();event.stopImmediatePropagation();}}},true);

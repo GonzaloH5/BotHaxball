@@ -7,8 +7,8 @@ tramos tocados por el script y medía sólo 1500 transiciones por grabación:
    plantel 4v4 estable y sin intervención del script en ese tick, separadas por fase de masa
    (F1: 0,5 tras cada reposicionamiento hasta la patada de un saque; 0,3 después). Compara la
    hipótesis vieja (0,3 siempre) contra la de fases.
-2. Córners: distancia de los defensores al centro del disco de exclusión (±1150, ±740) mientras
-   el córner está activo (F22: debe ser ≥ 445 + 15).
+2. Córners: distancia de los defensores al centro del disco de exclusión del mapa (RS ONE: (±1150, ±740),
+   radio 445) mientras el córner está activo (F22: debe ser ≥ radio + 15).
 3. Reloj congelado durante la espera del saque inicial (F2).
 
   python -m tools.rs4z_conformance --out reports/rs4z/conformance.json [--files 72] [--workers 12]
@@ -169,7 +169,7 @@ def stadium_frames(path, map_name):
     from env.rs4z import contract as C
     ref = len(json.loads((ROOT / "stadiums" / f"{C.MAPS[map_name]['stadium']}.hbs").read_text(encoding="utf-8"))["segments"])
     folder = Path(path).parent
-    index = json.loads((ROOT / "data/rs4_jsonl/index.json").read_text(encoding="utf-8"))["recordings"]
+    index = json.loads((folder.parent / "index.json").read_text(encoding="utf-8"))["recordings"]
     entry = next((v for v in index.values() if v.get("jsonl") and PureWindowsPath(v["jsonl"]).parts[0] == folder.name), None)
     if entry is None:
         return [(0, float("inf"))]
@@ -188,6 +188,8 @@ def in_spans(frame, spans):
 
 
 def audit_file(path, map_name="rs_one"):
+    from env.rs4z import contract as C
+    prm = C.params(map_name)
     ticks, events = _read(path)
     spans = stadium_frames(path, map_name)
     ticks = [t for t in ticks if in_spans(t["frame"], spans)]
@@ -240,14 +242,15 @@ def audit_file(path, map_name="rs_one"):
         for e in events.get(fr, []):
             if e["name"] == "disc_props" and not e.get("kind") and e.get("id") == 0:
                 d1 = e.get("data1") or [None] * 10
-                if d1[0] is not None and d1[1] is not None and abs(abs(d1[0]) - 1140) < 1 and abs(abs(d1[1]) - 660) < 1:
+                if (d1[0] is not None and d1[1] is not None and abs(abs(d1[0]) - prm[C.PI["corner_x"]]) < 1
+                        and abs(abs(d1[1]) - prm[C.PI["corner_y"]]) < 1):
                     active = (np.sign(d1[0]), np.sign(d1[1]), fr)
             if e["name"] in ("kick", "positions_reset"):
                 active = None
         if active is not None and fr > active[2] + 2:
             sx, sy, _ = active
             defender = 1 if sx < 0 else 2  # equipo HaxBall del arco de ese lado (1 rojo, 2 azul)
-            c = np.array([sx * 1150.0, sy * 740.0])
+            c = np.array([sx * prm[C.PI["corner_disc_x"]], sy * prm[C.PI["corner_disc_y"]]])
             ds = [np.hypot(p[4] - c[0], p[5] - c[1]) for p in t["players"] if p[1] == defender]
             if ds:
                 corner.append(min(ds))
@@ -278,9 +281,11 @@ def main():
     ap.add_argument("--files", type=int, default=0, help="0 = todas")
     ap.add_argument("--workers", type=int, default=12)
     ap.add_argument("--map", default="rs_one", help="mapa del contrato (env/rs4z/contract.MAPS)")
-    ap.add_argument("--pattern", default="*", help="carpetas de data/rs4_jsonl, p. ej. 'SanguREC*'")
+    ap.add_argument("--pattern", default="*", help="carpetas del caché, p. ej. 'SanguREC*'")
+    ap.add_argument("--data", default="data/rs4_jsonl", help="caché JSONL (data/haxarg_jsonl para 2K23)")
     args = ap.parse_args()
-    files = sorted(glob.glob(str(ROOT / "data/rs4_jsonl" / args.pattern / "*.jsonl.gz")))
+    from env.rs4z import contract as C
+    files = sorted(glob.glob(str(ROOT / args.data / args.pattern / "*.jsonl.gz")))
     if args.files:
         files = files[:args.files]
     one, roll, corner = collections.defaultdict(list), collections.defaultdict(list), []
@@ -301,7 +306,9 @@ def main():
         sixty_ticks={k: _summary(v) for k, v in sorted(roll.items())},
         corner_defender_min_distance=dict(n=int(len(corner)), p0=float(corner.min()) if len(corner) else None,
                                           p1=float(np.percentile(corner, 1)) if len(corner) else None,
-                                          share_below_460=float((corner < 459.0).mean()) if len(corner) else None,
+                                          disc_radius=float(C.params(args.map)[C.PI["corner_disc_radius"]]),
+                                          share_inside=float((corner < C.params(args.map)[C.PI["corner_disc_radius"]] + 14.0).mean())
+                                          if len(corner) else None,
                                           share_below_v1_rule=None),
         kickoff_clock=dict(frozen=frozen, moving=moving),
     )

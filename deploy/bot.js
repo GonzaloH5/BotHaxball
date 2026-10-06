@@ -65,6 +65,29 @@ for (const [flag, key] of [["--rs4-red-colors", "red_colors"], ["--rs4-blue-colo
 // (export/stadium_geom.py). --rules plain|real|auto: si la sala tiene script de powershot + pelotas
 // paradas (Real Soccer, Real Futsal, HaxEleven). auto = por el nombre del mapa.
 const UNIVERSAL = META.layout === "universal";
+// Modelo RS4-Z (export/to_onnx_rs4z.py): observación v2 armada con lo que se ve en la sala
+// (deploy/rs4z/room_state.js, paridad con el simulador en deploy/test_rs4z_room_state.js). Entrenado
+// con la latencia del cliente como entrada: no se extrapola el estado, se pasa el retraso medido.
+const RS4Z = META.obs_version === "rs4z-obs-v2";
+// Sala de prueba con varios bots (anfitrión): --lobby reparte a los bots por nombre y no arranca solo;
+// !admin <clave> da admin a quien la escriba (clave por --admin-password o RS4_ADMIN_PASSWORD).
+const LOBBY = args.includes("--lobby");
+const BOT_PREFIX = arg("--bot-prefix", "RL-Bot");
+const ADMIN_PASSWORD = process.env.RS4_ADMIN_PASSWORD || arg("--admin-password", null);
+// RS4-Z: --hyst m conserva la acción anterior mientras su logit no quede más de m por debajo del mejor
+// (antitemblor en greedy); --trace archivo.jsonl registra cada decisión (lo percibido y los logits).
+const HYST = parseFloat(arg("--hyst", "0"));
+const TRACE = arg("--trace", null) ? fs.createWriteStream(arg("--trace"), { flags: "a" }) : null;
+const DUMP_STADIUM = arg("--dump-stadium", null);   // guarda el mapa de la sala (.hbs) al empezar a jugar
+// Retraso total que se le informa a la red (ticks). Como cliente el bot ve el estado del host atrasado y su tecla
+// llega tarde: en una grabación real actuaba ~15 ticks atrás (eco de la tecla ~3 + vista ~12). "auto" = eco
+// medido + VIEW_LAG, con tope en el máximo de entrenamiento. Un número fija el valor.
+const DELAY_ARG = arg("--delay", "auto");
+const VIEW_LAG = parseFloat(arg("--view-lag", "12"));
+// Como cliente: extrapolar el estado `ms` hacia adelante (como la opción de extrapolación del cliente oficial) para
+// achicar el atraso de la vista; el retraso automático descuenta lo extrapolado.
+const EXTRAP_MS = parseFloat(arg("--extrapolate", "0"));
+const { RS4ZTracker, decodeOwnAction } = require("./rs4z/room_state");
 const RULES = arg("--rules", "auto");
 const REPO = path.resolve(__dirname, "..");
 
@@ -105,9 +128,14 @@ function BotPlugin(session, managed = false) {
   let forcedKickoffTeam = -1;
   let busy = false;
   const policyMemory = new PolicyMemory(META);
+  const rs4z = RS4Z ? new RS4ZTracker({ ...PUBLIC_CUES, ball_radii: META.ball_radii, kick_strengths: META.kick_strengths }) : null;
+  let rs4zPrev = -1;
+  let stadiumDumped = false;
   let policyActive = false;
   const resetPolicy = () => {
     policyMemory.reset();
+    if (rs4z) rs4z.reset();
+    rs4zPrev = -1;
     policyActive = false;
     if (publicTracker) { publicTracker.reset(); publicPacket = null; publicFrame = null; lastPublicColors = null; }
   };
@@ -362,8 +390,66 @@ function BotPlugin(session, managed = false) {
     }
   };
 
+  function rs4zTick() {
+    const room = that.room;
+    const me = room.currentPlayer;
+    const gs = room.gameState;
+    if (!gs || !me || !me.disc || teamIdx(me.team.id) < 0) {
+      if (policyActive) resetPolicy();
+      return;
+    }
+    policyActive = true;
+    const ext = EXTRAP_MS > 0 && !room.isHost;
+    if (ext) room.extrapolate(EXTRAP_MS);
+    const dsc = (d) => (ext && d.ext) || d;
+    if (DUMP_STADIUM && !stadiumDumped) {
+      stadiumDumped = true;
+      try { fs.writeFileSync(DUMP_STADIUM, Utils.exportStadium(room.stadium)); } catch (e) { console.error("no pude guardar el mapa:", e.message); }
+    }
+    const ball = dsc(gs.physicsState.discs[0]);
+    const frame = {
+      state: gs.state, kickoffTeam: teamIdx(gs.goalConcedingTeam ? gs.goalConcedingTeam.id : 1),
+      kickStrength: room.stadium.playerPhysics.kickStrength,
+      ball: { x: ball.pos.x, y: ball.pos.y, vx: ball.speed.x, vy: ball.speed.y, r: ball.radius, color: gs.physicsState.discs[0].color },
+      players: room.state.players.filter((p) => p.disc && teamIdx(p.team.id) >= 0).map((p) => ({
+        id: p.id, team: teamIdx(p.team.id), x: dsc(p.disc).pos.x, y: dsc(p.disc).pos.y, vx: dsc(p.disc).speed.x,
+        vy: dsc(p.disc).speed.y, input: p.input, isKicking: !!p.isKicking, invMass: p.disc.invMass })),
+    };
+    rs4z.update(frame);
+    tick++;
+    if (pendingInput && room.currentFrameNo - pendingInput.frame > 120) pendingInput = null;
+    if (tick % META.frame_skip !== 0 || busy) return;
+    const delayTicks = DELAY_ARG !== "auto" ? parseFloat(DELAY_ARG)
+      : room.isHost ? 0 : Math.min(inputDelayTicks() + Math.max(0, VIEW_LAG - (ext ? EXTRAP_MS * 0.06 : 0)),
+        META.max_delay || 24);
+    const built = rs4z.build(frame, me.id, delayTicks);
+    if (!built) return;
+    busy = true;
+    session.run({ obs: new ort.Tensor("float32", built.obs, [1, built.obs.length]) })
+      .then((out) => {
+        const logits = Array.from(out.logits.data);
+        let a = sample(logits);
+        if (HYST > 0 && temperature <= 0 && rs4zPrev >= 0 && logits[rs4zPrev] >= Math.max(...logits) - HYST) a = rs4zPrev;
+        rs4zPrev = a;
+        if (TRACE) TRACE.write(JSON.stringify({ frame: room.currentFrameNo, slot: built.slot, team: built.team,
+          state: frame.state, restart: rs4z.restart, ballColor: frame.ball.color, kickStrength: frame.kickStrength,
+          ballR: frame.ball.r, invMass: frame.players.find((p) => p.id === me.id).invMass, players: frame.players.length,
+          action: a, logits: logits.map((v) => +v.toFixed(3)), obs: Array.from(built.obs, (v) => +v.toFixed(4)) }) + "\n");
+        const key = decodeOwnAction(a, built.team);
+        const state = Utils.keyState(key.dirX, key.dirY, key.kick);
+        const changed = state !== Utils.keyState(lastKey.dirX, lastKey.dirY, lastKey.kick);
+        lastKey = key;
+        if (changed && !room.isHost && !pendingInput) pendingInput = { state, frame: room.currentFrameNo };
+        room.setKeyState(state);
+        rs4z.pushDecision(key.world);
+      })
+      .catch((e) => { resetPolicy(); console.error("inferencia:", e); })
+      .finally(() => { busy = false; });
+  }
+
   this.onGameTick = () => {
     if (!managedEnabled) return;
+    if (RS4Z) return rs4zTick();
     const s = UNIVERSAL ? snapshotUniversal() : snapshot();
     if (!s) {
       if (policyActive) resetPolicy();
@@ -410,6 +496,20 @@ function BotPlugin(session, managed = false) {
     resetPolicy();
     const room = that.room;
     if (!room.isHost || managed) return;
+    if (LOBBY) {
+      // sala de prueba: los bots (nombre BOT_PREFIX) van al equipo con menos jugadores (rojo primero, máx. 4);
+      // las personas quedan de espectadoras y el admin arma equipos y arranca el partido.
+      const me = room.currentPlayer;
+      if (me.team.id === 0) room.setPlayerTeam(me.id, 1);
+      if (p.name.startsWith(BOT_PREFIX)) {
+        const count = (t) => room.state.players.filter((q) => q.team.id === t).length;
+        const team = count(1) < 4 && count(1) <= count(2) ? 1 : count(2) < 4 ? 2 : 0;
+        room.setPlayerTeam(p.id, team);
+      } else {
+        room.sendChat(`Hola ${p.name}! Para administrar la sala escribí !admin <clave>.`, p.id);
+      }
+      return;
+    }
     room.sendChat(`Hola ${p.name}! Soy un bot entrenado con RL. Comandos: !bot red|blue|spec, !start, !greedy, !temp x`);
     const me = room.currentPlayer;
     if (me.team.id === 0) room.setPlayerTeam(me.id, 1);
@@ -426,6 +526,15 @@ function BotPlugin(session, managed = false) {
     const room = that.room;
     const me = room.currentPlayer;
     const [cmd, val] = msg.trim().split(/\s+/);
+    if (cmd === "!admin" && room.isHost) {
+      if (ADMIN_PASSWORD && val === ADMIN_PASSWORD) {
+        room.setPlayerAdmin(id, true);
+        room.sendChat("admin concedido", id);
+      } else {
+        room.sendChat("clave de admin incorrecta", id);
+      }
+      return;
+    }
     if (cmd === "!bot" && room.isHost) {
       room.setPlayerTeam(me.id, { red: 1, blue: 2, spec: 0 }[val] ?? me.team.id);
     } else if (cmd === "!greedy") {
@@ -445,7 +554,9 @@ function BotPlugin(session, managed = false) {
   if (MANAGED && !process.connected) return process.exit(0);
   const session = await ort.InferenceSession.create(MODEL, MANAGED ? {intraOpNumThreads:1,interOpNumThreads:1} : {});
   const plugin = new BotPlugin(session, MANAGED);
-  console.log(UNIVERSAL
+  console.log(RS4Z
+    ? `modelo ${MODEL} (RS4-Z 4v4 Real Soccer ONE, obs v2, ${META.stage} ${(META.samples / 1e6).toFixed(0)}M muestras)`
+    : UNIVERSAL
     ? `modelo ${MODEL} (multi-tarea: cualquier mapa y formato; entrenado en ${(META.tasks || []).join(", ")})`
     : `modelo ${MODEL} (obs ${META.obs_dim}, ${META.n_per_team}v${META.n_per_team}, estadio ${META.stadium})`);
   const common = {

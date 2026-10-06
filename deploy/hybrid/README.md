@@ -1,4 +1,59 @@
-# RS4 Control 0.3: instalación y aceptación
+# RS4 Control 0.5: instalación y aceptación
+
+## Presets y preparación 0.5.0
+
+En **Salas y bots → Tus presets**, prepará la sala y el plantel, elegí un nombre
+ y pulsá **Guardar preset**. Se guardan acción (entrar/crear), enlace o ID, nombre
+ de sala, mapa, capacidad, límites, visibilidad y nombre/avatar/país/equipo/modelo
+ de cada bot. Los presets son locales a ese perfil de navegador.
+
+- **Cargar preset** aplica la selección sin iniciar bots. Al reabrir se restaura
+  el último guardado o cargado. Si ya tenías cambios, **Deshacer carga** recupera
+  la configuración anterior durante esa sesión.
+- **Actualizar preset** guarda los cambios y permite renombrarlo. El texto
+  «En edición» identifica cuál se modifica; elegir otro en la lista no lo carga
+  hasta pulsar Cargar. **Guardar como copia** requiere un nombre distinto.
+- **Eliminar** mantiene el formulario actual y ofrece **Deshacer eliminación**.
+- El indicador avisa de cambios sin guardar. Los cambios no guardados se pierden
+  al cerrar la página; el preset guardado se conserva.
+- No se incluyen contraseña, token headless ni token local. Al cargar se limpian
+  las credenciales del formulario. Para crear sala se necesita un token reciente.
+- Guardado y carga funcionan sin servicio conectado. Un modelo o mapa faltante
+  se conserva y bloquea el inicio con una explicación; nunca se sustituye solo.
+- El gestor explica falta de conexión/cupo, espera el catálogo antes de habilitar
+  inicio, evita envíos simultáneos y deshabilita campos de creación al entrar a
+  una sala. Un fallo al recordar el plantel después de iniciar no se informa como
+  fallo de creación del grupo.
+
+Pruebas: `node deploy/test_presets.js` y `node deploy/test_manager_browser.js`.
+Resultados de navegador y capturas: `reports/rs4_presets_manager*` (salas simuladas).
+
+## Interfaz 0.4.0
+
+La configuración y el gestor usan una paleta clara de papel y verde cancha,
+con navegación compartida, separadores y controles compactos. El panel del
+partido mantiene fondo oscuro para integrarse con el juego. Identifica la
+modalidad `rs4_4v4` / Real Soccer 4 vs 4; esa etiqueta no selecciona otro modelo
+ni instala las reglas de una sala.
+
+La barra principal presenta siempre **Conectar → Comprobar configuración →
+Ceder al bot**. El paso disponible se destaca; la comprobación ya no está
+oculta en el diagnóstico. Cuando el bot juega, el último botón pasa a
+«Tomar control». Esc y el atajo personalizado conservan su comportamiento.
+Los mensajes reflejan la preparación vigente después de comprobar y recuperar
+el control. En suspensión se indica recuperar primero el control humano.
+
+En Conexión, «Cómo iniciar el servicio» abre directamente la guía con comando
+copiable. Al conectar aparece el acceso a HaxBall con el siguiente paso.
+El atajo se guarda por separado. En Salas y bots se muestra el total activo,
+los nombres legibles de modelos y Real Soccer ONE, estados de conexión y
+controles de desconexión diferenciados. En pantallas angostas los campos de
+modelo y equipo ocupan todo el ancho del perfil.
+
+Para actualizar: recargar `deploy/hybrid_extension` en el gestor de extensiones
+y luego recargar HaxBall. No cambian permisos, protocolo ni contratos del modelo.
+
+Validación del rework: `reports/rs4_rework_20261003.md`.
 
 ## Gestor de salas y múltiples bots (0.3.0)
 
@@ -126,7 +181,7 @@ está en `.venv`, configurar `HAXBALL_PYTHON` con su ejecutable para preparar ge
 4. Recargar [la web oficial](https://www.haxball.com/play) si ya estaba abierta,
    para capturar los manejadores desde el inicio. Entrar normalmente y por tu cuenta.
 5. El panel se coloca antes del área de juego, no sobre la cancha. Marcar la casilla
-   visible de autorización; abrir «Opciones y diagnóstico» y pulsar «Comprobar configuración».
+   visible de autorización; pulsar «Comprobar configuración» en la barra principal.
 6. Tras aprobar el preflight, «Ceder al bot» o tu atajo elegido. «Tomar control» o Esc vuelve al humano.
 
 Inicio y reconexión siempre manuales. El servicio **no entra en la sala**. La
@@ -197,7 +252,7 @@ conectado el servicio; el juego manual sigue disponible. No se asegura que ese
 mapa tenga física diferente sólo por el nombre: hay que auditar su `.hbs` antes
 de admitirlo, no saltarse la validación ni renombrarlo a ciegas.
 
-«Recargar ONNX» sólo funciona en HUMANO: relee **la misma ruta local**, invalida
+«Recargar modelo» sólo funciona en HUMANO: relee **la misma ruta local**, invalida
 acciones/memoria y exige mapa y preflight nuevos. No descarga modelos del Pod.
 Cerrar el servicio con Ctrl+C provoca suspensión y neutralización en la extensión.
 

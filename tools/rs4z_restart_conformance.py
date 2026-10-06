@@ -29,7 +29,6 @@ import numpy as np
 from tools.rs4z_conformance import _input_to_action, _read, in_spans, mass_phases, stadium_frames
 
 ROOT = Path(__file__).resolve().parent.parent
-PRE = 5          # ticks de juego antes de la salida
 AFTER = 60       # ticks comparados después de la liberación
 WHITE = 0xFFFFFF
 KIND_NAMES = {1: "lateral", 2: "corner", 3: "goal_kick"}
@@ -37,28 +36,57 @@ MIRROR = np.array([0, 1, 8, 7, 6, 5, 4, 3, 2] + [9, 10, 17, 16, 15, 14, 13, 12, 
 
 
 def real_restarts(ticks, events):
-    """Saques del script: inicio (pelota coloreada y colocada), liberación (pelota blanca), reasignación."""
+    """Saques del script: inicio (pelota coloreada y colocada), liberación (pelota blanca), reasignación.
+
+    El script puede mandar posición y color de la pelota en eventos separados del mismo frame: se unen.
+    El color identifica al ejecutor sólo en Sanguchito (rojo/azul); RS ONE y 2K23 usan un color fijo
+    (ver `infer_taker`).
+    """
     out, cur = [], None
     for fr in sorted(events):
+        ball = {}
         for e in events[fr]:
             if e["name"] in ("positions_reset", "game_stop") and cur is not None:
                 cur["end"] = ("reset", fr)
                 out.append(cur)
                 cur = None
-            if e["name"] != "disc_props" or e.get("kind") or e.get("id") != 0:
-                continue
-            d1 = e.get("data1") or [None] * 10
-            col = (e.get("data2") or [None])[0]
-            if d1[0] is not None and col is not None and col != WHITE:
-                if cur is not None:
-                    cur["end"] = ("reassigned", fr)
-                    out.append(cur)
-                cur = dict(start=fr, spot=(d1[0], d1[1]), taker=0 if col == 0xFF0000 else 1, end=None)
-            elif col == WHITE and cur is not None:
-                cur["end"] = ("released", fr)
+            if e["name"] == "disc_props" and not e.get("kind") and e.get("id") == 0:
+                d1 = e.get("data1") or [None] * 10
+                col = (e.get("data2") or [None])[0]
+                if d1[0] is not None:
+                    ball["x"], ball["y"] = d1[0], d1[1]
+                if col is not None:
+                    ball["col"] = col
+        col = ball.get("col")
+        if "x" in ball and col is not None and col != WHITE:
+            if cur is not None:
+                cur["end"] = ("reassigned", fr)
                 out.append(cur)
-                cur = None
+            cur = dict(start=fr, spot=(ball["x"], ball["y"]), col=col, end=None)
+        elif col == WHITE and cur is not None:
+            cur["end"] = ("released", fr)
+            out.append(cur)
+            cur = None
     return out
+
+
+def infer_taker(r, kind, events, team_of):
+    """Equipo ejecutor (0 rojo, 1 azul): color en Sanguchito; si no, geometría (córner y saque de arco) o
+    rivales con la barrera c1 del lateral (C1 en su cGroup)."""
+    if r["col"] in (0xFF0000, 0x0000FF):
+        return 0 if r["col"] == 0xFF0000 else 1
+    left = r["spot"][0] < 0          # arco del rojo
+    if kind == 2:
+        return 1 if left else 0      # córner: ataca el dueño del otro arco
+    if kind == 3:
+        return 0 if left else 1      # saque de arco: el que defiende
+    for fr in range(r["start"], r["start"] + 3):
+        for e in events.get(fr, []):
+            if e["name"] == "disc_props" and e.get("kind"):
+                cg = (e.get("data2") or [None, None, None])[2]
+                if cg is not None and cg & (1 << 29) and e["id"] in team_of:
+                    return 1 - (team_of[e["id"]] - 1)
+    return None
 
 
 def _order(tick):
@@ -82,62 +110,81 @@ def _actions(tick, order):
     return acts
 
 
-def replay_restart(env, ticks_by_frame, r, phase, order, next_start=None):
-    """Simula un saque con los jugadores forzados. Devuelve métricas o None si la ventana no sirve."""
-    from env.rs4z import kernel as K
-    end_kind, end_fr = r["end"]
-    t0 = r["start"] - PRE
-    t_end = end_fr + (AFTER if end_kind == "released" else 2)
-    if next_start is not None:
-        t_end = min(t_end, next_start - 1)   # el saque siguiente teletransporta la pelota
-    frames = range(t0, t_end + 1)
-    if any(f not in ticks_by_frame for f in frames):
-        return None
-    if any(len(ticks_by_frame[f]["players"]) != 8 or _order(ticks_by_frame[f]) != order for f in frames):
-        return None
-    a = ticks_by_frame[t0]
-    if a["state"] != 1 or phase.get(t0) is None:
-        return None
-    bx, by, bvx, bvy, br, im, gx, gy = a["ball"]
+def _load(env, tick, order, phase_mass, last_touch):
+    bx, by, bvx, bvy, br, im, gx, gy = tick["ball"]
     env.radius[0, 0] = br
-    by_id = {p[0]: p for p in a["players"]}
+    by_id = {p[0]: p for p in tick["players"]}
     pl = [by_id[pid] for pid in order]
     env.place(0, ball_pos=(bx, by), ball_vel=(bvx, bvy), player_pos=np.array([[p[4], p[5]] for p in pl]),
               player_vel=np.array([[p[6], p[7]] for p in pl]), kick_held=[bool(p[2] & 16) and not p[3] for p in pl],
-              last_touch=1 - r["taker"], mass_phase=0 if phase[t0] == 0.5 else 1)
+              last_touch=last_touch, mass_phase=0 if phase_mass == 0.5 else 1)
     env.inv[0, 0] = im
     env.grav[0] = (gx, gy)
-    sim_start = sim_end = None
-    sim_kind = sim_taker = None
-    sim_spot = None
-    sim_end_kind = None
-    push_err = None
+
+
+def _window_ok(ticks_by_frame, frames, order):
+    return all(f in ticks_by_frame and len(ticks_by_frame[f]["players"]) == 8 and _order(ticks_by_frame[f]) == order
+               for f in frames)
+
+
+def out_tick(ticks_by_frame, start, env):
+    """Primer tick de la salida que terminó en el saque `start` (la sala puede tardar en cobrarlo)."""
+    rb = env.radius[0, 0]
+    lw, lh = env.line_w, env.prm[env_pi("line_half_h")]
+    f = start
+    while f - 1 in ticks_by_frame:
+        x, y = ticks_by_frame[f - 1]["ball"][:2]
+        if abs(x) <= lw + rb and abs(y) <= lh + rb:
+            break
+        f -= 1
+    return f
+
+
+def detect_restart(env, ticks_by_frame, r, phase, order, out):
+    """Desde el juego abierto antes de la salida: ¿el simulador cobra el mismo saque?"""
+    from env.rs4z import kernel as K
+    t0 = out - 3
+    horizon = out + 3 + int(max(env.prm[env_pi(k)] for k in ("pend_lat_max", "pend_corner_max", "pend_gk_max")))
+    horizon = min(horizon, r["start"] + 3) if horizon > r["start"] else horizon
+    frames = range(t0, horizon + 1)
+    if not _window_ok(ticks_by_frame, frames, order) or ticks_by_frame[t0]["state"] != 1 or phase.get(t0) is None:
+        return None
+    _load(env, ticks_by_frame[t0], order, phase[t0], 1 - r["taker"])
+    for f in range(t0, horizon):
+        _force(env, ticks_by_frame[f], order)
+        ev = env.step(_actions(ticks_by_frame[f], order))
+        if ev["restart_start"][0] != 0:
+            spot = (float(env.rf[0, K.RF_SPOT_X]), float(env.rf[0, K.RF_SPOT_Y]))
+            return dict(sim_start_off=f + 1 - out, sim_kind=int(env.ri[0, K.RI_KIND]),  # = demora simulada
+                        taker_ok=int(env.ri[0, K.RI_TEAM]) == r["taker"],
+                        spot_err=float(np.hypot(spot[0] - r["spot"][0], spot[1] - r["spot"][1])))
+    return dict(sim_start_off=None, sim_kind=None, taker_ok=False, spot_err=None)
+
+
+def execute_restart(env, ticks_by_frame, r, phase, order, kind, next_start=None):
+    """Desde la colocación real de la pelota: empujes, liberación y trayectoria de la pelota."""
+    from env.rs4z import kernel as K
+    s = r["start"]
+    end_kind, end_fr = r["end"]
+    t_end = end_fr + (AFTER if end_kind == "released" else 2)
+    if next_start is not None:
+        t_end = min(t_end, next_start - 1)   # el saque siguiente teletransporta la pelota
+    if not _window_ok(ticks_by_frame, range(s, t_end + 1), order):
+        return None
+    # en córner y saque de arco la masa del script puede ser la de pieza (None); start_restart la fija
+    _load(env, ticks_by_frame[s], order, phase.get(s) or 0.3, 1 - r["taker"])
+    env.start_restart(0, kind, r["taker"], r["spot"])
+    # la sala aplica los empujes en el tick de la colocación o en el siguiente: se toma el más cercano
+    push_err = min(max(float(np.hypot(env.player_pos[0, k, 0] - rp[pid][4], env.player_pos[0, k, 1] - rp[pid][5]))
+                       for k, pid in enumerate(order))
+                   for rp in ({p[0]: p for p in ticks_by_frame[g]["players"]} for g in (s + 1, s + 2)))
+    sim_end = sim_end_kind = None
     ball_err = {}
-    just_started = False
-    for f in range(t0, t_end):
-        # el tick grabado f no incluye los empujes que el script aplica a continuación: tras iniciar un
-        # saque, los jugadores siguen con el estado simulado (empujados) un tick antes de volver a forzarlos
-        if not just_started:
-            _force(env, ticks_by_frame[f], order)
-        just_started = False
+    for f in range(s + 1, t_end):
+        _force(env, ticks_by_frame[f], order)
         team_before = env.ri[0, K.RI_TEAM]
         ev = env.step(_actions(ticks_by_frame[f], order))
-        # el estado tras el tick f equivale al tick grabado f + 1
-        if ev["restart_start"][0] != 0:
-            just_started = True
-        if sim_start is None and ev["restart_start"][0] != 0:
-            sim_start = f + 1
-            sim_kind = int(env.ri[0, K.RI_KIND])
-            sim_taker = int(env.ri[0, K.RI_TEAM])
-            sim_spot = (float(env.rf[0, K.RF_SPOT_X]), float(env.rf[0, K.RF_SPOT_Y]))
-            # empujes del script: contra el tick grabado siguiente (o el otro, según la alineación)
-            errs = []
-            for g in (f + 1, f + 2):
-                rp = {p[0]: p for p in ticks_by_frame[g]["players"]}
-                errs.append(max(float(np.hypot(env.player_pos[0, s, 0] - rp[pid][4], env.player_pos[0, s, 1] - rp[pid][5]))
-                                for s, pid in enumerate(order)))
-            push_err = min(errs)
-        elif sim_start is not None and sim_end is None:
+        if sim_end is None:
             if ev["forfeit"][0] >= 0:
                 sim_end, sim_end_kind = f + 1, "reassigned"
             elif team_before >= 0 and env.ri[0, K.RI_TEAM] < 0:
@@ -149,12 +196,8 @@ def replay_restart(env, ticks_by_frame, r, phase, order, next_start=None):
                 ball_err[k] = float(np.hypot(env.ball_pos[0, 0] - rb[0], env.ball_pos[0, 1] - rb[1]))
         if sim_end is not None and end_kind != "released":
             break
-    return dict(start=r["start"], real_kind=None, real_end=end_kind, real_dur=end_fr - r["start"],
-                sim_start_off=None if sim_start is None else sim_start - r["start"],
-                sim_kind=sim_kind, taker_ok=sim_taker == r["taker"],
-                spot_err=None if sim_spot is None else float(np.hypot(sim_spot[0] - r["spot"][0], sim_spot[1] - r["spot"][1])),
-                push_err=push_err, sim_end=sim_end_kind,
-                end_off=None if sim_end is None else sim_end - end_fr, ball_err=ball_err)
+    return dict(push_err=push_err, sim_end=sim_end_kind, end_off=None if sim_end is None else sim_end - end_fr,
+                ball_err=ball_err)
 
 
 def formation_check(ticks_by_frame, events, env, spans):
@@ -193,16 +236,26 @@ def audit_file(path, map_name):
     for r in restarts:
         if r["end"] is None or r["start"] in reassigned:
             continue
-        t0 = by_frame.get(r["start"] - PRE)
-        if t0 is None or len(t0["players"]) != 8:
+        t_s = by_frame.get(r["start"])
+        if t_s is None or len(t_s["players"]) != 8:
             continue
+        order = _order(t_s)
+        kind = (1 if abs(abs(r["spot"][1]) - env.prm[env_pi("lateral_ball_y")]) < 1.0 else
+                3 if abs(abs(r["spot"][0]) - env.prm[env_pi("goal_kick_x")]) < 1.0 else 2)
+        r["taker"] = infer_taker(r, kind, events, {p[0]: p[1] for p in t_s["players"]})
+        if r["taker"] is None:
+            continue
+        out = out_tick(by_frame, r["start"], env)
+        row = dict(start=r["start"], real_kind=kind, real_end=r["end"][0], real_dur=r["end"][1] - r["start"],
+                   real_delay=r["start"] - out, file=Path(path).name)
+        det = detect_restart(env, by_frame, r, phase, order, out)
         nxt = next((s for s in starts if s > r["start"]), None)
-        res = replay_restart(env, by_frame, r, phase, _order(t0), nxt)
-        if res is not None:
-            res["real_kind"] = (1 if abs(abs(r["spot"][1]) - env.prm[env_pi("lateral_ball_y")]) < 1.0 else
-                                3 if abs(abs(r["spot"][0]) - env.prm[env_pi("goal_kick_x")]) < 1.0 else 2)
-            res["file"] = Path(path).name
-            rows.append(res)
+        exe = execute_restart(env, by_frame, r, phase, order, kind, nxt)
+        if det is None and exe is None:
+            continue
+        row.update(det or dict(sim_start_off=None, sim_kind=None, taker_ok=None, spot_err=None, skipped_detect=True))
+        row.update(exe or dict(push_err=None, sim_end=None, end_off=None, ball_err={}, skipped_execute=True))
+        rows.append(row)
     return dict(rows=rows, formation=formation_check(by_frame, events, env, spans))
 
 
@@ -223,8 +276,9 @@ def main():
     ap.add_argument("--pattern", default="*")
     ap.add_argument("--out", default="reports/rs4z/restart_conformance.json")
     ap.add_argument("--workers", type=int, default=8)
+    ap.add_argument("--data", default="data/rs4_jsonl", help="caché JSONL (data/haxarg_jsonl para 2K23)")
     args = ap.parse_args()
-    files = sorted(glob.glob(str(ROOT / "data/rs4_jsonl" / args.pattern / "*.jsonl.gz")))
+    files = sorted(glob.glob(str(ROOT / args.data / args.pattern / "*.jsonl.gz")))
     rows, formation = [], []
     with Pool(args.workers) as pool:
         for r in pool.imap_unordered(functools.partial(audit_file, map_name=args.map), files):
@@ -236,15 +290,17 @@ def main():
     summary = {}
     for kind, rs in sorted(by_kind.items()):
         started = [r for r in rs if r["sim_start_off"] is not None]
-        ended = [r for r in started if r["end_off"] is not None]
+        executed = [r for r in rs if not r.get("skipped_execute")]
+        ended = [r for r in executed if r["end_off"] is not None]
         summary[kind] = dict(
-            n=len(rs), detected=len(started),
-            start_offset=dict(collections.Counter(r["sim_start_off"] for r in started)),
+            n=len(rs), detected=len(started), executed=len(executed),
+            room_delay=dict(collections.Counter(r["real_delay"] for r in rs)),
+            sim_delay=dict(collections.Counter(r["sim_start_off"] for r in started)),
             kind_ok=sum(r["sim_kind"] == r["real_kind"] for r in started),
             taker_ok=sum(r["taker_ok"] for r in started),
             spot_err=_pct([r["spot_err"] for r in started]),
-            push_err=_pct([r["push_err"] for r in started]),
-            end_match=sum(r["sim_end"] == r["real_end"] for r in started),
+            push_err=_pct([r["push_err"] for r in executed]),
+            end_match=sum(r["sim_end"] == r["real_end"] for r in executed),
             end_offset=dict(collections.Counter(r["end_off"] for r in ended)),
             ball_err_after_release={k: _pct([r["ball_err"][k] for r in ended if k in r["ball_err"]])
                                     for k in (1, 5, 10, 30, 59)},

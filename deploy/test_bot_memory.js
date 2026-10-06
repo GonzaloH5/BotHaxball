@@ -17,7 +17,7 @@ const { PolicyMemory } = require("./policy_memory");
   const context = {
     Plugin: function() { this.room = room; }, AllowFlags:{CreateRoom:1,JoinRoom:2},
     PolicyMemory, META:{recurrent:true,memory_size:2,n_actions:18,n_per_team:1,frame_skip:1,max_ticks:7200,goal_x:370},
-    UNIVERSAL:false, R_PLAYER:15, R_BALL:10, KICK_REACH:4,
+    UNIVERSAL:false, RS4Z:false, R_PLAYER:15, R_BALL:10, KICK_REACH:4,
     ort:{Tensor:class {constructor(type,data,dims){this.type=type;this.data=data;this.dims=dims;}}},
     buildObs:()=>[0], sample:()=>3, decodeAction:()=>({dirX:1,dirY:0,kick:false}),
     Utils:{keyState:x=>x}, console,

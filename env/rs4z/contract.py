@@ -67,6 +67,12 @@ V2 = dict(
     corner_kick_speed=0.0, goal_kick_speed=0.0,
     corner_grav_y=0.0, corner_grav_kvx=0.0, goal_kick_grav_kvy=0.0, grav_hold_ticks=0.0,
     script_disc_bcoef=0.0,
+    # Curva exacta y máscara c0 de la familia RS ONE (FIX_SEGBOOST) y saque de arco de Sanguchito.
+    goal_kick_grav_kvx=0.0, grav_hold_ticks_gk=0.0, grav_touch_stop=0.0, ball_c0_ticks=0.0,
+    # Demora de la sala entre la salida y la colocación de la pelota (uniforme en [min, max] ticks; 0 = sin
+    # demora); durante la demora el disco del punto (spot_disc_radius) despeja el lugar.
+    pend_lat_min=0.0, pend_lat_max=0.0, pend_corner_min=0.0, pend_corner_max=0.0, pend_gk_min=0.0, pend_gk_max=0.0,
+    pend_lat_disc=0.0,
     form0_x=0.0, form0_y=0.0, form1_x=0.0, form1_y=0.0, form2_x=0.0, form2_y=0.0, form3_x=0.0, form3_y=0.0,
 )
 
@@ -82,6 +88,7 @@ FIX_ENGINE = 4        # F5/F22: barreras, discos de exclusión y del punto con e
 FIX_STRIP = 8         # F7: sin franja muerta en las esquinas
 FIX_LATERAL = 16      # variante Host Publico: rango, patada obligatoria y vencimiento
 FIX_SANGU = 32        # script de Sanguchito: pelota fija en córner/saque de arco, velocidad y curva del script, rombo
+FIX_SEGBOOST = 64     # familia RS ONE: impulso por los segmentos c0 del mapa (máscara de la pelota) y curva exacta
 FLAGS = {"v1": 0, "v2": FIX_MASS | FIX_CLOCK | FIX_ENGINE | FIX_STRIP}
 FLAGS["v2_lateral"] = FLAGS["v2"] | FIX_LATERAL
 
@@ -110,14 +117,30 @@ FLAGS["v2_lateral"] = FLAGS["v2"] | FIX_LATERAL
 #   con la velocidad del pateador antes del tick; se mantiene 5 ticks, luego ×0,97 por tick y vale 0 a los
 #   149. Los toques no la cortan. Sin patada válida se libera a los 599 ticks (visto en 1 córner).
 # Supuesto sin verificar: plazo del lateral (ningún lateral pasó de 301 ticks); se usa el mismo 599.
+# Script de la familia RS ONE (RS ONE y HaxArg Lite de 2K23), medido en 11 902 saques de RS ONE
+# (`tools.rs4z_script_probe`, 2026-10-06). En córner y saque de arco el script agrega c0 a la máscara de la
+# pelota y la retira 21 ticks después de la patada: el impulso lo dan los segmentos c0 del mapa con bCoef
+# negativo (RS ONE ×1,82–1,97 en córner, ×2,2–2,8 en saque de arco; 2K23 ×1,63–1,71), no un factor fijo.
+# Curva al patear, con la velocidad del pateador antes del tick: córner (−vx/35, ∓0,05 hacia la cancha),
+# saque de arco (−vx/35, −vy/30); se mantiene 1 tick (córner) o 6 (saque de arco), decae ×0,97 por tick,
+# vale 0 a los 150 y un toque la corta. Reemplaza el ajuste aproximado (corner_gravity_*, *_boost).
+_RS_SCRIPT = dict(corner_grav_y=0.05, corner_grav_kvx=-1.0 / 35.0, goal_kick_grav_kvx=-1.0 / 35.0,
+                  goal_kick_grav_kvy=-1.0 / 30.0, grav_hold_ticks=1.0, grav_hold_ticks_gk=6.0, gravity_ticks=150.0,
+                  grav_touch_stop=1.0, ball_c0_ticks=21.0,
+                  # demora de colocación (RS ONE, p10–p90 de 11 902 saques): lateral 1–8, córner 6–60, saque de
+                  # arco 7–62; el disco del punto aparece 1 tick después de la salida (no en laterales)
+                  pend_lat_min=0.0, pend_lat_max=8.0, pend_corner_min=5.0, pend_corner_max=60.0,
+                  pend_gk_min=6.0, pend_gk_max=62.0)
 _SANGU_FORMATION = ((-1138.325, 0.0), (-758.8833333333334, -226.10833333333335),
                     (-758.8833333333334, 226.10833333333335), (-379.4416666666668, 0.0))
 MAPS = {
-    "rs_one": dict(stadium="rs_one", overrides={}, kick_strengths=(5.85, 5.75), ball_radii=(8.325, 8.0)),
+    "rs_one": dict(stadium="rs_one", overrides=dict(_RS_SCRIPT), kick_strengths=(5.85, 5.75), ball_radii=(8.325, 8.0),
+                   flags=FIX_SEGBOOST),
     "haxarg_2k23": dict(stadium="haxarg_2k23", overrides=dict(
-        line_half_h=600.0, lateral_ball_y=618.0, lateral_release_y=612.0, corner_y=590.0,
-        goal_kick_x=1060.0, goal_kick_y=0.0, barrier_y=485.0, push_y=470.0, corner_disc_y=670.0),
-        kick_strengths=(5.65,), ball_radii=(9.0,)),
+        _RS_SCRIPT, line_half_h=600.0, lateral_ball_y=618.0, lateral_release_y=612.0, corner_y=590.0,
+        goal_kick_x=1060.0, goal_kick_y=0.0, barrier_y=485.0, push_y=470.0, corner_disc_y=670.0,
+        corner_disc_radius=420.0, pend_lat_min=15.0, pend_lat_max=60.0, pend_lat_disc=1.0),
+        kick_strengths=(5.65,), ball_radii=(9.0,), flags=FIX_SEGBOOST),
     "sanguchito_rs_x4": dict(stadium="sanguchito_rs_x4", overrides=dict(
         lateral_ball_y=690.8375, lateral_x_margin=0.0, lateral_release_y=678.325,
         corner_x=1138.325, corner_y=658.325, goal_kick_x=1023.325, goal_kick_y=123.95,
@@ -129,6 +152,7 @@ MAPS = {
         lat_push_min_y=557.7556838370558, box_push_pad=0.0,
         corner_kick_speed=10.35124, goal_kick_speed=13.96832,
         corner_grav_y=0.05, corner_grav_kvx=-1.0 / 35.0, goal_kick_grav_kvy=-0.02505, grav_hold_ticks=5.0,
+        grav_hold_ticks_gk=5.0,
         script_disc_bcoef=0.5,
         **{f"form{i}_{a}": v for i, xy in enumerate(_SANGU_FORMATION) for a, v in zip("xy", xy)}),
         kick_strengths=(5.85,), ball_radii=(8.325,),

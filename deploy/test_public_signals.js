@@ -32,7 +32,7 @@ assert.doesNotThrow(()=>assertObservationContract({layout:'universal',rule_obser
     state:{players:[me]},stadium:{name:'RS4',segments:[]},
     gameState:{state:1,physicsState:{discs:[ball],segments:[]}},setKeyState:()=>{}};
   const geometry={field_half_w:1000,field_half_h:450,goal_x:1000,player_radius:15,ball_radius:10};
-  const context={Plugin:function(){this.room=room;},AllowFlags:{CreateRoom:1,JoinRoom:2},
+  const context={Plugin:function(){this.room=room;},AllowFlags:{CreateRoom:1,JoinRoom:2},RS4Z:false,
     PublicSignalTracker,PolicyMemory,PUBLIC_CUES:{},
     META:{public_signals:{version:1,offset:56},rule_observation:'masked',layout:'universal',frame_skip:3,n_actions:18,max_ticks:7200},
     UNIVERSAL:true,extrapMs:null,KICK_REACH:4,console,
