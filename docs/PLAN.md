@@ -117,7 +117,8 @@ Fuentes: HR-PPO, VPT, AlphaStar, DiL-piKL, MAPPO. **Implementado:** `learn/x4_pp
 
 - **Algoritmo:** MAPPO con parámetros compartidos, valor normalizado, 5–10 épocas, clip ≤ 0,2 y batch grande.
 - **Pérdida:** (1−λ)·L_PPO + λ·KL(BC‖π).
-  - Barrido corto λ ∈ {0,02; 0,06; 0,1}.
+  - Barrido corto λ ∈ {0,06; 0,2; 0,4}, con o sin decaimiento ×0,9995 (VPT). **Por defecto 0,2:** en CPU, con 0,06 la política derivó hacia la pasividad y perdió contra la BC; con 0,2 se mantuvo cerca de la BC el doble de tiempo (`docs/REPORTE_2026-10-06_noche.md`).
+  - Criterio de corte pre-registrado en `docs/POD_RUNBOOK.md` §4.
   - Opción DiL-piKL: λ muestreado por partido. El actor no ve λ, así que con varios valores aprende el promedio.
 - **Recompensa** (GRF, MARLadona, OpenAI Five 1912.06680):
   - gol ±1, suma cero;
@@ -183,3 +184,4 @@ Fuentes: HR-PPO, VPT, AlphaStar, DiL-piKL, MAPPO. **Implementado:** `learn/x4_pp
 | Correcciones del script de Sanguchito (córner en y, dirección al patear) | Conformidad en 498 grabaciones |
 | Penalización por dejar vencer saques en el RL | Equilibrio degenerado observado: el RL dejó de sacar a las 50 actualizaciones |
 | RL solo en Sanguchito por defecto (antes: mezcla de 3 mapas) | Prioridad 1, fidelidad: los saques de 2K23 y RS ONE no coinciden con sus grabaciones |
+| λ = 0,2 por defecto (antes 0,06) | Dos corridas chicas de CPU: con 0,06 hay deriva hacia la pasividad desde la actualización 50 (VPT usa 0,2) |

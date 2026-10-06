@@ -150,7 +150,21 @@ Para B la muestra era chica (48 sondas).
 - La final todavía está a 2–20 veces el techo humano según la métrica, pero casi siempre a menos de un desvío. Es un ancla razonable para E3.
 - Conviene reentrenarla más larga en GPU: la NLL seguía bajando lento.
 
-RL_LAMBDA
+### RL desde la imitación final: λ = 0,06 contra λ = 0,2 (CPU, 32 partidos, 150 actualizaciones cada una)
+
+| Actualización | 50 | 100 | 150 |
+|---|---|---|---|
+| **λ = 0,06** contra BC (G-E-P) | 0-13-3 | 0-10-6 | 0-8-8 |
+| λ = 0,06 W1 humana media / patadas por min / distancia del 1.º a la pelota | 1,16 / 1,12 / 382 | 1,08 / 0,94 / 162 | 2,67 / 0,18 / 482 |
+| **λ = 0,2** contra BC (G-E-P) | 1-14-1 | 2-11-3 | 3-7-6 |
+| λ = 0,2 W1 humana media / patadas por min / distancia del 1.º a la pelota | 0,48 / 2,48 / 136 | 0,49 / 2,32 / 124 | 1,11 / 1,61 / 186 |
+
+- Con 0,06 la política empeora de forma sostenida: pierde contra la BC y se aleja de la pelota. Es la misma deriva que la corrida desde B.
+- Con 0,2 se mantiene cerca de la BC hasta las 100 actualizaciones y empieza a derivar a las 150.
+- No hubo goles en los rollouts de entrenamiento.
+- **No encontré un bug.** Revisé la atribución de recompensas por equipo, el espejado, el GAE y el KL; hay tests del shaping, de la penalización y de las acciones del crítico.
+- **Lectura más probable:** con lotes de 7k muestras y sin goles, las ventajas son casi ruido, y cada actualización mueve la política (limitada por el clip) en una caminata aleatoria que el ancla solo frena. En el pod el lote es ~70 veces mayor (1024 partidos × 64 decisiones × 8), que es la recomendación de MAPPO.
+- **Decisiones:** λ = 0,2 por defecto, decaimiento opcional `--lambda-decay` (VPT) y un criterio de corte pre-registrado en el runbook.
 
 ## Hipótesis anteriores corregidas
 

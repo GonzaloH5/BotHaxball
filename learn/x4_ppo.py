@@ -5,7 +5,8 @@ Receta y fuentes (docs/PLAN.md §2, revisión §8):
   lote grande. Crítico asimétrico (AlphaStar; MAPPO "agent-specific global state"): observación del actor
   + reloj y marcador + la acción que cada uno de los 8 jugadores va a aplicar (información privilegiada que
   el actor no tiene por la latencia).
-* Pérdida (1−λ)·L_PPO + λ·KL(BC‖π) (HR-PPO arXiv 2403.19648, λ=0,06; VPT arXiv 2206.11795; AlphaStar).
+* Pérdida (1−λ)·L_PPO + λ·KL(BC‖π) (HR-PPO arXiv 2403.19648, λ=0,06; VPT arXiv 2206.11795, 0,2 con decaimiento
+  ×0,9995 por iteración: `--lambda-decay`; AlphaStar).
   Con `--lambda-dist` λ se sortea por partido entre valores (DiL-piKL arXiv 2210.05492). El actor no ve λ:
   con varios valores, la política única aprende el promedio (DiL-piKL usa un tipo por λ); el crítico sí lo ve.
 * Recompensa: gol ±1 de suma cero + shaping de progreso con tope tipo CHECKPOINT de GRF (arXiv 1907.11180):
@@ -256,7 +257,13 @@ def parse_args(argv=None):
     ap.add_argument("--gae", type=float, default=0.95)
     ap.add_argument("--clip", type=float, default=0.2)
     ap.add_argument("--ent", type=float, default=0.0)
-    ap.add_argument("--lambda-dist", default="0.06", help="valores de λ (KL a la BC) sorteados por partido")
+    # 0,2 (VPT) y no 0,06 (HR-PPO): en dos corridas chicas en CPU desde la BC, con 0,06 la política se alejó de la
+    # pelota y empeoró contra la BC desde la actualización 50; con 0,2 se mantuvo cerca hasta la 100.
+    # Ver docs/REPORTE_2026-10-06_noche.md.
+    ap.add_argument("--lambda-dist", default="0.2", help="valores de λ (KL a la BC) sorteados por partido")
+    ap.add_argument("--lambda-decay", type=float, default=1.0,
+                    help="factor por actualización sobre λ (VPT: 0,9995); 1 = sin decaimiento")
+    ap.add_argument("--lambda-min", type=float, default=0.0, help="piso de λ con decaimiento")
     ap.add_argument("--shaping", type=float, default=1.0)
     ap.add_argument("--forfeit-penalty", type=float, default=0.1,
                     help="penalización (suma cero) por dejar vencer un saque o el saque inicial")
@@ -471,6 +478,8 @@ class Trainer:
             for i, x in enumerate((ob, cr, ac, lp, bl, adv, ret, np.broadcast_to(la[..., None], lm.shape))):
                 cols[i].append(x[m])
         ob, cr, ac, lp, bl, adv, ret, lam = (np.concatenate(c) for c in cols)
+        if a.lambda_decay != 1.0:   # VPT: el coeficiente del KL decae con las actualizaciones
+            lam = np.maximum(lam * a.lambda_decay ** self.update, a.lambda_min)
         self.vnorm.update(ret)
         ret_n = (ret - self.vnorm.mu) / self.vnorm.std
         adv = (adv - adv.mean()) / (adv.std() + 1e-8)

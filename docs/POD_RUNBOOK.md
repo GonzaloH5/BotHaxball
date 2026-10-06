@@ -55,14 +55,20 @@ Criterio de avance:
 ## 4. RL con ancla KL (E2 + E3)
 
 ```bash
-python -m learn.x4_ppo --bc runs/x4_bc/final/best.pt --out runs/x4_ppo/lam006 --device cuda \
-    --envs 1024 --rollout 64 --updates 3000 --lambda-dist 0.06 --critic-warmup 20 \
-    --human-starts 0.4 --pool-frac 0.2 --eval-every 25
+python -m learn.x4_ppo --bc runs/x4_bc/final_sangu_rsone/best.pt --out runs/x4_ppo/lam02 --device cuda \
+    --envs 1024 --rollout 64 --updates 3000 --lambda-dist 0.2 --lambda-decay 0.9995 --lambda-min 0.05 \
+    --critic-warmup 20 --human-starts 0.4 --pool-frac 0.2 --eval-every 25
 ```
 
 - **Mapas:** por defecto, solo Sanguchito (`--maps sanguchito_rs_x4:1.0`). Es el único mapa con saques verificados. Sumar `rs_one`/`haxarg_2k23` recién cuando su conformidad de saques esté resuelta (`reports/x4/conformance_x4.md`).
 - **Punto de partida:** la imitación entrenada en CPU esa noche está versionada en `runs/x4_bc/final_sangu_rsone/best.pt` (164M muestras, Sanguchito + RS ONE, retardo 6–15). Con `--bc runs/x4_bc/final_sangu_rsone/best.pt` se puede empezar sin el paso 3, aunque conviene reentrenarla más larga en GPU.
-- **Barrido corto de λ** (plan E3): `--lambda-dist` en {0,02; 0,06; 0,1; 0,2}, con `--out` distintos. El 0,2 es el valor inicial de VPT; se agregó porque con 0,06 la política se alejó de la BC hacia la pasividad en una corrida chica de CPU.
+- **Barrido corto de λ** (plan E3): `--lambda-dist` en {0,06; 0,2; 0,4}, con y sin `--lambda-decay 0.9995`, con `--out` distintos.
+  - Por defecto se usa 0,2 (VPT), porque en dos corridas chicas de CPU con 0,06 la política se alejó de la pelota y empeoró contra la BC desde la actualización 50.
+  - **Criterio de corte** (pre-registrado), sobre `eval.jsonl`, dos evaluaciones seguidas con cualquiera de estas condiciones:
+    - `vs_bc.score` < 0,4;
+    - `human_w1_mean` > 1,0;
+    - `selfplay.dist_ball_1` > 200 px (la BC está en ~110 y los humanos en 84).
+  - Si se cumple: volver a `best.pt`, subir λ o bajar la tasa de aprendizaje.
 - **Penalización por saque vencido:** `--forfeit-penalty 0.1` (por defecto). Evita el equilibrio "nadie saca" (`docs/PLAN.md` E3). No hay que bajarla a 0 sin mirar `forfeits` en `log.jsonl` y `selfplay.kickoff_wait_s` en `eval.jsonl`.
 - **Memoria:** con `--envs 1024 --rollout 64` el buffer ocupa ~2 GB de RAM. Si falta, usar `--rollout 32`.
 - **Qué mirar:**
