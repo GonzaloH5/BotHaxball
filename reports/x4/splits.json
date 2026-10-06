@@ -1,0 +1,8325 @@
+{
+ "version": "x4-splits-1",
+ "rules": [
+  "",
+  "* Duplicados exactos: mismo SHA-256 (los marca el caché JSONL).",
+  "* Duplicados del mismo partido grabado por dos personas: misma secuencia de goles (tiempo de reloj y",
+  "  marcador) y ≥ 6 nombres en común. Se conserva el primero por nombre.",
+  "* Grabaciones con bots (nombres `RL-*`): no son datos humanos; quedan fuera del dataset de imitación y de",
+  "  la referencia humana, pero sirven para conformidad del script y para medir latencia.",
+  "* Sesión: grabaciones del mismo día y la misma sala con menos de 45 min entre una y la siguiente, cortadas",
+  "  en bloques de hasta 2 h (una sala pública graba partidos seguidos toda la noche). Los jugadores",
+  "  habituales se repiten entre sesiones: las particiones separan partidos y bloques, no jugadores (se",
+  "  informa el solapamiento de jugadores).",
+  "* Partición por sesión, estable (hash del nombre de la sesión), por familia de sala: ~15% prueba, ~10%",
+  "  desarrollo, resto entrenamiento.",
+  ""
+ ],
+ "status": {
+  "ok": 647,
+  "duplicate": 4
+ },
+ "summary": {
+  "haxarg/bots": {
+   "recordings": 2,
+   "min4v4:HAXARG 2K23": 3.8
+  },
+  "haxarg/dev": {
+   "recordings": 13,
+   "min4v4:Real Soccer ONE": 269.5
+  },
+  "haxarg/test": {
+   "recordings": 20,
+   "min4v4:Real Soccer ONE": 341.4
+  },
+  "haxarg/train": {
+   "recordings": 90,
+   "min4v4:Real Soccer ONE": 1720.9,
+   "min4v4:Training RSR": 0.0
+  },
+  "mrhost/dev": {
+   "recordings": 3,
+   "min4v4:Real Soccer ONE": 52.4
+  },
+  "mrhost/test": {
+   "recordings": 4,
+   "min4v4:Real Soccer ONE": 59.3
+  },
+  "mrhost/train": {
+   "recordings": 15,
+   "min4v4:Real Soccer ONE": 280.2,
+   "min4v4:Real Soccer Revolution": 1.5
+  },
+  "otra/dev": {
+   "recordings": 1,
+   "min4v4:Real Soccer ONE": 9.2
+  },
+  "otra/test": {
+   "recordings": 1,
+   "min4v4:Real Soccer ONE": 11.5
+  },
+  "sanguchito/dev": {
+   "recordings": 59,
+   "min4v4:SANGUCHITO RS X4": 307.0
+  },
+  "sanguchito/test": {
+   "recordings": 77,
+   "min4v4:SANGUCHITO RS X4": 442.7
+  },
+  "sanguchito/train": {
+   "recordings": 362,
+   "min4v4:SANGUCHITO RS X4": 2072.3
+  }
+ },
+ "player_overlap": {
+  "dev": {
+   "players": 431,
+   "also_in_train": 288
+  },
+  "test": {
+   "players": 504,
+   "also_in_train": 311
+  }
+ },
+ "sessions": {
+  "haxarg:2026-04-10:0": {
+   "split": "train",
+   "recordings": [
+    "HBReplay-10-04-2026-23h18m-69e0552115c922.31037317.hbr2"
+   ]
+  },
+  "haxarg:2026-04-15:0": {
+   "split": "dev",
+   "recordings": [
+    "HBReplay-2026-04-15-22h51m-69e57ea680fdd9.90715876.hbr2",
+    "HBReplay-2026-04-15-23h34m.hbr2",
+    "HBReplay-2026-04-15-23h46m-69e05059b88b45.68177105.hbr2",
+    "HBReplay-2026-04-15-23h47m-69e04e67860f49.85395809.hbr2"
+   ]
+  },
+  "haxarg:2026-04-16:0": {
+   "split": "dev",
+   "recordings": [
+    "HBReplay-2026-04-16-22h11m-69e2cda14bcd41.61328090.hbr2"
+   ]
+  },
+  "haxarg:2026-04-17:0": {
+   "split": "test",
+   "recordings": [
+    "HBReplay-2026-04-17-00h36m-69e2b164cd3eb2.22560715.hbr2",
+    "HBReplay-2026-04-17T03_07_07-69e187bc02e069.23347001.hbr2"
+   ]
+  },
+  "haxarg:2026-04-19:0": {
+   "split": "train",
+   "recordings": [
+    "HBReplay-2026-04-19-19h34m-69e57826b8b113.37600659.hbr2",
+    "HBReplay-2026-04-19-23h37m-69e59298b506e0.28321704.hbr2"
+   ]
+  },
+  "haxarg:2026-04-20:0": {
+   "split": "train",
+   "recordings": [
+    "HBReplay-2026-04-20-23h25m-69e6e14b0bc7f4.24632802.hbr2",
+    "HBReplay-2026-04-20-23h32m-69e6e243483575.64248833.hbr2",
+    "HBReplay-2026-04-20-23h38m-69e6e625b82817.98721202.hbr2",
+    "HBReplay-2026-04-20-23h38m-69e8e267a03d39.58556022.hbr2"
+   ]
+  },
+  "haxarg:2026-04-21:0": {
+   "split": "train",
+   "recordings": [
+    "HBReplay-2026-04-21-21h28m-69e8e3624051a8.16494219.hbr2",
+    "HBReplay-2026-04-21-21h45m.hbr2",
+    "HBReplay-2026-04-21-23h24m-69e832b84c2889.21228497.hbr2",
+    "HBReplay-2026-04-21-23h35m-69e8366e585cc8.18199987.hbr2"
+   ]
+  },
+  "haxarg:2026-04-22:0": {
+   "split": "train",
+   "recordings": [
+    "HBReplay-2026-04-22-22h04m-69e978c866bb04.10145545.hbr2",
+    "HBReplay-2026-04-22-22h12m-69ebe4fc482174.29787744.hbr2",
+    "HBReplay-2026-04-22-23h42m-69e98a540c02b8.55400771.hbr2"
+   ]
+  },
+  "haxarg:2026-04-23:0": {
+   "split": "train",
+   "recordings": [
+    "HBReplay-2026-04-23-23h38m-69eade1608aaa7.23371327.hbr2"
+   ]
+  },
+  "haxarg:2026-04-25:0": {
+   "split": "train",
+   "recordings": [
+    "HBReplay-2026-04-25-23h16m-69ee7beb3b1da8.66459505.hbr2"
+   ]
+  },
+  "haxarg:2026-04-26:0": {
+   "split": "train",
+   "recordings": [
+    "HBReplay-2026-04-26-23h31m-69eecdd243f721.36343785.hbr2"
+   ]
+  },
+  "haxarg:2026-04-27:0": {
+   "split": "train",
+   "recordings": [
+    "HBReplay-2026-04-27-21h48m-69f022544a3d55.23270559.hbr2",
+    "HBReplay-2026-04-27-22h12m-69f0269d871658.19047212.hbr2",
+    "HBReplay-2026-04-27-23h33m-69f01d9ca65e02.69910432.hbr2"
+   ]
+  },
+  "haxarg:2026-04-29:0": {
+   "split": "train",
+   "recordings": [
+    "HBReplay-2026-04-29-23h41m-69f2c287009b75.87819985.hbr2"
+   ]
+  },
+  "haxarg:2026-05-03:0": {
+   "split": "test",
+   "recordings": [
+    "HBReplay-2026-05-03-22h26m-69f7fe8c03a974.47171323.hbr2",
+    "HBReplay-2026-05-03-23h35m-69f81473d9eb43.45445286.hbr2",
+    "HBReplay-2026-05-03-23h37m-69f81474bc73b0.30867693.hbr2"
+   ]
+  },
+  "haxarg:2026-05-07:0": {
+   "split": "train",
+   "recordings": [
+    "HBReplay-2026-05-07-23h27m (1)-69fd4d11850ff0.89315368.hbr2"
+   ]
+  },
+  "haxarg:2026-05-11:0": {
+   "split": "train",
+   "recordings": [
+    "HBReplay-2026-05-11-23h55m-6a02a14d154ae5.98361378.hbr2"
+   ]
+  },
+  "haxarg:2026-05-13:0": {
+   "split": "train",
+   "recordings": [
+    "HBReplay-2026-05-13-23h25m-6a0533719536a7.84808322.hbr2"
+   ]
+  },
+  "haxarg:2026-08-07:0": {
+   "split": "train",
+   "recordings": [
+    "HBReplay-2026-08-07-23h50m-6a769bca112b64.48927767.hbr2"
+   ]
+  },
+  "haxarg:2026-08-10:0": {
+   "split": "train",
+   "recordings": [
+    "HBReplay-2026-08-10-22h52m-6a7a8758e4ed66.76030860.hbr2",
+    "HBReplay-2026-08-10-23h14m-6a7a86729a3a39.62903594.hbr2"
+   ]
+  },
+  "haxarg:2026-09-09:0": {
+   "split": "train",
+   "recordings": [
+    "HBReplay-2026-09-09-22h34m (1)-6aa20ad8c5b818.83480954.hbr2"
+   ]
+  },
+  "haxarg:2026-09-10:0": {
+   "split": "train",
+   "recordings": [
+    "HBReplay-2026-09-10-22h04m.hbr2"
+   ]
+  },
+  "haxarg:2026-09-13:0": {
+   "split": "train",
+   "recordings": [
+    "HBReplay-2026-09-13-22h42m.hbr2"
+   ]
+  },
+  "haxarg:2026-09-16:0": {
+   "split": "train",
+   "recordings": [
+    "HBReplay-2026-09-16-22h38m.hbr2"
+   ]
+  },
+  "haxarg:2026-09-21:0": {
+   "split": "dev",
+   "recordings": [
+    "HBReplay-2026-09-21-22h31m.hbr2",
+    "HBReplay-2026-09-21-23h28m.hbr2",
+    "HBReplay-2026-09-21-23h30m.hbr2",
+    "HBReplay-2026-09-21-23h33m.hbr2",
+    "HBReplay-2026-09-21-23h36m (1).hbr2",
+    "HBReplay-2026-09-21-23h36m.hbr2",
+    "HBReplay-2026-09-21-23h37m.hbr2"
+   ]
+  },
+  "haxarg:2026-09-22:0": {
+   "split": "train",
+   "recordings": [
+    "HaxOfi-replay-2026-09-22-02-14-54.hbr2",
+    "HaxOfi-replay-2026-09-22-02-17-17.hbr2"
+   ]
+  },
+  "haxarg:2026-09-23:0": {
+   "split": "test",
+   "recordings": [
+    "HBReplay-2026-09-23-23h24m.hbr2",
+    "HBReplay-2026-09-23-23h27m (1).hbr2",
+    "HBReplay-2026-09-23-23h27m.hbr2",
+    "HBReplay-2026-09-23-23h30m.hbr2",
+    "HBReplay-2026-09-23-23h32m.hbr2",
+    "HBReplay-2026-09-23-23h33m.hbr2",
+    "HBReplay-2026-09-23-23h36m.hbr2",
+    "HBReplay-2026-09-23-23h37m.hbr2"
+   ]
+  },
+  "haxarg:2026-09-24:0": {
+   "split": "train",
+   "recordings": [
+    "HBReplay-2026-09-24-23h36m.hbr2",
+    "HaxOfi-2026-09-24-00-45-20.hbr2",
+    "HaxOfi-2026-09-24-02-31-14.hbr2"
+   ]
+  },
+  "haxarg:2026-09-25:0": {
+   "split": "train",
+   "recordings": [
+    "HBReplay-2026-09-25-00h05m.hbr2",
+    "HBReplay-2026-09-25-23h31m.hbr2"
+   ]
+  },
+  "haxarg:2026-09-26:0": {
+   "split": "train",
+   "recordings": [
+    "HBReplay-2026-09-26-23h16m.hbr2"
+   ]
+  },
+  "haxarg:2026-09-27:0": {
+   "split": "train",
+   "recordings": [
+    "HBReplay-2026-09-27-23h30m.hbr2",
+    "HBReplay-2026-09-27-23h31m (1).hbr2",
+    "HBReplay-2026-09-27-23h31m.hbr2",
+    "HBReplay-2026-09-27-23h34m.hbr2",
+    "HBReplay-2026-09-27-23h40m.hbr2",
+    "HBReplay-2026-09-27-23h41m.hbr2",
+    "HBReplay-2026-09-27-23h42m.hbr2",
+    "HBReplay-2026-09-27-23h45m.hbr2",
+    "HBReplay-2026-09-27-23h54m.hbr2"
+   ]
+  },
+  "haxarg:2026-09-28:0": {
+   "split": "train",
+   "recordings": [
+    "HBReplay-2026-09-28-21h33m.hbr2",
+    "HBReplay-2026-09-28-23h25m.hbr2",
+    "HBReplay-2026-09-28-23h35m.hbr2",
+    "HBReplay-2026-09-28-23h36m.hbr2",
+    "HBReplay-2026-09-28-23h45m.hbr2",
+    "HaxOfi-2026-09-28-01-31-55.hbr2",
+    "HaxOfi-replay-2026-09-28-02-37-30 - copia.hbr2"
+   ]
+  },
+  "haxarg:2026-09-28:1": {
+   "split": "train",
+   "recordings": [
+    "HaxOfi-2026-09-28-02-26-57.hbr2"
+   ]
+  },
+  "haxarg:2026-09-29:0": {
+   "split": "dev",
+   "recordings": [
+    "HaxOfi-2026-09-29-02-42-11.hbr2"
+   ]
+  },
+  "haxarg:2026-09-30:0": {
+   "split": "train",
+   "recordings": [
+    "HBReplay-2026-09-30-23h24m (1).hbr2",
+    "HBReplay-2026-09-30-23h34m.hbr2",
+    "HBReplay-2026-09-30-23h35m.hbr2",
+    "HBReplay-2026-09-30-23h40m.hbr2",
+    "HBReplay-2026-09-30-23h41m (1).hbr2",
+    "HBReplay-2026-09-30-23h41m.hbr2",
+    "HBReplay-2026-09-30-23h46m.hbr2",
+    "HBReplay-2026-09-30-23h47m.hbr2",
+    "HBReplay-2026-09-30-23h49m.hbr2"
+   ]
+  },
+  "haxarg:2026-10-01:0": {
+   "split": "train",
+   "recordings": [
+    "HBReplay-2026-10-01-00h00m.hbr2"
+   ]
+  },
+  "haxarg:2026-10-04:0": {
+   "split": "test",
+   "recordings": [
+    "HBReplay-2026-10-04-23h14m.hbr2",
+    "HBReplay-2026-10-04-23h28m.hbr2",
+    "HBReplay-2026-10-04-23h33m.hbr2",
+    "HBReplay-2026-10-04-23h38m.hbr2",
+    "HBReplay-2026-10-04-23h39m (1).hbr2",
+    "HBReplay-2026-10-04-23h39m.hbr2"
+   ]
+  },
+  "haxarg:2026-10-05:0": {
+   "split": "train",
+   "recordings": [
+    "HaxOfi-2026-10-05-02-28-36.hbr2"
+   ]
+  },
+  "haxarg:2026-10-06:0": {
+   "split": "bots",
+   "recordings": [
+    "HBReplay-2026-10-06-01h55m.hbr2",
+    "HBReplay-2026-10-06-02h55m.hbr2"
+   ]
+  },
+  "haxarg:_exiled_vs_queso_de_vaca_i_haxarg_": {
+   "split": "train",
+   "recordings": [
+    "QDV 5-0 EHC Eternity.hbr2"
+   ]
+  },
+  "haxarg:_leg_vs_i_haxarg_": {
+   "split": "test",
+   "recordings": [
+    "izk vs leg (1).hbr2"
+   ]
+  },
+  "haxarg:_qdv_vs_sut_i_haxarg_": {
+   "split": "train",
+   "recordings": [
+    "sutqdvofi__c3926139e50b.hbr2"
+   ]
+  },
+  "haxarg:_qnt_vs_i_haxarg_": {
+   "split": "train",
+   "recordings": [
+    "QDV 5-0 QNT Eternity.hbr2"
+   ]
+  },
+  "haxarg:_sut_stadiu_i_haxarg_": {
+   "split": "train",
+   "recordings": [
+    "SUTSKRSX4__3bfe06569bbc.hbr2"
+   ]
+  },
+  "haxarg:_sut_stadium_i_haxarg_": {
+   "split": "train",
+   "recordings": [
+    "SUTPEÑAROL.hbr2",
+    "SUTV707COPA__d26d6ffd32d5.hbr2",
+    "sutizkcuartodaida__2a3a252cd0ee.hbr2",
+    "sutizkrsx4__7ec4268f1a67.hbr2",
+    "sutizkvuelta__99e844e251a0.hbr2",
+    "sutmut.hbr2",
+    "sutomrsx4__bcf35eb84508.hbr2",
+    "sutqacrsx4__d41c2b846bb4.hbr2",
+    "sutsffx__1654b79eae86.hbr2",
+    "suttvyofi__af5f8ecb53b6.hbr2",
+    "suttvyrsx4__034d42773413.hbr2",
+    "sutucofi__6b658458764f.hbr2",
+    "sutucrsx4__77927942efd5.hbr2",
+    "sutvkrsx4__b7cf6c4d09d6.hbr2",
+    "sutvtofi__2a3419903494.hbr2"
+   ]
+  },
+  "haxarg:_taberna_de_qdv_i_haxarg_": {
+   "split": "train",
+   "recordings": [
+    "QDV 4-3 NT Liga Elite T7.hbr2",
+    "QDV 7-3 Elite.hbr2"
+   ]
+  },
+  "haxarg:_uc3_vs_i_haxarg_": {
+   "split": "train",
+   "recordings": [
+    "uc3exiled.hbr2",
+    "uc3vk.hbr2"
+   ]
+  },
+  "mrhost:2026-04-16:0": {
+   "split": "train",
+   "recordings": [
+    "HBReplay-2026-04-16-22h11m-69ebe9cb259467.75537274.hbr2"
+   ]
+  },
+  "mrhost:2026-04-19:0": {
+   "split": "dev",
+   "recordings": [
+    "HBReplay-2026-04-19-21h53m-69e580e2ecb091.15260698.hbr2",
+    "HBReplay-2026-04-19-23h37m.hbr2",
+    "HBReplay-2026-04-19-23h53m.hbr2"
+   ]
+  },
+  "mrhost:2026-04-19:1": {
+   "split": "train",
+   "recordings": [
+    "HBReplay-2026-04-19-23h43m.hbr2"
+   ]
+  },
+  "mrhost:2026-04-20:0": {
+   "split": "test",
+   "recordings": [
+    "HBReplay-2026-04-20-23h40m.hbr2"
+   ]
+  },
+  "mrhost:2026-05-05:0": {
+   "split": "train",
+   "recordings": [
+    "HBReplay-2026-05-05-23h32m-69fab16d745704.88029569.hbr2"
+   ]
+  },
+  "mrhost:2026-05-06:0": {
+   "split": "train",
+   "recordings": [
+    "HBReplay-2026-05-06-23h37m-69fcb008997785.38327514.hbr2"
+   ]
+  },
+  "mrhost:2026-08-23:0": {
+   "split": "train",
+   "recordings": [
+    "HBReplay-2026-08-23-23h10m__7b0b0a57af23.hbr2"
+   ]
+  },
+  "mrhost:2026-09-13:0": {
+   "split": "test",
+   "recordings": [
+    "HBReplay-2026-09-13-21h56m.hbr2",
+    "HBReplay-2026-09-13-22h32m.hbr2"
+   ]
+  },
+  "mrhost:2026-09-14:0": {
+   "split": "train",
+   "recordings": [
+    "HBReplay-2026-09-14-22h27m.hbr2"
+   ]
+  },
+  "mrhost:2026-09-21:0": {
+   "split": "train",
+   "recordings": [
+    "HBReplay-2026-09-21-23h42m.hbr2"
+   ]
+  },
+  "mrhost:2026-09-24:0": {
+   "split": "test",
+   "recordings": [
+    "HaxOfi-replay-2026-09-24-02-22-27.hbr2"
+   ]
+  },
+  "mrhost:2026-09-28:0": {
+   "split": "train",
+   "recordings": [
+    "HBReplay-2026-09-28-23h24m.hbr2"
+   ]
+  },
+  "mrhost:2026-09-30:0": {
+   "split": "train",
+   "recordings": [
+    "HBReplay-2026-09-30-21h36m.hbr2"
+   ]
+  },
+  "mrhost:_mrhost_3_buenos_aires_": {
+   "split": "train",
+   "recordings": [
+    "rs flw lpm.hbr2"
+   ]
+  },
+  "mrhost:_mrhost_3_s_o_paulo_": {
+   "split": "train",
+   "recordings": [
+    "argbra1tfinal__cd4dbf2b9761.hbr2"
+   ]
+  },
+  "mrhost:_mrhost_4_buenos_aires_": {
+   "split": "train",
+   "recordings": [
+    "_MrHOST_-_4_-_Buenos_Aires_-1790563275736 (1).hbr2"
+   ]
+  },
+  "mrhost:_mrhost_x_haxcl_santiago_2_": {
+   "split": "train",
+   "recordings": [
+    "argbol1t__70f72c3802b7.hbr2"
+   ]
+  },
+  "mrhost:_mrhost_x_haxcl_santiago_3_": {
+   "split": "train",
+   "recordings": [
+    "argperuu21__8c288f6ecbca.hbr2"
+   ]
+  },
+  "mrhost:_mrhost_x_ihl_lima_1_": {
+   "split": "train",
+   "recordings": [
+    "argbol2t__a6471cbc4a3f.hbr2"
+   ]
+  },
+  "otra:_sdh_5_real_soccer_4v4_": {
+   "split": "test",
+   "recordings": [
+    "RSX4REPLAY-13-50-26__64d117b71d39.hbr2"
+   ]
+  },
+  "otra:_x_hosting_services_miami_9_": {
+   "split": "dev",
+   "recordings": [
+    "Ofi_VsEcu_F1CA__818da7640beb.hbr2"
+   ]
+  },
+  "sanguchito:2026-09-29:0": {
+   "split": "test",
+   "recordings": [
+    "SanguREC-29-9-2026-17h31m.hbr2",
+    "SanguREC-29-9-2026-17h37m.hbr2",
+    "SanguREC-29-9-2026-17h50m.hbr2",
+    "SanguREC-29-9-2026-17h56m.hbr2",
+    "SanguREC-29-9-2026-18h07m.hbr2",
+    "SanguREC-29-9-2026-18h12m.hbr2",
+    "SanguREC-29-9-2026-18h19m.hbr2"
+   ]
+  },
+  "sanguchito:2026-10-01:0": {
+   "split": "train",
+   "recordings": [
+    "SanguREC-1-10-2026-20h09m.hbr2",
+    "SanguREC-1-10-2026-20h15m.hbr2",
+    "SanguREC-1-10-2026-20h21m.hbr2",
+    "SanguREC-1-10-2026-20h35m.hbr2",
+    "SanguREC-1-10-2026-20h44m.hbr2",
+    "SanguREC-1-10-2026-20h50m.hbr2",
+    "SanguREC-1-10-2026-20h56m.hbr2",
+    "SanguREC-1-10-2026-21h02m.hbr2",
+    "SanguREC-1-10-2026-21h08m.hbr2",
+    "SanguREC-1-10-2026-21h41m.hbr2",
+    "SanguREC-1-10-2026-21h52m.hbr2",
+    "SanguREC-1-10-2026-22h00m.hbr2"
+   ]
+  },
+  "sanguchito:2026-10-01:1": {
+   "split": "dev",
+   "recordings": [
+    "SanguREC-1-10-2026-22h19m.hbr2",
+    "SanguREC-1-10-2026-22h24m.hbr2",
+    "SanguREC-1-10-2026-22h32m.hbr2",
+    "SanguREC-1-10-2026-22h38m.hbr2",
+    "SanguREC-1-10-2026-22h44m.hbr2",
+    "SanguREC-1-10-2026-22h58m.hbr2"
+   ]
+  },
+  "sanguchito:2026-10-02:0": {
+   "split": "test",
+   "recordings": [
+    "SanguREC-2-10-2026-14h21m.hbr2",
+    "SanguREC-2-10-2026-14h28m.hbr2",
+    "SanguREC-2-10-2026-14h34m.hbr2",
+    "SanguREC-2-10-2026-14h40m.hbr2",
+    "SanguREC-2-10-2026-14h46m.hbr2",
+    "SanguREC-2-10-2026-14h53m.hbr2",
+    "SanguREC-2-10-2026-15h01m.hbr2",
+    "SanguREC-2-10-2026-15h07m.hbr2",
+    "SanguREC-2-10-2026-15h15m.hbr2",
+    "SanguREC-2-10-2026-15h20m.hbr2",
+    "SanguREC-2-10-2026-15h28m.hbr2",
+    "SanguREC-2-10-2026-15h34m.hbr2",
+    "SanguREC-2-10-2026-15h42m.hbr2",
+    "SanguREC-2-10-2026-15h49m.hbr2",
+    "SanguREC-2-10-2026-15h57m.hbr2",
+    "SanguREC-2-10-2026-16h03m.hbr2",
+    "SanguREC-2-10-2026-16h18m.hbr2"
+   ]
+  },
+  "sanguchito:2026-10-02:1": {
+   "split": "dev",
+   "recordings": [
+    "SanguREC-2-10-2026-16h24m.hbr2",
+    "SanguREC-2-10-2026-16h43m.hbr2",
+    "SanguREC-2-10-2026-16h51m.hbr2",
+    "SanguREC-2-10-2026-16h59m.hbr2",
+    "SanguREC-2-10-2026-17h12m.hbr2",
+    "SanguREC-2-10-2026-17h17m.hbr2",
+    "SanguREC-2-10-2026-17h24m.hbr2",
+    "SanguREC-2-10-2026-17h29m.hbr2",
+    "SanguREC-2-10-2026-17h42m.hbr2",
+    "SanguREC-2-10-2026-17h48m.hbr2",
+    "SanguREC-2-10-2026-17h55m.hbr2",
+    "SanguREC-2-10-2026-17h58m.hbr2",
+    "SanguREC-2-10-2026-18h05m.hbr2",
+    "SanguREC-2-10-2026-18h10m.hbr2",
+    "SanguREC-2-10-2026-18h16m.hbr2",
+    "SanguREC-2-10-2026-18h23m.hbr2"
+   ]
+  },
+  "sanguchito:2026-10-02:2": {
+   "split": "train",
+   "recordings": [
+    "SanguREC-2-10-2026-18h30m.hbr2",
+    "SanguREC-2-10-2026-18h37m.hbr2",
+    "SanguREC-2-10-2026-18h46m.hbr2",
+    "SanguREC-2-10-2026-18h51m.hbr2",
+    "SanguREC-2-10-2026-18h57m.hbr2",
+    "SanguREC-2-10-2026-19h04m.hbr2",
+    "SanguREC-2-10-2026-19h12m.hbr2",
+    "SanguREC-2-10-2026-19h19m.hbr2",
+    "SanguREC-2-10-2026-19h25m.hbr2",
+    "SanguREC-2-10-2026-19h32m.hbr2",
+    "SanguREC-2-10-2026-19h40m.hbr2",
+    "SanguREC-2-10-2026-19h47m.hbr2",
+    "SanguREC-2-10-2026-19h53m.hbr2",
+    "SanguREC-2-10-2026-20h01m.hbr2",
+    "SanguREC-2-10-2026-20h05m.hbr2",
+    "SanguREC-2-10-2026-20h13m.hbr2",
+    "SanguREC-2-10-2026-20h17m.hbr2",
+    "SanguREC-2-10-2026-20h23m.hbr2",
+    "SanguREC-2-10-2026-20h29m.hbr2"
+   ]
+  },
+  "sanguchito:2026-10-02:3": {
+   "split": "train",
+   "recordings": [
+    "SanguREC-2-10-2026-20h36m.hbr2",
+    "SanguREC-2-10-2026-20h44m.hbr2",
+    "SanguREC-2-10-2026-20h49m.hbr2",
+    "SanguREC-2-10-2026-20h58m.hbr2",
+    "SanguREC-2-10-2026-21h05m.hbr2",
+    "SanguREC-2-10-2026-21h11m.hbr2",
+    "SanguREC-2-10-2026-21h17m.hbr2",
+    "SanguREC-2-10-2026-21h23m.hbr2",
+    "SanguREC-2-10-2026-21h37m.hbr2",
+    "SanguREC-2-10-2026-21h45m.hbr2",
+    "SanguREC-2-10-2026-21h50m.hbr2",
+    "SanguREC-2-10-2026-21h56m.hbr2",
+    "SanguREC-2-10-2026-22h20m.hbr2",
+    "SanguREC-2-10-2026-22h21m.hbr2",
+    "SanguREC-2-10-2026-22h28m.hbr2",
+    "SanguREC-2-10-2026-22h34m.hbr2"
+   ]
+  },
+  "sanguchito:2026-10-02:4": {
+   "split": "train",
+   "recordings": [
+    "SanguREC-2-10-2026-22h41m.hbr2",
+    "SanguREC-2-10-2026-22h47m.hbr2",
+    "SanguREC-2-10-2026-22h56m.hbr2",
+    "SanguREC-2-10-2026-23h09m.hbr2",
+    "SanguREC-2-10-2026-23h22m.hbr2",
+    "SanguREC-2-10-2026-23h29m.hbr2",
+    "SanguREC-2-10-2026-23h35m.hbr2",
+    "SanguREC-2-10-2026-23h46m.hbr2",
+    "SanguREC-2-10-2026-23h54m.hbr2",
+    "SanguREC-2-10-2026-23h59m.hbr2"
+   ]
+  },
+  "sanguchito:2026-10-03:0": {
+   "split": "train",
+   "recordings": [
+    "SanguREC-3-10-2026-01h16m.hbr2",
+    "SanguREC-3-10-2026-01h22m.hbr2",
+    "SanguREC-3-10-2026-01h30m.hbr2",
+    "SanguREC-3-10-2026-01h35m.hbr2",
+    "SanguREC-3-10-2026-01h47m.hbr2",
+    "SanguREC-3-10-2026-01h54m.hbr2",
+    "SanguREC-3-10-2026-01h59m.hbr2",
+    "SanguREC-3-10-2026-02h05m.hbr2",
+    "SanguREC-3-10-2026-02h10m.hbr2",
+    "SanguREC-3-10-2026-02h16m.hbr2",
+    "SanguREC-3-10-2026-02h21m.hbr2",
+    "SanguREC-3-10-2026-02h29m.hbr2",
+    "SanguREC-3-10-2026-02h35m.hbr2",
+    "SanguREC-3-10-2026-02h43m.hbr2",
+    "SanguREC-3-10-2026-02h50m.hbr2",
+    "SanguREC-3-10-2026-02h55m.hbr2",
+    "SanguREC-3-10-2026-03h01m.hbr2",
+    "SanguREC-3-10-2026-03h08m.hbr2",
+    "SanguREC-3-10-2026-03h14m.hbr2"
+   ]
+  },
+  "sanguchito:2026-10-03:1": {
+   "split": "train",
+   "recordings": [
+    "SanguREC-3-10-2026-03h19m.hbr2",
+    "SanguREC-3-10-2026-03h27m.hbr2",
+    "SanguREC-3-10-2026-03h32m.hbr2",
+    "SanguREC-3-10-2026-03h45m.hbr2",
+    "SanguREC-3-10-2026-03h51m.hbr2",
+    "SanguREC-3-10-2026-03h57m.hbr2"
+   ]
+  },
+  "sanguchito:2026-10-03:2": {
+   "split": "test",
+   "recordings": [
+    "SanguREC-3-10-2026-12h23m.hbr2",
+    "SanguREC-3-10-2026-12h28m.hbr2",
+    "SanguREC-3-10-2026-12h35m.hbr2",
+    "SanguREC-3-10-2026-12h41m.hbr2",
+    "SanguREC-3-10-2026-12h47m.hbr2",
+    "SanguREC-3-10-2026-12h51m.hbr2",
+    "SanguREC-3-10-2026-13h03m.hbr2",
+    "SanguREC-3-10-2026-13h16m.hbr2",
+    "SanguREC-3-10-2026-13h22m.hbr2",
+    "SanguREC-3-10-2026-13h29m.hbr2",
+    "SanguREC-3-10-2026-13h35m.hbr2",
+    "SanguREC-3-10-2026-13h40m.hbr2",
+    "SanguREC-3-10-2026-13h52m.hbr2",
+    "SanguREC-3-10-2026-13h57m.hbr2",
+    "SanguREC-3-10-2026-14h09m.hbr2",
+    "SanguREC-3-10-2026-14h15m.hbr2"
+   ]
+  },
+  "sanguchito:2026-10-03:3": {
+   "split": "train",
+   "recordings": [
+    "SanguREC-3-10-2026-14h28m.hbr2",
+    "SanguREC-3-10-2026-14h39m.hbr2",
+    "SanguREC-3-10-2026-14h49m.hbr2",
+    "SanguREC-3-10-2026-14h55m.hbr2",
+    "SanguREC-3-10-2026-15h01m.hbr2",
+    "SanguREC-3-10-2026-15h08m.hbr2",
+    "SanguREC-3-10-2026-15h14m.hbr2",
+    "SanguREC-3-10-2026-15h20m.hbr2",
+    "SanguREC-3-10-2026-15h26m.hbr2",
+    "SanguREC-3-10-2026-15h32m.hbr2",
+    "SanguREC-3-10-2026-15h38m.hbr2",
+    "SanguREC-3-10-2026-15h57m.hbr2",
+    "SanguREC-3-10-2026-16h03m.hbr2",
+    "SanguREC-3-10-2026-16h10m.hbr2",
+    "SanguREC-3-10-2026-16h15m.hbr2",
+    "SanguREC-3-10-2026-16h21m.hbr2"
+   ]
+  },
+  "sanguchito:2026-10-03:4": {
+   "split": "test",
+   "recordings": [
+    "SanguREC-3-10-2026-16h34m.hbr2",
+    "SanguREC-3-10-2026-16h41m.hbr2",
+    "SanguREC-3-10-2026-16h47m.hbr2",
+    "SanguREC-3-10-2026-16h53m.hbr2",
+    "SanguREC-3-10-2026-16h59m.hbr2",
+    "SanguREC-3-10-2026-17h06m.hbr2",
+    "SanguREC-3-10-2026-17h13m.hbr2",
+    "SanguREC-3-10-2026-17h19m.hbr2",
+    "SanguREC-3-10-2026-17h26m.hbr2",
+    "SanguREC-3-10-2026-17h33m.hbr2",
+    "SanguREC-3-10-2026-17h45m.hbr2",
+    "SanguREC-3-10-2026-17h51m.hbr2",
+    "SanguREC-3-10-2026-17h57m.hbr2",
+    "SanguREC-3-10-2026-18h02m.hbr2",
+    "SanguREC-3-10-2026-18h21m.hbr2",
+    "SanguREC-3-10-2026-18h29m.hbr2"
+   ]
+  },
+  "sanguchito:2026-10-03:5": {
+   "split": "train",
+   "recordings": [
+    "SanguREC-3-10-2026-18h35m.hbr2",
+    "SanguREC-3-10-2026-18h41m.hbr2",
+    "SanguREC-3-10-2026-18h48m.hbr2",
+    "SanguREC-3-10-2026-18h56m.hbr2",
+    "SanguREC-3-10-2026-19h01m.hbr2",
+    "SanguREC-3-10-2026-19h08m.hbr2",
+    "SanguREC-3-10-2026-19h14m.hbr2",
+    "SanguREC-3-10-2026-19h22m.hbr2",
+    "SanguREC-3-10-2026-19h29m.hbr2",
+    "SanguREC-3-10-2026-19h34m.hbr2",
+    "SanguREC-3-10-2026-19h41m.hbr2",
+    "SanguREC-3-10-2026-19h47m.hbr2",
+    "SanguREC-3-10-2026-19h53m.hbr2",
+    "SanguREC-3-10-2026-19h59m.hbr2",
+    "SanguREC-3-10-2026-20h06m.hbr2",
+    "SanguREC-3-10-2026-20h12m.hbr2",
+    "SanguREC-3-10-2026-20h31m.hbr2"
+   ]
+  },
+  "sanguchito:2026-10-03:6": {
+   "split": "train",
+   "recordings": [
+    "SanguREC-3-10-2026-20h37m.hbr2",
+    "SanguREC-3-10-2026-20h46m.hbr2",
+    "SanguREC-3-10-2026-20h53m.hbr2",
+    "SanguREC-3-10-2026-21h00m.hbr2",
+    "SanguREC-3-10-2026-21h06m.hbr2",
+    "SanguREC-3-10-2026-21h14m.hbr2",
+    "SanguREC-3-10-2026-21h21m.hbr2",
+    "SanguREC-3-10-2026-21h27m.hbr2",
+    "SanguREC-3-10-2026-21h36m.hbr2",
+    "SanguREC-3-10-2026-21h43m.hbr2",
+    "SanguREC-3-10-2026-21h50m.hbr2",
+    "SanguREC-3-10-2026-21h57m.hbr2",
+    "SanguREC-3-10-2026-22h04m.hbr2",
+    "SanguREC-3-10-2026-22h09m.hbr2",
+    "SanguREC-3-10-2026-22h21m.hbr2",
+    "SanguREC-3-10-2026-22h26m.hbr2",
+    "SanguREC-3-10-2026-22h33m.hbr2"
+   ]
+  },
+  "sanguchito:2026-10-03:7": {
+   "split": "train",
+   "recordings": [
+    "SanguREC-3-10-2026-22h39m.hbr2",
+    "SanguREC-3-10-2026-22h44m.hbr2",
+    "SanguREC-3-10-2026-22h50m.hbr2",
+    "SanguREC-3-10-2026-22h59m.hbr2",
+    "SanguREC-3-10-2026-23h04m.hbr2",
+    "SanguREC-3-10-2026-23h13m.hbr2",
+    "SanguREC-3-10-2026-23h19m.hbr2",
+    "SanguREC-3-10-2026-23h26m.hbr2",
+    "SanguREC-3-10-2026-23h31m.hbr2",
+    "SanguREC-3-10-2026-23h38m.hbr2",
+    "SanguREC-3-10-2026-23h44m.hbr2",
+    "SanguREC-3-10-2026-23h52m.hbr2",
+    "SanguREC-3-10-2026-23h57m.hbr2"
+   ]
+  },
+  "sanguchito:2026-10-04:0": {
+   "split": "train",
+   "recordings": [
+    "SanguREC-4-10-2026-01h01m.hbr2",
+    "SanguREC-4-10-2026-01h07m.hbr2",
+    "SanguREC-4-10-2026-01h12m.hbr2",
+    "SanguREC-4-10-2026-01h18m.hbr2",
+    "SanguREC-4-10-2026-01h24m.hbr2",
+    "SanguREC-4-10-2026-01h29m.hbr2",
+    "SanguREC-4-10-2026-01h35m.hbr2",
+    "SanguREC-4-10-2026-01h43m.hbr2",
+    "SanguREC-4-10-2026-01h50m.hbr2",
+    "SanguREC-4-10-2026-02h00m.hbr2",
+    "SanguREC-4-10-2026-02h06m.hbr2",
+    "SanguREC-4-10-2026-02h14m.hbr2",
+    "SanguREC-4-10-2026-02h25m.hbr2",
+    "SanguREC-4-10-2026-02h36m.hbr2",
+    "SanguREC-4-10-2026-02h42m.hbr2",
+    "SanguREC-4-10-2026-02h49m.hbr2",
+    "SanguREC-4-10-2026-02h55m.hbr2",
+    "SanguREC-4-10-2026-03h00m.hbr2"
+   ]
+  },
+  "sanguchito:2026-10-04:1": {
+   "split": "train",
+   "recordings": [
+    "SanguREC-4-10-2026-03h08m.hbr2",
+    "SanguREC-4-10-2026-03h13m.hbr2",
+    "SanguREC-4-10-2026-03h19m.hbr2",
+    "SanguREC-4-10-2026-03h25m.hbr2",
+    "SanguREC-4-10-2026-03h30m.hbr2",
+    "SanguREC-4-10-2026-03h38m.hbr2",
+    "SanguREC-4-10-2026-03h46m.hbr2",
+    "SanguREC-4-10-2026-03h52m.hbr2",
+    "SanguREC-4-10-2026-03h58m.hbr2",
+    "SanguREC-4-10-2026-04h05m.hbr2",
+    "SanguREC-4-10-2026-04h11m.hbr2",
+    "SanguREC-4-10-2026-04h18m.hbr2",
+    "SanguREC-4-10-2026-04h24m.hbr2",
+    "SanguREC-4-10-2026-04h29m.hbr2",
+    "SanguREC-4-10-2026-04h38m.hbr2",
+    "SanguREC-4-10-2026-04h46m.hbr2",
+    "SanguREC-4-10-2026-04h53m.hbr2",
+    "SanguREC-4-10-2026-04h59m.hbr2"
+   ]
+  },
+  "sanguchito:2026-10-04:2": {
+   "split": "train",
+   "recordings": [
+    "SanguREC-4-10-2026-05h11m.hbr2"
+   ]
+  },
+  "sanguchito:2026-10-04:3": {
+   "split": "train",
+   "recordings": [
+    "SanguREC-4-10-2026-10h54m.hbr2",
+    "SanguREC-4-10-2026-11h00m.hbr2",
+    "SanguREC-4-10-2026-11h05m.hbr2",
+    "SanguREC-4-10-2026-11h16m.hbr2",
+    "SanguREC-4-10-2026-11h23m.hbr2",
+    "SanguREC-4-10-2026-11h29m.hbr2",
+    "SanguREC-4-10-2026-11h36m.hbr2",
+    "SanguREC-4-10-2026-11h42m.hbr2",
+    "SanguREC-4-10-2026-11h50m.hbr2",
+    "SanguREC-4-10-2026-11h56m.hbr2",
+    "SanguREC-4-10-2026-12h00m.hbr2",
+    "SanguREC-4-10-2026-12h10m.hbr2",
+    "SanguREC-4-10-2026-12h26m.hbr2",
+    "SanguREC-4-10-2026-12h42m.hbr2",
+    "SanguREC-4-10-2026-12h54m.hbr2"
+   ]
+  },
+  "sanguchito:2026-10-04:4": {
+   "split": "train",
+   "recordings": [
+    "SanguREC-4-10-2026-13h01m.hbr2",
+    "SanguREC-4-10-2026-13h07m.hbr2",
+    "SanguREC-4-10-2026-13h16m.hbr2",
+    "SanguREC-4-10-2026-13h21m.hbr2",
+    "SanguREC-4-10-2026-13h27m.hbr2",
+    "SanguREC-4-10-2026-13h32m.hbr2",
+    "SanguREC-4-10-2026-13h37m (1).hbr2",
+    "SanguREC-4-10-2026-13h44m.hbr2",
+    "SanguREC-4-10-2026-13h50m.hbr2",
+    "SanguREC-4-10-2026-13h57m.hbr2",
+    "SanguREC-4-10-2026-14h05m.hbr2",
+    "SanguREC-4-10-2026-14h11m.hbr2",
+    "SanguREC-4-10-2026-14h32m.hbr2",
+    "SanguREC-4-10-2026-14h42m.hbr2",
+    "SanguREC-4-10-2026-14h48m.hbr2",
+    "SanguREC-4-10-2026-14h54m (1).hbr2"
+   ]
+  },
+  "sanguchito:2026-10-04:5": {
+   "split": "train",
+   "recordings": [
+    "SanguREC-4-10-2026-15h08m.hbr2",
+    "SanguREC-4-10-2026-15h14m.hbr2",
+    "SanguREC-4-10-2026-15h20m.hbr2",
+    "SanguREC-4-10-2026-15h25m.hbr2",
+    "SanguREC-4-10-2026-15h32m.hbr2",
+    "SanguREC-4-10-2026-15h40m.hbr2",
+    "SanguREC-4-10-2026-15h48m.hbr2",
+    "SanguREC-4-10-2026-15h56m.hbr2",
+    "SanguREC-4-10-2026-16h02m.hbr2",
+    "SanguREC-4-10-2026-16h08m.hbr2",
+    "SanguREC-4-10-2026-16h22m.hbr2",
+    "SanguREC-4-10-2026-16h27m.hbr2",
+    "SanguREC-4-10-2026-16h36m.hbr2",
+    "SanguREC-4-10-2026-16h43m.hbr2",
+    "SanguREC-4-10-2026-16h49m.hbr2",
+    "SanguREC-4-10-2026-16h58m.hbr2",
+    "SanguREC-4-10-2026-17h05m.hbr2"
+   ]
+  },
+  "sanguchito:2026-10-04:6": {
+   "split": "train",
+   "recordings": [
+    "SanguREC-4-10-2026-17h15m.hbr2",
+    "SanguREC-4-10-2026-17h22m.hbr2",
+    "SanguREC-4-10-2026-17h31m.hbr2",
+    "SanguREC-4-10-2026-17h39m.hbr2",
+    "SanguREC-4-10-2026-17h45m.hbr2",
+    "SanguREC-4-10-2026-17h50m.hbr2",
+    "SanguREC-4-10-2026-17h56m.hbr2",
+    "SanguREC-4-10-2026-18h02m.hbr2",
+    "SanguREC-4-10-2026-18h07m.hbr2",
+    "SanguREC-4-10-2026-18h15m.hbr2",
+    "SanguREC-4-10-2026-18h20m.hbr2",
+    "SanguREC-4-10-2026-18h26m.hbr2",
+    "SanguREC-4-10-2026-18h32m.hbr2",
+    "SanguREC-4-10-2026-18h37m.hbr2",
+    "SanguREC-4-10-2026-18h43m.hbr2",
+    "SanguREC-4-10-2026-18h48m.hbr2",
+    "SanguREC-4-10-2026-18h54m.hbr2",
+    "SanguREC-4-10-2026-18h59m.hbr2",
+    "SanguREC-4-10-2026-19h05m.hbr2",
+    "SanguREC-4-10-2026-19h13m.hbr2"
+   ]
+  },
+  "sanguchito:2026-10-04:7": {
+   "split": "train",
+   "recordings": [
+    "SanguREC-4-10-2026-19h21m.hbr2",
+    "SanguREC-4-10-2026-19h32m.hbr2",
+    "SanguREC-4-10-2026-19h45m.hbr2",
+    "SanguREC-4-10-2026-19h51m.hbr2",
+    "SanguREC-4-10-2026-19h57m.hbr2",
+    "SanguREC-4-10-2026-20h04m.hbr2",
+    "SanguREC-4-10-2026-20h09m.hbr2",
+    "SanguREC-4-10-2026-20h15m.hbr2",
+    "SanguREC-4-10-2026-20h21m.hbr2",
+    "SanguREC-4-10-2026-20h27m.hbr2",
+    "SanguREC-4-10-2026-20h33m.hbr2",
+    "SanguREC-4-10-2026-20h48m.hbr2",
+    "SanguREC-4-10-2026-20h56m.hbr2",
+    "SanguREC-4-10-2026-21h00m.hbr2",
+    "SanguREC-4-10-2026-21h06m.hbr2",
+    "SanguREC-4-10-2026-21h09m.hbr2",
+    "SanguREC-4-10-2026-21h19m.hbr2"
+   ]
+  },
+  "sanguchito:2026-10-04:8": {
+   "split": "dev",
+   "recordings": [
+    "SanguREC-4-10-2026-21h23m.hbr2",
+    "SanguREC-4-10-2026-21h29m.hbr2",
+    "SanguREC-4-10-2026-21h36m.hbr2",
+    "SanguREC-4-10-2026-21h42m.hbr2",
+    "SanguREC-4-10-2026-21h48m.hbr2",
+    "SanguREC-4-10-2026-21h54m.hbr2",
+    "SanguREC-4-10-2026-21h59m.hbr2",
+    "SanguREC-4-10-2026-22h05m.hbr2",
+    "SanguREC-4-10-2026-22h10m.hbr2",
+    "SanguREC-4-10-2026-22h17m.hbr2",
+    "SanguREC-4-10-2026-22h23m.hbr2",
+    "SanguREC-4-10-2026-22h32m.hbr2",
+    "SanguREC-4-10-2026-22h55m.hbr2",
+    "SanguREC-4-10-2026-23h01m.hbr2",
+    "SanguREC-4-10-2026-23h08m.hbr2",
+    "SanguREC-4-10-2026-23h13m.hbr2"
+   ]
+  },
+  "sanguchito:2026-10-04:9": {
+   "split": "train",
+   "recordings": [
+    "SanguREC-4-10-2026-23h24m.hbr2",
+    "SanguREC-4-10-2026-23h40m.hbr2",
+    "SanguREC-4-10-2026-23h47m.hbr2",
+    "SanguREC-4-10-2026-23h55m.hbr2"
+   ]
+  },
+  "sanguchito:2026-10-05:0": {
+   "split": "train",
+   "recordings": [
+    "SanguREC-5-10-2026-13h32m.hbr2",
+    "SanguREC-5-10-2026-13h38m.hbr2",
+    "SanguREC-5-10-2026-13h51m.hbr2",
+    "SanguREC-5-10-2026-13h57m.hbr2",
+    "SanguREC-5-10-2026-14h03m.hbr2",
+    "SanguREC-5-10-2026-14h10m.hbr2",
+    "SanguREC-5-10-2026-14h17m.hbr2",
+    "SanguREC-5-10-2026-14h23m.hbr2",
+    "SanguREC-5-10-2026-14h28m.hbr2",
+    "SanguREC-5-10-2026-14h34m.hbr2",
+    "SanguREC-5-10-2026-14h39m.hbr2",
+    "SanguREC-5-10-2026-15h02m.hbr2",
+    "SanguREC-5-10-2026-15h09m.hbr2",
+    "SanguREC-5-10-2026-15h16m.hbr2",
+    "SanguREC-5-10-2026-15h22m.hbr2",
+    "SanguREC-5-10-2026-15h28m.hbr2"
+   ]
+  },
+  "sanguchito:2026-10-05:1": {
+   "split": "train",
+   "recordings": [
+    "SanguREC-5-10-2026-15h34m.hbr2",
+    "SanguREC-5-10-2026-15h40m.hbr2",
+    "SanguREC-5-10-2026-15h46m.hbr2",
+    "SanguREC-5-10-2026-15h54m.hbr2",
+    "SanguREC-5-10-2026-16h00m.hbr2",
+    "SanguREC-5-10-2026-16h07m.hbr2",
+    "SanguREC-5-10-2026-16h14m.hbr2",
+    "SanguREC-5-10-2026-16h19m.hbr2",
+    "SanguREC-5-10-2026-16h23m.hbr2",
+    "SanguREC-5-10-2026-16h29m.hbr2",
+    "SanguREC-5-10-2026-16h35m.hbr2",
+    "SanguREC-5-10-2026-16h41m.hbr2",
+    "SanguREC-5-10-2026-16h53m.hbr2",
+    "SanguREC-5-10-2026-16h58m.hbr2",
+    "SanguREC-5-10-2026-17h04m.hbr2",
+    "SanguREC-5-10-2026-17h16m.hbr2",
+    "SanguREC-5-10-2026-17h22m.hbr2",
+    "SanguREC-5-10-2026-17h27m.hbr2",
+    "SanguREC-5-10-2026-17h33m.hbr2"
+   ]
+  },
+  "sanguchito:2026-10-05:2": {
+   "split": "test",
+   "recordings": [
+    "SanguREC-5-10-2026-17h42m.hbr2",
+    "SanguREC-5-10-2026-17h50m.hbr2",
+    "SanguREC-5-10-2026-17h56m.hbr2",
+    "SanguREC-5-10-2026-18h01m.hbr2",
+    "SanguREC-5-10-2026-18h07m.hbr2",
+    "SanguREC-5-10-2026-18h13m.hbr2",
+    "SanguREC-5-10-2026-18h19m.hbr2",
+    "SanguREC-5-10-2026-18h25m.hbr2",
+    "SanguREC-5-10-2026-18h31m.hbr2",
+    "SanguREC-5-10-2026-18h37m.hbr2",
+    "SanguREC-5-10-2026-18h44m.hbr2",
+    "SanguREC-5-10-2026-18h49m.hbr2",
+    "SanguREC-5-10-2026-18h56m.hbr2",
+    "SanguREC-5-10-2026-19h04m.hbr2",
+    "SanguREC-5-10-2026-19h11m.hbr2",
+    "SanguREC-5-10-2026-19h18m.hbr2",
+    "SanguREC-5-10-2026-19h23m.hbr2",
+    "SanguREC-5-10-2026-19h29m.hbr2",
+    "SanguREC-5-10-2026-19h36m.hbr2",
+    "SanguREC-5-10-2026-19h41m.hbr2"
+   ]
+  },
+  "sanguchito:2026-10-05:3": {
+   "split": "train",
+   "recordings": [
+    "SanguREC-5-10-2026-19h47m.hbr2",
+    "SanguREC-5-10-2026-19h54m.hbr2",
+    "SanguREC-5-10-2026-20h01m.hbr2",
+    "SanguREC-5-10-2026-20h06m.hbr2",
+    "SanguREC-5-10-2026-20h13m.hbr2",
+    "SanguREC-5-10-2026-20h19m.hbr2",
+    "SanguREC-5-10-2026-20h25m.hbr2",
+    "SanguREC-5-10-2026-20h31m.hbr2",
+    "SanguREC-5-10-2026-20h38m.hbr2",
+    "SanguREC-5-10-2026-20h48m.hbr2",
+    "SanguREC-5-10-2026-20h54m.hbr2",
+    "SanguREC-5-10-2026-21h00m.hbr2",
+    "SanguREC-5-10-2026-21h06m.hbr2",
+    "SanguREC-5-10-2026-21h12m.hbr2",
+    "SanguREC-5-10-2026-21h18m.hbr2",
+    "SanguREC-5-10-2026-21h25m.hbr2",
+    "SanguREC-5-10-2026-21h30m.hbr2",
+    "SanguREC-5-10-2026-21h36m.hbr2",
+    "SanguREC-5-10-2026-21h42m.hbr2"
+   ]
+  },
+  "sanguchito:2026-10-05:4": {
+   "split": "dev",
+   "recordings": [
+    "SanguREC-5-10-2026-21h48m.hbr2",
+    "SanguREC-5-10-2026-21h53m.hbr2",
+    "SanguREC-5-10-2026-22h00m.hbr2",
+    "SanguREC-5-10-2026-22h05m.hbr2",
+    "SanguREC-5-10-2026-22h11m.hbr2",
+    "SanguREC-5-10-2026-22h17m.hbr2",
+    "SanguREC-5-10-2026-22h24m.hbr2",
+    "SanguREC-5-10-2026-22h28m.hbr2",
+    "SanguREC-5-10-2026-22h35m.hbr2",
+    "SanguREC-5-10-2026-22h42m.hbr2",
+    "SanguREC-5-10-2026-22h49m.hbr2",
+    "SanguREC-5-10-2026-22h56m.hbr2",
+    "SanguREC-5-10-2026-23h02m.hbr2",
+    "SanguREC-5-10-2026-23h08m.hbr2",
+    "SanguREC-5-10-2026-23h13m.hbr2",
+    "SanguREC-5-10-2026-23h19m.hbr2",
+    "SanguREC-5-10-2026-23h25m.hbr2",
+    "SanguREC-5-10-2026-23h31m.hbr2",
+    "SanguREC-5-10-2026-23h37m.hbr2",
+    "SanguREC-5-10-2026-23h42m.hbr2",
+    "SanguREC-5-10-2026-23h48m.hbr2"
+   ]
+  },
+  "sanguchito:2026-10-05:5": {
+   "split": "test",
+   "recordings": [
+    "SanguREC-5-10-2026-23h54m.hbr2"
+   ]
+  },
+  "sanguchito:2026-10-06:0": {
+   "split": "train",
+   "recordings": [
+    "SanguREC-6-10-2026-01h00m.hbr2",
+    "SanguREC-6-10-2026-01h06m.hbr2",
+    "SanguREC-6-10-2026-01h11m.hbr2",
+    "SanguREC-6-10-2026-01h19m.hbr2",
+    "SanguREC-6-10-2026-01h24m.hbr2",
+    "SanguREC-6-10-2026-01h32m (1).hbr2"
+   ]
+  },
+  "sanguchito:sangu": {
+   "split": "train",
+   "recordings": [
+    "SanguREC-3-10-2026-24h05m.hbr2",
+    "SanguREC-3-10-2026-24h14m.hbr2",
+    "SanguREC-3-10-2026-24h20m.hbr2",
+    "SanguREC-3-10-2026-24h24m.hbr2",
+    "SanguREC-3-10-2026-24h30m.hbr2",
+    "SanguREC-3-10-2026-24h38m.hbr2",
+    "SanguREC-4-10-2026-24h08m.hbr2",
+    "SanguREC-4-10-2026-24h14m.hbr2",
+    "SanguREC-4-10-2026-24h20m.hbr2",
+    "SanguREC-4-10-2026-24h28m.hbr2",
+    "SanguREC-4-10-2026-24h34m.hbr2",
+    "SanguREC-4-10-2026-24h41m.hbr2",
+    "SanguREC-4-10-2026-24h46m.hbr2",
+    "SanguREC-4-10-2026-24h52m.hbr2",
+    "SanguREC-5-10-2026-24h01m.hbr2",
+    "SanguREC-5-10-2026-24h07m.hbr2",
+    "SanguREC-5-10-2026-24h22m.hbr2",
+    "SanguREC-5-10-2026-24h29m.hbr2",
+    "SanguREC-5-10-2026-24h41m.hbr2",
+    "SanguREC-5-10-2026-24h46m.hbr2",
+    "SanguREC-6-10-2026-24h02m.hbr2",
+    "SanguREC-6-10-2026-24h07m.hbr2",
+    "SanguREC-6-10-2026-24h14m.hbr2",
+    "SanguREC-6-10-2026-24h20m.hbr2",
+    "SanguREC-6-10-2026-24h26m.hbr2",
+    "SanguREC-6-10-2026-24h28m.hbr2",
+    "SanguREC-6-10-2026-24h34m.hbr2",
+    "SanguREC-6-10-2026-24h40m.hbr2",
+    "SanguREC-6-10-2026-24h46m.hbr2",
+    "SanguREC-6-10-2026-24h51m.hbr2",
+    "SanguREC-6-10-2026-24h56m.hbr2"
+   ]
+  }
+ },
+ "recordings": {
+  "HBReplay-10-04-2026-23h18m-69e0552115c922.31037317.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-04-10:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 42223
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 11.14
+   }
+  },
+  "HBReplay-2026-04-15-22h51m-69e57ea680fdd9.90715876.hbr2": {
+   "split": "dev",
+   "session": "haxarg:2026-04-15:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 83224
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 22.83
+   }
+  },
+  "HBReplay-2026-04-15-23h34m.hbr2": {
+   "split": "dev",
+   "session": "haxarg:2026-04-15:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 82418
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 22.77
+   }
+  },
+  "HBReplay-2026-04-15-23h46m-69e05059b88b45.68177105.hbr2": {
+   "split": "dev",
+   "session": "haxarg:2026-04-15:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 82264
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 22.56
+   }
+  },
+  "HBReplay-2026-04-15-23h47m-69e04e67860f49.85395809.hbr2": {
+   "split": "dev",
+   "session": "haxarg:2026-04-15:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 89953
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 18.5
+   }
+  },
+  "HBReplay-2026-04-16-22h11m-69e2cda14bcd41.61328090.hbr2": {
+   "split": "dev",
+   "session": "haxarg:2026-04-16:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 85068
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 22.61
+   }
+  },
+  "HBReplay-2026-04-16-22h11m-69ebe9cb259467.75537274.hbr2": {
+   "split": "train",
+   "session": "mrhost:2026-04-16:0",
+   "family": "mrhost",
+   "maps": {
+    "rs_one": 87625
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 23.07
+   }
+  },
+  "HBReplay-2026-04-17-00h36m-69e2b164cd3eb2.22560715.hbr2": {
+   "split": "test",
+   "session": "haxarg:2026-04-17:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 84942
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 23.32
+   }
+  },
+  "HBReplay-2026-04-17T03_07_07-69e187bc02e069.23347001.hbr2": {
+   "split": "test",
+   "session": "haxarg:2026-04-17:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 48910
+   },
+   "minutes_4v4": {}
+  },
+  "HBReplay-2026-04-19-19h34m-69e57826b8b113.37600659.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-04-19:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 80323
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 22.23
+   }
+  },
+  "HBReplay-2026-04-19-21h53m-69e580e2ecb091.15260698.hbr2": {
+   "split": "dev",
+   "session": "mrhost:2026-04-19:0",
+   "family": "mrhost",
+   "maps": {
+    "rs_one": 82677
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 22.72
+   }
+  },
+  "HBReplay-2026-04-19-23h37m-69e59298b506e0.28321704.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-04-19:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 75039
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 20.63
+   }
+  },
+  "HBReplay-2026-04-19-23h37m.hbr2": {
+   "split": "dev",
+   "session": "mrhost:2026-04-19:0",
+   "family": "mrhost",
+   "maps": {
+    "rs_one": 84698
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 23.43
+   }
+  },
+  "HBReplay-2026-04-19-23h43m.hbr2": {
+   "split": "train",
+   "session": "mrhost:2026-04-19:1",
+   "family": "mrhost",
+   "maps": {
+    "rs_one": 109216
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 16.83
+   }
+  },
+  "HBReplay-2026-04-19-23h53m.hbr2": {
+   "split": "dev",
+   "session": "mrhost:2026-04-19:0",
+   "family": "mrhost",
+   "maps": {
+    "rs_one": 23408
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 6.28
+   }
+  },
+  "HBReplay-2026-04-20-23h25m-69e6e14b0bc7f4.24632802.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-04-20:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 81159
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 22.25
+   }
+  },
+  "HBReplay-2026-04-20-23h32m-69e6e243483575.64248833.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-04-20:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 85138
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 20.22
+   }
+  },
+  "HBReplay-2026-04-20-23h38m-69e6e625b82817.98721202.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-04-20:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 81201
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 22.35
+   }
+  },
+  "HBReplay-2026-04-20-23h38m-69e8e267a03d39.58556022.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-04-20:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 81184
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 22.51
+   }
+  },
+  "HBReplay-2026-04-20-23h40m.hbr2": {
+   "split": "test",
+   "session": "mrhost:2026-04-20:0",
+   "family": "mrhost",
+   "maps": {
+    "rs_one": 84672
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 23.27
+   }
+  },
+  "HBReplay-2026-04-21-21h28m-69e8e3624051a8.16494219.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-04-21:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 75956
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 20.66
+   }
+  },
+  "HBReplay-2026-04-21-21h45m.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-04-21:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 90624
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 19.03
+   }
+  },
+  "HBReplay-2026-04-21-23h24m-69e832b84c2889.21228497.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-04-21:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 30070
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 8.19
+   }
+  },
+  "HBReplay-2026-04-21-23h35m-69e8366e585cc8.18199987.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-04-21:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 80562
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 22.06
+   }
+  },
+  "HBReplay-2026-04-22-22h04m-69e978c866bb04.10145545.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-04-22:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 87712
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 23.65
+   }
+  },
+  "HBReplay-2026-04-22-22h12m-69ebe4fc482174.29787744.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-04-22:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 81127
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 22.16
+   }
+  },
+  "HBReplay-2026-04-22-23h42m-69e98a540c02b8.55400771.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-04-22:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 71792
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 19.73
+   }
+  },
+  "HBReplay-2026-04-23-23h38m-69eade1608aaa7.23371327.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-04-23:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 84925
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 23.26
+   }
+  },
+  "HBReplay-2026-04-25-23h16m-69ee7beb3b1da8.66459505.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-04-25:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 9897
+   },
+   "minutes_4v4": {}
+  },
+  "HBReplay-2026-04-26-23h31m-69eecdd243f721.36343785.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-04-26:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 82524
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 22.44
+   }
+  },
+  "HBReplay-2026-04-27-21h48m-69f022544a3d55.23270559.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-04-27:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 113097
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 30.44
+   }
+  },
+  "HBReplay-2026-04-27-22h12m-69f0269d871658.19047212.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-04-27:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 105003
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 28.83
+   }
+  },
+  "HBReplay-2026-04-27-23h33m-69f01d9ca65e02.69910432.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-04-27:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 83819
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 22.97
+   }
+  },
+  "HBReplay-2026-04-29-23h41m-69f2c287009b75.87819985.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-04-29:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 96577
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 25.78
+   }
+  },
+  "HBReplay-2026-05-03-22h26m-69f7fe8c03a974.47171323.hbr2": {
+   "split": "test",
+   "session": "haxarg:2026-05-03:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 49403
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 13.41
+   }
+  },
+  "HBReplay-2026-05-03-23h35m-69f81473d9eb43.45445286.hbr2": {
+   "split": "test",
+   "session": "haxarg:2026-05-03:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 79538
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 22.01
+   }
+  },
+  "HBReplay-2026-05-03-23h37m-69f81474bc73b0.30867693.hbr2": {
+   "split": "test",
+   "session": "haxarg:2026-05-03:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 85598
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 23.18
+   }
+  },
+  "HBReplay-2026-05-05-23h32m-69fab16d745704.88029569.hbr2": {
+   "split": "train",
+   "session": "mrhost:2026-05-05:0",
+   "family": "mrhost",
+   "maps": {
+    "rs_one": 157772
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 43.54
+   }
+  },
+  "HBReplay-2026-05-06-23h37m-69fcb008997785.38327514.hbr2": {
+   "split": "train",
+   "session": "mrhost:2026-05-06:0",
+   "family": "mrhost",
+   "maps": {
+    "rs_one": 82015
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 22.74
+   }
+  },
+  "HBReplay-2026-05-07-23h27m (1)-69fd4d11850ff0.89315368.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-05-07:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 82522
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 22.71
+   }
+  },
+  "HBReplay-2026-05-11-23h55m-6a02a14d154ae5.98361378.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-05-11:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 134225
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 37.14
+   }
+  },
+  "HBReplay-2026-05-13-23h25m-6a0533719536a7.84808322.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-05-13:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 41478
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 11.35
+   }
+  },
+  "HBReplay-2026-08-07-23h50m-6a769bca112b64.48927767.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-08-07:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 166227
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 45.88
+   }
+  },
+  "HBReplay-2026-08-10-22h52m-6a7a8758e4ed66.76030860.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-08-10:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 81319
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 22.51
+   }
+  },
+  "HBReplay-2026-08-10-23h14m-6a7a86729a3a39.62903594.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-08-10:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 67145
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 14.7
+   }
+  },
+  "HBReplay-2026-08-23-23h10m__7b0b0a57af23.hbr2": {
+   "split": "train",
+   "session": "mrhost:2026-08-23:0",
+   "family": "mrhost",
+   "maps": {
+    "rs_one": 83491
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 22.97
+   }
+  },
+  "HBReplay-2026-09-09-22h34m (1)-6aa20ad8c5b818.83480954.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-09-09:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 82277
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 22.54
+   }
+  },
+  "HBReplay-2026-09-10-22h04m.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-09-10:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 56566
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 15.38
+   }
+  },
+  "HBReplay-2026-09-13-21h56m.hbr2": {
+   "split": "test",
+   "session": "mrhost:2026-09-13:0",
+   "family": "mrhost",
+   "maps": {
+    "rs_one": 52576
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 14.23
+   }
+  },
+  "HBReplay-2026-09-13-22h32m.hbr2": {
+   "split": "test",
+   "session": "mrhost:2026-09-13:0",
+   "family": "mrhost",
+   "maps": {
+    "rs_one": 79544
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 21.76
+   }
+  },
+  "HBReplay-2026-09-13-22h42m.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-09-13:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 74761
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 19.78
+   }
+  },
+  "HBReplay-2026-09-14-22h27m.hbr2": {
+   "split": "train",
+   "session": "mrhost:2026-09-14:0",
+   "family": "mrhost",
+   "maps": {
+    "rs_one": 18576
+   },
+   "minutes_4v4": {}
+  },
+  "HBReplay-2026-09-16-22h38m.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-09-16:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 84216
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 23.27
+   }
+  },
+  "HBReplay-2026-09-21-22h31m.hbr2": {
+   "split": "dev",
+   "session": "haxarg:2026-09-21:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 29474
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 7.89
+   }
+  },
+  "HBReplay-2026-09-21-23h28m.hbr2": {
+   "split": "dev",
+   "session": "haxarg:2026-09-21:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 87879
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 23.47
+   }
+  },
+  "HBReplay-2026-09-21-23h30m.hbr2": {
+   "split": "dev",
+   "session": "haxarg:2026-09-21:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 83134
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 22.84
+   }
+  },
+  "HBReplay-2026-09-21-23h33m.hbr2": {
+   "split": "dev",
+   "session": "haxarg:2026-09-21:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 48767
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 11.99
+   }
+  },
+  "HBReplay-2026-09-21-23h36m (1).hbr2": {
+   "split": "dev",
+   "session": "haxarg:2026-09-21:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 95946
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 25.59
+   }
+  },
+  "HBReplay-2026-09-21-23h36m.hbr2": {
+   "split": "dev",
+   "session": "haxarg:2026-09-21:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 81299
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 22.33
+   }
+  },
+  "HBReplay-2026-09-21-23h37m.hbr2": {
+   "split": "dev",
+   "session": "haxarg:2026-09-21:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 83530
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 22.76
+   }
+  },
+  "HBReplay-2026-09-21-23h42m.hbr2": {
+   "split": "train",
+   "session": "mrhost:2026-09-21:0",
+   "family": "mrhost",
+   "maps": {
+    "rs_one": 83610
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 22.74
+   }
+  },
+  "HBReplay-2026-09-23-23h24m.hbr2": {
+   "split": "test",
+   "session": "haxarg:2026-09-23:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 38285
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 10.47
+   }
+  },
+  "HBReplay-2026-09-23-23h27m (1).hbr2": {
+   "split": "test",
+   "session": "haxarg:2026-09-23:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 41114
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 10.69
+   }
+  },
+  "HBReplay-2026-09-23-23h27m.hbr2": {
+   "split": "test",
+   "session": "haxarg:2026-09-23:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 80548
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 22.12
+   }
+  },
+  "HBReplay-2026-09-23-23h30m.hbr2": {
+   "split": "test",
+   "session": "haxarg:2026-09-23:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 82541
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 22.79
+   }
+  },
+  "HBReplay-2026-09-23-23h32m.hbr2": {
+   "split": "test",
+   "session": "haxarg:2026-09-23:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 80305
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 21.88
+   }
+  },
+  "HBReplay-2026-09-23-23h33m.hbr2": {
+   "split": "test",
+   "session": "haxarg:2026-09-23:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 82358
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 22.6
+   }
+  },
+  "HBReplay-2026-09-23-23h36m.hbr2": {
+   "split": "test",
+   "session": "haxarg:2026-09-23:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 85752
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 23.36
+   }
+  },
+  "HBReplay-2026-09-23-23h37m.hbr2": {
+   "split": "test",
+   "session": "haxarg:2026-09-23:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 71660
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 19.56
+   }
+  },
+  "HBReplay-2026-09-24-23h36m.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-09-24:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 9585
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 2.5
+   }
+  },
+  "HBReplay-2026-09-25-00h05m.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-09-25:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 84314
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 22.87
+   }
+  },
+  "HBReplay-2026-09-25-23h31m.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-09-25:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 78447
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 21.5
+   }
+  },
+  "HBReplay-2026-09-26-23h16m.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-09-26:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 24006
+   },
+   "minutes_4v4": {}
+  },
+  "HBReplay-2026-09-27-23h30m.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-09-27:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 11294
+   },
+   "minutes_4v4": {}
+  },
+  "HBReplay-2026-09-27-23h31m (1).hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-09-27:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 91059
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 25.12
+   }
+  },
+  "HBReplay-2026-09-27-23h31m.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-09-27:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 45013
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 12.33
+   }
+  },
+  "HBReplay-2026-09-27-23h34m.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-09-27:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 92351
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 25.4
+   }
+  },
+  "HBReplay-2026-09-27-23h40m.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-09-27:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 59089
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 16.09
+   }
+  },
+  "HBReplay-2026-09-27-23h41m.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-09-27:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 27348
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 5.08
+   }
+  },
+  "HBReplay-2026-09-27-23h42m.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-09-27:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 82573
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 22.6
+   }
+  },
+  "HBReplay-2026-09-27-23h45m.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-09-27:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 80865
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 22.25
+   }
+  },
+  "HBReplay-2026-09-27-23h54m.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-09-27:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 84505
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 23.31
+   }
+  },
+  "HBReplay-2026-09-28-21h33m.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-09-28:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 52761
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 14.43
+   }
+  },
+  "HBReplay-2026-09-28-23h24m.hbr2": {
+   "split": "train",
+   "session": "mrhost:2026-09-28:0",
+   "family": "mrhost",
+   "maps": {
+    "rs_one": 52830
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 13.35
+   }
+  },
+  "HBReplay-2026-09-28-23h25m.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-09-28:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 48416
+   },
+   "minutes_4v4": {}
+  },
+  "HBReplay-2026-09-28-23h35m.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-09-28:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 82350
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 21.17
+   }
+  },
+  "HBReplay-2026-09-28-23h36m.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-09-28:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 84806
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 23.27
+   }
+  },
+  "HBReplay-2026-09-28-23h45m.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-09-28:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 78252
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 21.42
+   }
+  },
+  "HBReplay-2026-09-30-21h36m.hbr2": {
+   "split": "train",
+   "session": "mrhost:2026-09-30:0",
+   "family": "mrhost",
+   "maps": {
+    "rs_one": 86378
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 23.7
+   }
+  },
+  "HBReplay-2026-09-30-23h24m (1).hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-09-30:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 34677
+   },
+   "minutes_4v4": {}
+  },
+  "HBReplay-2026-09-30-23h34m.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-09-30:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 77935
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 21.42
+   }
+  },
+  "HBReplay-2026-09-30-23h35m.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-09-30:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 86270
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 23.76
+   }
+  },
+  "HBReplay-2026-09-30-23h40m.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-09-30:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 80057
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 22.07
+   }
+  },
+  "HBReplay-2026-09-30-23h41m (1).hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-09-30:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 82429
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 22.77
+   }
+  },
+  "HBReplay-2026-09-30-23h41m.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-09-30:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 119485
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 29.07
+   }
+  },
+  "HBReplay-2026-09-30-23h46m.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-09-30:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 82054
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 22.5
+   }
+  },
+  "HBReplay-2026-09-30-23h47m.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-09-30:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 85914
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 23.65
+   }
+  },
+  "HBReplay-2026-09-30-23h49m.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-09-30:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 90167
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 24.71
+   }
+  },
+  "HBReplay-2026-10-01-00h00m.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-10-01:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 66879
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 17.81
+   }
+  },
+  "HBReplay-2026-10-04-23h14m.hbr2": {
+   "split": "test",
+   "session": "haxarg:2026-10-04:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 37627
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 10.19
+   }
+  },
+  "HBReplay-2026-10-04-23h28m.hbr2": {
+   "split": "test",
+   "session": "haxarg:2026-10-04:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 40616
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 11.2
+   }
+  },
+  "HBReplay-2026-10-04-23h33m.hbr2": {
+   "split": "test",
+   "session": "haxarg:2026-10-04:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 62324
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 16.98
+   }
+  },
+  "HBReplay-2026-10-04-23h38m.hbr2": {
+   "split": "test",
+   "session": "haxarg:2026-10-04:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 81859
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 13.9
+   }
+  },
+  "HBReplay-2026-10-04-23h39m (1).hbr2": {
+   "split": "test",
+   "session": "haxarg:2026-10-04:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 82125
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 22.31
+   }
+  },
+  "HBReplay-2026-10-04-23h39m.hbr2": {
+   "split": "test",
+   "session": "haxarg:2026-10-04:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 81682
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 22.44
+   }
+  },
+  "HBReplay-2026-10-06-01h55m.hbr2": {
+   "split": "bots",
+   "session": "haxarg:2026-10-06:0",
+   "family": "haxarg",
+   "maps": {
+    "haxarg_2k23": 11885
+   },
+   "minutes_4v4": {
+    "HAXARG 2K23": 3.26
+   }
+  },
+  "HBReplay-2026-10-06-02h55m.hbr2": {
+   "split": "bots",
+   "session": "haxarg:2026-10-06:0",
+   "family": "haxarg",
+   "maps": {
+    "haxarg_2k23": 1777
+   },
+   "minutes_4v4": {
+    "HAXARG 2K23": 0.49
+   }
+  },
+  "HaxOfi-2026-09-24-00-45-20.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-09-24:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 6854
+   },
+   "minutes_4v4": {}
+  },
+  "HaxOfi-2026-09-24-02-31-14.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-09-24:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 76809
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 21.29
+   }
+  },
+  "HaxOfi-2026-09-28-01-31-55.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-09-28:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 62431
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 8.35
+   }
+  },
+  "HaxOfi-2026-09-28-02-26-57.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-09-28:1",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 68372
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 18.72
+   }
+  },
+  "HaxOfi-2026-09-29-02-42-11.hbr2": {
+   "split": "dev",
+   "session": "haxarg:2026-09-29:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 86497
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 23.36
+   }
+  },
+  "HaxOfi-2026-10-05-02-28-36.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-10-05:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 75382
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 20.26
+   }
+  },
+  "HaxOfi-replay-2026-09-22-02-14-54.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-09-22:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 30159
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 8.21
+   }
+  },
+  "HaxOfi-replay-2026-09-22-02-17-17.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-09-22:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 33709
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 9.15
+   }
+  },
+  "HaxOfi-replay-2026-09-24-02-22-27.hbr2": {
+   "split": "test",
+   "session": "mrhost:2026-09-24:0",
+   "family": "mrhost",
+   "maps": {
+    "rs_one": 12575
+   },
+   "minutes_4v4": {}
+  },
+  "HaxOfi-replay-2026-09-28-02-37-30 - copia.hbr2": {
+   "split": "train",
+   "session": "haxarg:2026-09-28:0",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 83148
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 22.85
+   }
+  },
+  "Ofi_VsEcu_F1CA__818da7640beb.hbr2": {
+   "split": "dev",
+   "session": "otra:_x_hosting_services_miami_9_",
+   "family": "otra",
+   "maps": {
+    "rs_one": 34447
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 9.23
+   }
+  },
+  "QDV 4-3 NT Liga Elite T7.hbr2": {
+   "split": "train",
+   "session": "haxarg:_taberna_de_qdv_i_haxarg_",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 93035
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 23.48
+   }
+  },
+  "QDV 5-0 EHC Eternity.hbr2": {
+   "split": "train",
+   "session": "haxarg:_exiled_vs_queso_de_vaca_i_haxarg_",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 40476
+   },
+   "minutes_4v4": {
+    "Training RSR": 0.03,
+    "Real Soccer ONE": 11.03
+   }
+  },
+  "QDV 5-0 QNT Eternity.hbr2": {
+   "split": "train",
+   "session": "haxarg:_qnt_vs_i_haxarg_",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 66640
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 18.23
+   }
+  },
+  "QDV 7-3 Elite.hbr2": {
+   "split": "train",
+   "session": "haxarg:_taberna_de_qdv_i_haxarg_",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 87971
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 23.94
+   }
+  },
+  "RSX4REPLAY-13-50-26__64d117b71d39.hbr2": {
+   "split": "test",
+   "session": "otra:_sdh_5_real_soccer_4v4_",
+   "family": "otra",
+   "maps": {
+    "rs_one": 42199
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 11.51
+   }
+  },
+  "SUTPEÑAROL.hbr2": {
+   "split": "train",
+   "session": "haxarg:_sut_stadium_i_haxarg_",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 47324
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 10.31
+   }
+  },
+  "SUTSKRSX4__3bfe06569bbc.hbr2": {
+   "split": "train",
+   "session": "haxarg:_sut_stadiu_i_haxarg_",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 32461
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 8.85
+   }
+  },
+  "SUTV707COPA__d26d6ffd32d5.hbr2": {
+   "split": "train",
+   "session": "haxarg:_sut_stadium_i_haxarg_",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 63433
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 17.29
+   }
+  },
+  "SanguREC-1-10-2026-20h09m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-01:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21181
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.84
+   }
+  },
+  "SanguREC-1-10-2026-20h15m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-01:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20978
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.66
+   }
+  },
+  "SanguREC-1-10-2026-20h21m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-01:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22242
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.02
+   }
+  },
+  "SanguREC-1-10-2026-20h35m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-01:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20758
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.37
+   }
+  },
+  "SanguREC-1-10-2026-20h44m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-01:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22020
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.03
+   }
+  },
+  "SanguREC-1-10-2026-20h50m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-01:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20556
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.05
+   }
+  },
+  "SanguREC-1-10-2026-20h56m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-01:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21454
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.92
+   }
+  },
+  "SanguREC-1-10-2026-21h02m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-01:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21564
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.88
+   }
+  },
+  "SanguREC-1-10-2026-21h08m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-01:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20324
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.6
+   }
+  },
+  "SanguREC-1-10-2026-21h41m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-01:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20369
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.13
+   }
+  },
+  "SanguREC-1-10-2026-21h52m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-01:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19868
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.39
+   }
+  },
+  "SanguREC-1-10-2026-22h00m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-01:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21985
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.97
+   }
+  },
+  "SanguREC-1-10-2026-22h19m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-01:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20378
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.39
+   }
+  },
+  "SanguREC-1-10-2026-22h24m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-01:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 18934
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.22
+   }
+  },
+  "SanguREC-1-10-2026-22h32m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-01:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 25436
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.98
+   }
+  },
+  "SanguREC-1-10-2026-22h38m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-01:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 23621
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.93
+   }
+  },
+  "SanguREC-1-10-2026-22h44m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-01:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20912
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.55
+   }
+  },
+  "SanguREC-1-10-2026-22h58m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-01:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21426
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.81
+   }
+  },
+  "SanguREC-2-10-2026-14h21m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-02:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 18299
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 3.07
+   }
+  },
+  "SanguREC-2-10-2026-14h28m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-02:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21988
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.46
+   }
+  },
+  "SanguREC-2-10-2026-14h34m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-02:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21062
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 1.59
+   }
+  },
+  "SanguREC-2-10-2026-14h40m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-02:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 18656
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.14
+   }
+  },
+  "SanguREC-2-10-2026-14h46m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-02:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21922
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.01
+   }
+  },
+  "SanguREC-2-10-2026-14h53m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-02:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 26777
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.4
+   }
+  },
+  "SanguREC-2-10-2026-15h01m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-02:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20458
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.05
+   }
+  },
+  "SanguREC-2-10-2026-15h07m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-02:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22560
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.2
+   }
+  },
+  "SanguREC-2-10-2026-15h15m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-02:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21125
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.12
+   }
+  },
+  "SanguREC-2-10-2026-15h20m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-02:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19730
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.44
+   }
+  },
+  "SanguREC-2-10-2026-15h28m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-02:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22458
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.15
+   }
+  },
+  "SanguREC-2-10-2026-15h34m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-02:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 18598
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.95
+   }
+  },
+  "SanguREC-2-10-2026-15h42m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-02:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19509
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.07
+   }
+  },
+  "SanguREC-2-10-2026-15h49m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-02:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21522
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.12
+   }
+  },
+  "SanguREC-2-10-2026-15h57m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-02:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20671
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.07
+   }
+  },
+  "SanguREC-2-10-2026-16h03m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-02:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21886
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.96
+   }
+  },
+  "SanguREC-2-10-2026-16h18m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-02:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20565
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 14.38
+   }
+  },
+  "SanguREC-2-10-2026-16h24m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-02:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 23031
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.36
+   }
+  },
+  "SanguREC-2-10-2026-16h43m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-02:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 24192
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 8.39
+   }
+  },
+  "SanguREC-2-10-2026-16h51m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-02:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21110
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.05
+   }
+  },
+  "SanguREC-2-10-2026-16h59m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-02:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 25129
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 8.45
+   }
+  },
+  "SanguREC-2-10-2026-17h12m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-02:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20640
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.73
+   }
+  },
+  "SanguREC-2-10-2026-17h17m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-02:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19538
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.06
+   }
+  },
+  "SanguREC-2-10-2026-17h24m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-02:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22041
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.72
+   }
+  },
+  "SanguREC-2-10-2026-17h29m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-02:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19677
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 2.28
+   }
+  },
+  "SanguREC-2-10-2026-17h42m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-02:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 24331
+   },
+   "minutes_4v4": {}
+  },
+  "SanguREC-2-10-2026-17h48m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-02:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20506
+   },
+   "minutes_4v4": {}
+  },
+  "SanguREC-2-10-2026-17h55m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-02:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22591
+   },
+   "minutes_4v4": {}
+  },
+  "SanguREC-2-10-2026-17h58m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-02:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 12189
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 0.07
+   }
+  },
+  "SanguREC-2-10-2026-18h05m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-02:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22974
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 4.67
+   }
+  },
+  "SanguREC-2-10-2026-18h10m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-02:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19934
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.4
+   }
+  },
+  "SanguREC-2-10-2026-18h16m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-02:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19712
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 3.97
+   }
+  },
+  "SanguREC-2-10-2026-18h23m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-02:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19263
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.48
+   }
+  },
+  "SanguREC-2-10-2026-18h30m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-02:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 18041
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.14
+   }
+  },
+  "SanguREC-2-10-2026-18h37m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-02:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 24906
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.88
+   }
+  },
+  "SanguREC-2-10-2026-18h46m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-02:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22300
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 8.04
+   }
+  },
+  "SanguREC-2-10-2026-18h51m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-02:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20736
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.45
+   }
+  },
+  "SanguREC-2-10-2026-18h57m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-02:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19358
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.28
+   }
+  },
+  "SanguREC-2-10-2026-19h04m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-02:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20620
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.73
+   }
+  },
+  "SanguREC-2-10-2026-19h12m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-02:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 27214
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.06
+   }
+  },
+  "SanguREC-2-10-2026-19h19m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-02:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21512
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.84
+   }
+  },
+  "SanguREC-2-10-2026-19h25m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-02:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20041
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.53
+   }
+  },
+  "SanguREC-2-10-2026-19h32m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-02:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20293
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.23
+   }
+  },
+  "SanguREC-2-10-2026-19h40m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-02:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20295
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.58
+   }
+  },
+  "SanguREC-2-10-2026-19h47m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-02:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21497
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.94
+   }
+  },
+  "SanguREC-2-10-2026-19h53m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-02:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19575
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.35
+   }
+  },
+  "SanguREC-2-10-2026-20h01m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-02:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21236
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.39
+   }
+  },
+  "SanguREC-2-10-2026-20h05m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-02:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 16454
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 3.39
+   }
+  },
+  "SanguREC-2-10-2026-20h13m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-02:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21049
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.23
+   }
+  },
+  "SanguREC-2-10-2026-20h17m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-02:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 13875
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 1.45
+   }
+  },
+  "SanguREC-2-10-2026-20h23m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-02:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19810
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.34
+   }
+  },
+  "SanguREC-2-10-2026-20h29m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-02:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22250
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.97
+   }
+  },
+  "SanguREC-2-10-2026-20h36m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-02:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21249
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.11
+   }
+  },
+  "SanguREC-2-10-2026-20h44m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-02:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19723
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.8
+   }
+  },
+  "SanguREC-2-10-2026-20h49m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-02:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20562
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.63
+   }
+  },
+  "SanguREC-2-10-2026-20h58m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-02:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19960
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.81
+   }
+  },
+  "SanguREC-2-10-2026-21h05m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-02:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20897
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.96
+   }
+  },
+  "SanguREC-2-10-2026-21h11m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-02:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20261
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.59
+   }
+  },
+  "SanguREC-2-10-2026-21h17m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-02:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20542
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.66
+   }
+  },
+  "SanguREC-2-10-2026-21h23m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-02:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21831
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.0
+   }
+  },
+  "SanguREC-2-10-2026-21h37m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-02:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22600
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 4.41
+   }
+  },
+  "SanguREC-2-10-2026-21h45m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-02:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20228
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.65
+   }
+  },
+  "SanguREC-2-10-2026-21h50m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-02:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19051
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.17
+   }
+  },
+  "SanguREC-2-10-2026-21h56m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-02:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19892
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.35
+   }
+  },
+  "SanguREC-2-10-2026-22h20m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-02:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 24504
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.79
+   }
+  },
+  "SanguREC-2-10-2026-22h21m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-02:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 75
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 0.02
+   }
+  },
+  "SanguREC-2-10-2026-22h28m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-02:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21554
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.35
+   }
+  },
+  "SanguREC-2-10-2026-22h34m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-02:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21179
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 4.23
+   }
+  },
+  "SanguREC-2-10-2026-22h41m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-02:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22585
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 3.9
+   }
+  },
+  "SanguREC-2-10-2026-22h47m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-02:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22663
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.03
+   }
+  },
+  "SanguREC-2-10-2026-22h56m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-02:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 24940
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 9.05
+   }
+  },
+  "SanguREC-2-10-2026-23h09m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-02:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21266
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 4.76
+   }
+  },
+  "SanguREC-2-10-2026-23h22m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-02:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 18781
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.73
+   }
+  },
+  "SanguREC-2-10-2026-23h29m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-02:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20439
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.63
+   }
+  },
+  "SanguREC-2-10-2026-23h35m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-02:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20244
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 4.58
+   }
+  },
+  "SanguREC-2-10-2026-23h46m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-02:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19742
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.29
+   }
+  },
+  "SanguREC-2-10-2026-23h54m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-02:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21092
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.88
+   }
+  },
+  "SanguREC-2-10-2026-23h59m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-02:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20170
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 4.04
+   }
+  },
+  "SanguREC-29-9-2026-17h31m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-09-29:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 18922
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.98
+   }
+  },
+  "SanguREC-29-9-2026-17h37m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-09-29:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21016
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.8
+   }
+  },
+  "SanguREC-29-9-2026-17h50m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-09-29:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 18372
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 1.61
+   }
+  },
+  "SanguREC-29-9-2026-17h56m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-09-29:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20265
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.5
+   }
+  },
+  "SanguREC-29-9-2026-18h07m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-09-29:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19177
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 4.01
+   }
+  },
+  "SanguREC-29-9-2026-18h12m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-09-29:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 18828
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.11
+   }
+  },
+  "SanguREC-29-9-2026-18h19m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-09-29:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19834
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.65
+   }
+  },
+  "SanguREC-3-10-2026-01h16m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:0",
+   "family": "sanguchito",
+   "maps": null,
+   "minutes_4v4": {}
+  },
+  "SanguREC-3-10-2026-01h22m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 23477
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 3.05
+   }
+  },
+  "SanguREC-3-10-2026-01h30m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21529
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.03
+   }
+  },
+  "SanguREC-3-10-2026-01h35m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 18164
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.0
+   }
+  },
+  "SanguREC-3-10-2026-01h47m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19811
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.46
+   }
+  },
+  "SanguREC-3-10-2026-01h54m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19758
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.62
+   }
+  },
+  "SanguREC-3-10-2026-01h59m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 18939
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.09
+   }
+  },
+  "SanguREC-3-10-2026-02h05m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19590
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 4.68
+   }
+  },
+  "SanguREC-3-10-2026-02h10m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 18733
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.12
+   }
+  },
+  "SanguREC-3-10-2026-02h16m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21597
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.96
+   }
+  },
+  "SanguREC-3-10-2026-02h21m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 18589
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 4.0
+   }
+  },
+  "SanguREC-3-10-2026-02h29m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21897
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.22
+   }
+  },
+  "SanguREC-3-10-2026-02h35m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20214
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.53
+   }
+  },
+  "SanguREC-3-10-2026-02h43m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22645
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.42
+   }
+  },
+  "SanguREC-3-10-2026-02h50m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20130
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.7
+   }
+  },
+  "SanguREC-3-10-2026-02h55m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19218
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.25
+   }
+  },
+  "SanguREC-3-10-2026-03h01m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20501
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.65
+   }
+  },
+  "SanguREC-3-10-2026-03h08m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20493
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.34
+   }
+  },
+  "SanguREC-3-10-2026-03h14m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20278
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.59
+   }
+  },
+  "SanguREC-3-10-2026-03h19m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19581
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 4.28
+   }
+  },
+  "SanguREC-3-10-2026-03h27m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22366
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.09
+   }
+  },
+  "SanguREC-3-10-2026-03h32m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19068
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.15
+   }
+  },
+  "SanguREC-3-10-2026-03h45m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22497
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.9
+   }
+  },
+  "SanguREC-3-10-2026-03h51m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20872
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.59
+   }
+  },
+  "SanguREC-3-10-2026-03h57m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22317
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 4.54
+   }
+  },
+  "SanguREC-3-10-2026-12h23m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-03:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20164
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 2.19
+   }
+  },
+  "SanguREC-3-10-2026-12h28m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-03:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20545
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.33
+   }
+  },
+  "SanguREC-3-10-2026-12h35m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-03:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21844
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.56
+   }
+  },
+  "SanguREC-3-10-2026-12h41m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-03:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21601
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.88
+   }
+  },
+  "SanguREC-3-10-2026-12h47m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-03:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21740
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 4.69
+   }
+  },
+  "SanguREC-3-10-2026-12h51m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-03:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 14873
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 2.98
+   }
+  },
+  "SanguREC-3-10-2026-13h03m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-03:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21854
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.94
+   }
+  },
+  "SanguREC-3-10-2026-13h16m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-03:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22125
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.09
+   }
+  },
+  "SanguREC-3-10-2026-13h22m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-03:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20683
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.2
+   }
+  },
+  "SanguREC-3-10-2026-13h29m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-03:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19969
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.38
+   }
+  },
+  "SanguREC-3-10-2026-13h35m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-03:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20585
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.59
+   }
+  },
+  "SanguREC-3-10-2026-13h40m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-03:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20507
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.61
+   }
+  },
+  "SanguREC-3-10-2026-13h52m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-03:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 18663
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 3.5
+   }
+  },
+  "SanguREC-3-10-2026-13h57m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-03:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19079
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.22
+   }
+  },
+  "SanguREC-3-10-2026-14h09m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-03:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20470
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 3.07
+   }
+  },
+  "SanguREC-3-10-2026-14h15m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-03:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20454
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.64
+   }
+  },
+  "SanguREC-3-10-2026-14h28m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20339
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.53
+   }
+  },
+  "SanguREC-3-10-2026-14h39m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20828
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.74
+   }
+  },
+  "SanguREC-3-10-2026-14h49m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22154
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 9.0
+   }
+  },
+  "SanguREC-3-10-2026-14h55m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20324
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.6
+   }
+  },
+  "SanguREC-3-10-2026-15h01m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 23678
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.46
+   }
+  },
+  "SanguREC-3-10-2026-15h08m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 24486
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.72
+   }
+  },
+  "SanguREC-3-10-2026-15h14m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19049
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.25
+   }
+  },
+  "SanguREC-3-10-2026-15h20m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21039
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.72
+   }
+  },
+  "SanguREC-3-10-2026-15h26m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22549
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.62
+   }
+  },
+  "SanguREC-3-10-2026-15h32m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20450
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.56
+   }
+  },
+  "SanguREC-3-10-2026-15h38m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21901
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.96
+   }
+  },
+  "SanguREC-3-10-2026-15h57m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22491
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.07
+   }
+  },
+  "SanguREC-3-10-2026-16h03m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19886
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.26
+   }
+  },
+  "SanguREC-3-10-2026-16h10m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20793
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.66
+   }
+  },
+  "SanguREC-3-10-2026-16h15m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20062
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.53
+   }
+  },
+  "SanguREC-3-10-2026-16h21m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20108
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.54
+   }
+  },
+  "SanguREC-3-10-2026-16h34m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-03:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19594
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.36
+   }
+  },
+  "SanguREC-3-10-2026-16h41m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-03:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22480
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.34
+   }
+  },
+  "SanguREC-3-10-2026-16h47m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-03:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19816
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.46
+   }
+  },
+  "SanguREC-3-10-2026-16h53m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-03:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21465
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.85
+   }
+  },
+  "SanguREC-3-10-2026-16h59m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-03:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19597
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.31
+   }
+  },
+  "SanguREC-3-10-2026-17h06m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-03:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 18374
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.11
+   }
+  },
+  "SanguREC-3-10-2026-17h13m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-03:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 18227
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.55
+   }
+  },
+  "SanguREC-3-10-2026-17h19m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-03:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21180
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.76
+   }
+  },
+  "SanguREC-3-10-2026-17h26m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-03:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22876
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.31
+   }
+  },
+  "SanguREC-3-10-2026-17h33m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-03:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19881
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.37
+   }
+  },
+  "SanguREC-3-10-2026-17h45m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-03:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21272
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.74
+   }
+  },
+  "SanguREC-3-10-2026-17h51m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-03:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20439
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.44
+   }
+  },
+  "SanguREC-3-10-2026-17h57m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-03:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19763
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 4.61
+   }
+  },
+  "SanguREC-3-10-2026-18h02m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-03:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 18856
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.12
+   }
+  },
+  "SanguREC-3-10-2026-18h21m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-03:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 23417
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.38
+   }
+  },
+  "SanguREC-3-10-2026-18h29m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-03:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20273
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.97
+   }
+  },
+  "SanguREC-3-10-2026-18h35m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:5",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20886
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.52
+   }
+  },
+  "SanguREC-3-10-2026-18h41m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:5",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21081
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.77
+   }
+  },
+  "SanguREC-3-10-2026-18h48m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:5",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22587
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.13
+   }
+  },
+  "SanguREC-3-10-2026-18h56m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:5",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22947
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.28
+   }
+  },
+  "SanguREC-3-10-2026-19h01m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:5",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20885
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.76
+   }
+  },
+  "SanguREC-3-10-2026-19h08m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:5",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22691
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.16
+   }
+  },
+  "SanguREC-3-10-2026-19h14m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:5",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20706
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 4.55
+   }
+  },
+  "SanguREC-3-10-2026-19h22m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:5",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 24586
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.79
+   }
+  },
+  "SanguREC-3-10-2026-19h29m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:5",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22515
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.32
+   }
+  },
+  "SanguREC-3-10-2026-19h34m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:5",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20669
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.62
+   }
+  },
+  "SanguREC-3-10-2026-19h41m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:5",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21006
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.87
+   }
+  },
+  "SanguREC-3-10-2026-19h47m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:5",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20359
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.42
+   }
+  },
+  "SanguREC-3-10-2026-19h53m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:5",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19625
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 4.79
+   }
+  },
+  "SanguREC-3-10-2026-19h59m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:5",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20757
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.1
+   }
+  },
+  "SanguREC-3-10-2026-20h06m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:5",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20771
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.96
+   }
+  },
+  "SanguREC-3-10-2026-20h12m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:5",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21301
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.87
+   }
+  },
+  "SanguREC-3-10-2026-20h31m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:5",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 18715
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 4.99
+   }
+  },
+  "SanguREC-3-10-2026-20h37m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:6",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21380
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.62
+   }
+  },
+  "SanguREC-3-10-2026-20h46m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:6",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 23506
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 8.01
+   }
+  },
+  "SanguREC-3-10-2026-20h53m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:6",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 23416
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.48
+   }
+  },
+  "SanguREC-3-10-2026-21h00m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:6",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20952
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.81
+   }
+  },
+  "SanguREC-3-10-2026-21h06m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:6",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 18503
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 3.73
+   }
+  },
+  "SanguREC-3-10-2026-21h14m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:6",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21780
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.04
+   }
+  },
+  "SanguREC-3-10-2026-21h21m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:6",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 24238
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.65
+   }
+  },
+  "SanguREC-3-10-2026-21h27m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:6",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21621
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 4.98
+   }
+  },
+  "SanguREC-3-10-2026-21h36m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:6",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20227
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 8.06
+   }
+  },
+  "SanguREC-3-10-2026-21h43m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:6",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21640
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.37
+   }
+  },
+  "SanguREC-3-10-2026-21h50m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:6",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 24569
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.78
+   }
+  },
+  "SanguREC-3-10-2026-21h57m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:6",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22978
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.3
+   }
+  },
+  "SanguREC-3-10-2026-22h04m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:6",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 26533
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.49
+   }
+  },
+  "SanguREC-3-10-2026-22h09m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:6",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 15887
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 4.03
+   }
+  },
+  "SanguREC-3-10-2026-22h21m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:6",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20805
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.65
+   }
+  },
+  "SanguREC-3-10-2026-22h26m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:6",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20195
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.32
+   }
+  },
+  "SanguREC-3-10-2026-22h33m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:6",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19382
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.29
+   }
+  },
+  "SanguREC-3-10-2026-22h39m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:7",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19965
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.5
+   }
+  },
+  "SanguREC-3-10-2026-22h44m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:7",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19398
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 4.16
+   }
+  },
+  "SanguREC-3-10-2026-22h50m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:7",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20099
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.22
+   }
+  },
+  "SanguREC-3-10-2026-22h59m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:7",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20296
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 8.35
+   }
+  },
+  "SanguREC-3-10-2026-23h04m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:7",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20234
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.58
+   }
+  },
+  "SanguREC-3-10-2026-23h13m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:7",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21326
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.89
+   }
+  },
+  "SanguREC-3-10-2026-23h19m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:7",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 17451
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.15
+   }
+  },
+  "SanguREC-3-10-2026-23h26m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:7",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20740
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.76
+   }
+  },
+  "SanguREC-3-10-2026-23h31m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:7",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 18613
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.17
+   }
+  },
+  "SanguREC-3-10-2026-23h38m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:7",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 24042
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.46
+   }
+  },
+  "SanguREC-3-10-2026-23h44m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:7",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20302
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.51
+   }
+  },
+  "SanguREC-3-10-2026-23h52m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:7",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22190
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.45
+   }
+  },
+  "SanguREC-3-10-2026-23h57m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-03:7",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19036
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.11
+   }
+  },
+  "SanguREC-3-10-2026-24h05m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:sangu",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20949
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.29
+   }
+  },
+  "SanguREC-3-10-2026-24h14m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:sangu",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19632
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.8
+   }
+  },
+  "SanguREC-3-10-2026-24h20m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:sangu",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 24252
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.55
+   }
+  },
+  "SanguREC-3-10-2026-24h24m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:sangu",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 11836
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 3.12
+   }
+  },
+  "SanguREC-3-10-2026-24h30m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:sangu",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 23545
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.79
+   }
+  },
+  "SanguREC-3-10-2026-24h38m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:sangu",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21788
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.01
+   }
+  },
+  "SanguREC-4-10-2026-01h01m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 23826
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.58
+   }
+  },
+  "SanguREC-4-10-2026-01h07m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21571
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.95
+   }
+  },
+  "SanguREC-4-10-2026-01h12m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 18278
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.04
+   }
+  },
+  "SanguREC-4-10-2026-01h18m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19684
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.38
+   }
+  },
+  "SanguREC-4-10-2026-01h24m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21375
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.85
+   }
+  },
+  "SanguREC-4-10-2026-01h29m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19813
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.38
+   }
+  },
+  "SanguREC-4-10-2026-01h35m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21166
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.84
+   }
+  },
+  "SanguREC-4-10-2026-01h43m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21852
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.58
+   }
+  },
+  "SanguREC-4-10-2026-01h50m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19596
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.54
+   }
+  },
+  "SanguREC-4-10-2026-02h00m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 8440
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 1.12
+   }
+  },
+  "SanguREC-4-10-2026-02h06m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22033
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.84
+   }
+  },
+  "SanguREC-4-10-2026-02h14m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19034
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.31
+   }
+  },
+  "SanguREC-4-10-2026-02h25m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20545
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.54
+   }
+  },
+  "SanguREC-4-10-2026-02h36m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20383
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.46
+   }
+  },
+  "SanguREC-4-10-2026-02h42m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21261
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 4.91
+   }
+  },
+  "SanguREC-4-10-2026-02h49m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22407
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.14
+   }
+  },
+  "SanguREC-4-10-2026-02h55m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21272
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.67
+   }
+  },
+  "SanguREC-4-10-2026-03h00m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19061
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.25
+   }
+  },
+  "SanguREC-4-10-2026-03h08m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21184
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.01
+   }
+  },
+  "SanguREC-4-10-2026-03h13m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 17714
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 4.88
+   }
+  },
+  "SanguREC-4-10-2026-03h19m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 17579
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.3
+   }
+  },
+  "SanguREC-4-10-2026-03h25m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 18875
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.08
+   }
+  },
+  "SanguREC-4-10-2026-03h30m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20850
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.56
+   }
+  },
+  "SanguREC-4-10-2026-03h38m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20808
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.31
+   }
+  },
+  "SanguREC-4-10-2026-03h46m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21350
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.07
+   }
+  },
+  "SanguREC-4-10-2026-03h52m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21240
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.86
+   }
+  },
+  "SanguREC-4-10-2026-03h58m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21234
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.66
+   }
+  },
+  "SanguREC-4-10-2026-04h05m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20036
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.73
+   }
+  },
+  "SanguREC-4-10-2026-04h11m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20796
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.65
+   }
+  },
+  "SanguREC-4-10-2026-04h18m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20262
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.67
+   }
+  },
+  "SanguREC-4-10-2026-04h24m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20369
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.62
+   }
+  },
+  "SanguREC-4-10-2026-04h29m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19721
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.39
+   }
+  },
+  "SanguREC-4-10-2026-04h38m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 26619
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 8.42
+   }
+  },
+  "SanguREC-4-10-2026-04h46m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 23229
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.38
+   }
+  },
+  "SanguREC-4-10-2026-04h53m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19274
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.7
+   }
+  },
+  "SanguREC-4-10-2026-04h59m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19547
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.28
+   }
+  },
+  "SanguREC-4-10-2026-05h11m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19154
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.28
+   }
+  },
+  "SanguREC-4-10-2026-10h54m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 17819
+   },
+   "minutes_4v4": {}
+  },
+  "SanguREC-4-10-2026-11h00m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 18843
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 1.19
+   }
+  },
+  "SanguREC-4-10-2026-11h05m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19429
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 4.36
+   }
+  },
+  "SanguREC-4-10-2026-11h16m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 13088
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 2.04
+   }
+  },
+  "SanguREC-4-10-2026-11h23m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22623
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.92
+   }
+  },
+  "SanguREC-4-10-2026-11h29m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20640
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.73
+   }
+  },
+  "SanguREC-4-10-2026-11h36m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20945
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.81
+   }
+  },
+  "SanguREC-4-10-2026-11h42m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21366
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 4.92
+   }
+  },
+  "SanguREC-4-10-2026-11h50m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20342
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 1.46
+   }
+  },
+  "SanguREC-4-10-2026-11h56m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20802
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 2.28
+   }
+  },
+  "SanguREC-4-10-2026-12h00m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 14923
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 3.25
+   }
+  },
+  "SanguREC-4-10-2026-12h10m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 5814
+   },
+   "minutes_4v4": {}
+  },
+  "SanguREC-4-10-2026-12h26m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 2594
+   },
+   "minutes_4v4": {}
+  },
+  "SanguREC-4-10-2026-12h42m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21303
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 2.41
+   }
+  },
+  "SanguREC-4-10-2026-12h54m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19989
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.09
+   }
+  },
+  "SanguREC-4-10-2026-13h01m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 23032
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.36
+   }
+  },
+  "SanguREC-4-10-2026-13h07m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 23033
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.26
+   }
+  },
+  "SanguREC-4-10-2026-13h16m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21886
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 8.05
+   }
+  },
+  "SanguREC-4-10-2026-13h21m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20366
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.66
+   }
+  },
+  "SanguREC-4-10-2026-13h27m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19663
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.0
+   }
+  },
+  "SanguREC-4-10-2026-13h32m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 16868
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 4.52
+   }
+  },
+  "SanguREC-4-10-2026-13h37m (1).hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 18876
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.2
+   }
+  },
+  "SanguREC-4-10-2026-13h44m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 23431
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.46
+   }
+  },
+  "SanguREC-4-10-2026-13h50m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 23708
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.48
+   }
+  },
+  "SanguREC-4-10-2026-13h57m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22271
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.05
+   }
+  },
+  "SanguREC-4-10-2026-14h05m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22503
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.68
+   }
+  },
+  "SanguREC-4-10-2026-14h11m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 23815
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.47
+   }
+  },
+  "SanguREC-4-10-2026-14h32m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 25528
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 19.47
+   }
+  },
+  "SanguREC-4-10-2026-14h42m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21821
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.49
+   }
+  },
+  "SanguREC-4-10-2026-14h48m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 17536
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.15
+   }
+  },
+  "SanguREC-4-10-2026-14h54m (1).hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19898
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 3.96
+   }
+  },
+  "SanguREC-4-10-2026-15h08m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:5",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20615
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.4
+   }
+  },
+  "SanguREC-4-10-2026-15h14m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:5",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19964
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 4.83
+   }
+  },
+  "SanguREC-4-10-2026-15h20m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:5",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22149
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 4.44
+   }
+  },
+  "SanguREC-4-10-2026-15h25m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:5",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19054
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.21
+   }
+  },
+  "SanguREC-4-10-2026-15h32m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:5",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22165
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.07
+   }
+  },
+  "SanguREC-4-10-2026-15h40m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:5",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21121
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.41
+   }
+  },
+  "SanguREC-4-10-2026-15h48m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:5",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 24160
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.54
+   }
+  },
+  "SanguREC-4-10-2026-15h56m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:5",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20072
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.73
+   }
+  },
+  "SanguREC-4-10-2026-16h02m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:5",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20624
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.28
+   }
+  },
+  "SanguREC-4-10-2026-16h08m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:5",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20178
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.56
+   }
+  },
+  "SanguREC-4-10-2026-16h22m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:5",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19423
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.94
+   }
+  },
+  "SanguREC-4-10-2026-16h27m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:5",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19924
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.35
+   }
+  },
+  "SanguREC-4-10-2026-16h36m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:5",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20689
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 8.39
+   }
+  },
+  "SanguREC-4-10-2026-16h43m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:5",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 18459
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.23
+   }
+  },
+  "SanguREC-4-10-2026-16h49m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:5",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 18593
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.08
+   }
+  },
+  "SanguREC-4-10-2026-16h58m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:5",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20995
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 8.53
+   }
+  },
+  "SanguREC-4-10-2026-17h05m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:5",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22386
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.12
+   }
+  },
+  "SanguREC-4-10-2026-17h15m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:6",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22872
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 9.77
+   }
+  },
+  "SanguREC-4-10-2026-17h22m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:6",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20097
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.84
+   }
+  },
+  "SanguREC-4-10-2026-17h31m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:6",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20915
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.81
+   }
+  },
+  "SanguREC-4-10-2026-17h39m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:6",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22562
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.53
+   }
+  },
+  "SanguREC-4-10-2026-17h45m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:6",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20637
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.54
+   }
+  },
+  "SanguREC-4-10-2026-17h50m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:6",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19654
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.42
+   }
+  },
+  "SanguREC-4-10-2026-17h56m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:6",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19730
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.44
+   }
+  },
+  "SanguREC-4-10-2026-18h02m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:6",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19337
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.29
+   }
+  },
+  "SanguREC-4-10-2026-18h07m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:6",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20154
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.56
+   }
+  },
+  "SanguREC-4-10-2026-18h15m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:6",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 26423
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.34
+   }
+  },
+  "SanguREC-4-10-2026-18h20m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:6",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19889
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.44
+   }
+  },
+  "SanguREC-4-10-2026-18h26m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:6",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 18600
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.08
+   }
+  },
+  "SanguREC-4-10-2026-18h32m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:6",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21534
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.9
+   }
+  },
+  "SanguREC-4-10-2026-18h37m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:6",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19586
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.34
+   }
+  },
+  "SanguREC-4-10-2026-18h43m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:6",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 18868
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.24
+   }
+  },
+  "SanguREC-4-10-2026-18h48m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:6",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19754
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.32
+   }
+  },
+  "SanguREC-4-10-2026-18h54m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:6",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20833
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.73
+   }
+  },
+  "SanguREC-4-10-2026-18h59m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:6",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 18718
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.16
+   }
+  },
+  "SanguREC-4-10-2026-19h05m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:6",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19577
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 3.73
+   }
+  },
+  "SanguREC-4-10-2026-19h13m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:6",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22296
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.73
+   }
+  },
+  "SanguREC-4-10-2026-19h21m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:7",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22796
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.87
+   }
+  },
+  "SanguREC-4-10-2026-19h32m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:7",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 17238
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 3.43
+   }
+  },
+  "SanguREC-4-10-2026-19h45m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:7",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22544
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.22
+   }
+  },
+  "SanguREC-4-10-2026-19h51m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:7",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21770
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.92
+   }
+  },
+  "SanguREC-4-10-2026-19h57m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:7",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20431
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.67
+   }
+  },
+  "SanguREC-4-10-2026-20h04m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:7",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 23253
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.42
+   }
+  },
+  "SanguREC-4-10-2026-20h09m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:7",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19673
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.42
+   }
+  },
+  "SanguREC-4-10-2026-20h15m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:7",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21135
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.8
+   }
+  },
+  "SanguREC-4-10-2026-20h21m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:7",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21861
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.01
+   }
+  },
+  "SanguREC-4-10-2026-20h27m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:7",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21436
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.91
+   }
+  },
+  "SanguREC-4-10-2026-20h33m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:7",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19731
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.2
+   }
+  },
+  "SanguREC-4-10-2026-20h48m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:7",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 23255
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 8.69
+   }
+  },
+  "SanguREC-4-10-2026-20h56m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:7",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21574
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.06
+   }
+  },
+  "SanguREC-4-10-2026-21h00m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:7",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 13283
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 3.23
+   }
+  },
+  "SanguREC-4-10-2026-21h06m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:7",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21530
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.87
+   }
+  },
+  "SanguREC-4-10-2026-21h09m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:7",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 11038
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 2.6
+   }
+  },
+  "SanguREC-4-10-2026-21h19m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:7",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 10686
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 2.58
+   }
+  },
+  "SanguREC-4-10-2026-21h23m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-04:8",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 13106
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 3.18
+   }
+  },
+  "SanguREC-4-10-2026-21h29m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-04:8",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19962
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.47
+   }
+  },
+  "SanguREC-4-10-2026-21h36m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-04:8",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 23728
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.31
+   }
+  },
+  "SanguREC-4-10-2026-21h42m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-04:8",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22732
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.83
+   }
+  },
+  "SanguREC-4-10-2026-21h48m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-04:8",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20384
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.47
+   }
+  },
+  "SanguREC-4-10-2026-21h54m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-04:8",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20609
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.44
+   }
+  },
+  "SanguREC-4-10-2026-21h59m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-04:8",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19171
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.22
+   }
+  },
+  "SanguREC-4-10-2026-22h05m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-04:8",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20467
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.64
+   }
+  },
+  "SanguREC-4-10-2026-22h10m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-04:8",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19428
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.28
+   }
+  },
+  "SanguREC-4-10-2026-22h17m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-04:8",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 23528
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.02
+   }
+  },
+  "SanguREC-4-10-2026-22h23m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-04:8",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22966
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.35
+   }
+  },
+  "SanguREC-4-10-2026-22h32m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-04:8",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 24185
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.24
+   }
+  },
+  "SanguREC-4-10-2026-22h55m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-04:8",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21384
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.03
+   }
+  },
+  "SanguREC-4-10-2026-23h01m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-04:8",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22981
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 4.41
+   }
+  },
+  "SanguREC-4-10-2026-23h08m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-04:8",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22853
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.99
+   }
+  },
+  "SanguREC-4-10-2026-23h13m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-04:8",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19339
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.3
+   }
+  },
+  "SanguREC-4-10-2026-23h24m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:9",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 18514
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.06
+   }
+  },
+  "SanguREC-4-10-2026-23h40m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:9",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21844
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.8
+   }
+  },
+  "SanguREC-4-10-2026-23h47m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:9",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 24047
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.61
+   }
+  },
+  "SanguREC-4-10-2026-23h55m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-04:9",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22155
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.48
+   }
+  },
+  "SanguREC-4-10-2026-24h08m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:sangu",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19897
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.36
+   }
+  },
+  "SanguREC-4-10-2026-24h14m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:sangu",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20546
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.67
+   }
+  },
+  "SanguREC-4-10-2026-24h20m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:sangu",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20064
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.12
+   }
+  },
+  "SanguREC-4-10-2026-24h28m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:sangu",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21213
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.9
+   }
+  },
+  "SanguREC-4-10-2026-24h34m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:sangu",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21981
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.98
+   }
+  },
+  "SanguREC-4-10-2026-24h41m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:sangu",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22915
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.16
+   }
+  },
+  "SanguREC-4-10-2026-24h46m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:sangu",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 17910
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 3.9
+   }
+  },
+  "SanguREC-4-10-2026-24h52m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:sangu",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21475
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.88
+   }
+  },
+  "SanguREC-5-10-2026-13h32m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 23794
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 1.44
+   }
+  },
+  "SanguREC-5-10-2026-13h38m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22911
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.96
+   }
+  },
+  "SanguREC-5-10-2026-13h51m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 23300
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.21
+   }
+  },
+  "SanguREC-5-10-2026-13h57m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21052
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.72
+   }
+  },
+  "SanguREC-5-10-2026-14h03m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19034
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 4.97
+   }
+  },
+  "SanguREC-5-10-2026-14h10m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22157
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.52
+   }
+  },
+  "SanguREC-5-10-2026-14h17m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 23051
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.22
+   }
+  },
+  "SanguREC-5-10-2026-14h23m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21222
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.71
+   }
+  },
+  "SanguREC-5-10-2026-14h28m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20005
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 4.57
+   }
+  },
+  "SanguREC-5-10-2026-14h34m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 18671
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 4.96
+   }
+  },
+  "SanguREC-5-10-2026-14h39m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20447
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 4.43
+   }
+  },
+  "SanguREC-5-10-2026-15h02m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22228
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.38
+   }
+  },
+  "SanguREC-5-10-2026-15h09m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19266
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.4
+   }
+  },
+  "SanguREC-5-10-2026-15h16m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22482
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.2
+   }
+  },
+  "SanguREC-5-10-2026-15h22m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 23653
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.28
+   }
+  },
+  "SanguREC-5-10-2026-15h28m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20692
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.62
+   }
+  },
+  "SanguREC-5-10-2026-15h34m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20940
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 4.25
+   }
+  },
+  "SanguREC-5-10-2026-15h40m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19509
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.29
+   }
+  },
+  "SanguREC-5-10-2026-15h46m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21288
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 4.69
+   }
+  },
+  "SanguREC-5-10-2026-15h54m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22900
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.47
+   }
+  },
+  "SanguREC-5-10-2026-16h00m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21818
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.48
+   }
+  },
+  "SanguREC-5-10-2026-16h07m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20723
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.02
+   }
+  },
+  "SanguREC-5-10-2026-16h14m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19488
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.02
+   }
+  },
+  "SanguREC-5-10-2026-16h19m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20479
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.65
+   }
+  },
+  "SanguREC-5-10-2026-16h23m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 13851
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 0.97
+   }
+  },
+  "SanguREC-5-10-2026-16h29m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21492
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.38
+   }
+  },
+  "SanguREC-5-10-2026-16h35m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19073
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.17
+   }
+  },
+  "SanguREC-5-10-2026-16h41m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20670
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.58
+   }
+  },
+  "SanguREC-5-10-2026-16h53m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20736
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.09
+   }
+  },
+  "SanguREC-5-10-2026-16h58m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20416
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.46
+   }
+  },
+  "SanguREC-5-10-2026-17h04m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21466
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.89
+   }
+  },
+  "SanguREC-5-10-2026-17h16m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22489
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.16
+   }
+  },
+  "SanguREC-5-10-2026-17h22m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19466
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.19
+   }
+  },
+  "SanguREC-5-10-2026-17h27m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19513
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.25
+   }
+  },
+  "SanguREC-5-10-2026-17h33m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:1",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19333
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.3
+   }
+  },
+  "SanguREC-5-10-2026-17h42m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-05:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 27847
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.68
+   }
+  },
+  "SanguREC-5-10-2026-17h50m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-05:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21815
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.13
+   }
+  },
+  "SanguREC-5-10-2026-17h56m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-05:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20056
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.49
+   }
+  },
+  "SanguREC-5-10-2026-18h01m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-05:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19768
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.31
+   }
+  },
+  "SanguREC-5-10-2026-18h07m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-05:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19233
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.96
+   }
+  },
+  "SanguREC-5-10-2026-18h13m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-05:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20672
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.38
+   }
+  },
+  "SanguREC-5-10-2026-18h19m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-05:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21273
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.7
+   }
+  },
+  "SanguREC-5-10-2026-18h25m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-05:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21393
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.82
+   }
+  },
+  "SanguREC-5-10-2026-18h31m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-05:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19657
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.34
+   }
+  },
+  "SanguREC-5-10-2026-18h37m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-05:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20060
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 3.96
+   }
+  },
+  "SanguREC-5-10-2026-18h44m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-05:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20194
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.74
+   }
+  },
+  "SanguREC-5-10-2026-18h49m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-05:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20255
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.58
+   }
+  },
+  "SanguREC-5-10-2026-18h56m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-05:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19978
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.35
+   }
+  },
+  "SanguREC-5-10-2026-19h04m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-05:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21453
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.46
+   }
+  },
+  "SanguREC-5-10-2026-19h11m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-05:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 18689
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.21
+   }
+  },
+  "SanguREC-5-10-2026-19h18m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-05:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 17923
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.32
+   }
+  },
+  "SanguREC-5-10-2026-19h23m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-05:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 17916
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 4.5
+   }
+  },
+  "SanguREC-5-10-2026-19h29m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-05:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22565
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.23
+   }
+  },
+  "SanguREC-5-10-2026-19h36m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-05:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 12676
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 3.01
+   }
+  },
+  "SanguREC-5-10-2026-19h41m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-05:2",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 18553
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.15
+   }
+  },
+  "SanguREC-5-10-2026-19h47m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21526
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.03
+   }
+  },
+  "SanguREC-5-10-2026-19h54m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22908
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.32
+   }
+  },
+  "SanguREC-5-10-2026-20h01m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 24614
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.48
+   }
+  },
+  "SanguREC-5-10-2026-20h06m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 18651
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 4.92
+   }
+  },
+  "SanguREC-5-10-2026-20h13m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21304
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.94
+   }
+  },
+  "SanguREC-5-10-2026-20h19m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20524
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.62
+   }
+  },
+  "SanguREC-5-10-2026-20h25m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20958
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.78
+   }
+  },
+  "SanguREC-5-10-2026-20h31m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20500
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.57
+   }
+  },
+  "SanguREC-5-10-2026-20h38m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 24465
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.08
+   }
+  },
+  "SanguREC-5-10-2026-20h48m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21537
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.7
+   }
+  },
+  "SanguREC-5-10-2026-20h54m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19010
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 4.83
+   }
+  },
+  "SanguREC-5-10-2026-21h00m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22552
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.22
+   }
+  },
+  "SanguREC-5-10-2026-21h06m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 18861
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 4.45
+   }
+  },
+  "SanguREC-5-10-2026-21h12m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19775
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.43
+   }
+  },
+  "SanguREC-5-10-2026-21h18m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20598
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.6
+   }
+  },
+  "SanguREC-5-10-2026-21h25m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22601
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.8
+   }
+  },
+  "SanguREC-5-10-2026-21h30m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 18903
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.16
+   }
+  },
+  "SanguREC-5-10-2026-21h36m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20955
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 3.71
+   }
+  },
+  "SanguREC-5-10-2026-21h42m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-05:3",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20073
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 4.15
+   }
+  },
+  "SanguREC-5-10-2026-21h48m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-05:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21036
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.35
+   }
+  },
+  "SanguREC-5-10-2026-21h53m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-05:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20776
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.6
+   }
+  },
+  "SanguREC-5-10-2026-22h00m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-05:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19231
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.95
+   }
+  },
+  "SanguREC-5-10-2026-22h05m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-05:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19798
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 3.07
+   }
+  },
+  "SanguREC-5-10-2026-22h11m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-05:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21055
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.81
+   }
+  },
+  "SanguREC-5-10-2026-22h17m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-05:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21156
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.71
+   }
+  },
+  "SanguREC-5-10-2026-22h24m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-05:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21839
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.14
+   }
+  },
+  "SanguREC-5-10-2026-22h28m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-05:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 15981
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 3.26
+   }
+  },
+  "SanguREC-5-10-2026-22h35m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-05:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 23947
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.72
+   }
+  },
+  "SanguREC-5-10-2026-22h42m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-05:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 23443
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.1
+   }
+  },
+  "SanguREC-5-10-2026-22h49m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-05:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19870
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.58
+   }
+  },
+  "SanguREC-5-10-2026-22h56m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-05:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21024
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.75
+   }
+  },
+  "SanguREC-5-10-2026-23h02m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-05:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21745
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.87
+   }
+  },
+  "SanguREC-5-10-2026-23h08m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-05:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19796
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.5
+   }
+  },
+  "SanguREC-5-10-2026-23h13m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-05:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20886
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.75
+   }
+  },
+  "SanguREC-5-10-2026-23h19m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-05:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19068
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.21
+   }
+  },
+  "SanguREC-5-10-2026-23h25m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-05:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21497
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 4.89
+   }
+  },
+  "SanguREC-5-10-2026-23h31m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-05:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20040
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.48
+   }
+  },
+  "SanguREC-5-10-2026-23h37m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-05:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21268
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.83
+   }
+  },
+  "SanguREC-5-10-2026-23h42m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-05:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 18898
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.17
+   }
+  },
+  "SanguREC-5-10-2026-23h48m.hbr2": {
+   "split": "dev",
+   "session": "sanguchito:2026-10-05:4",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21569
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.54
+   }
+  },
+  "SanguREC-5-10-2026-23h54m.hbr2": {
+   "split": "test",
+   "session": "sanguchito:2026-10-05:5",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21944
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.97
+   }
+  },
+  "SanguREC-5-10-2026-24h01m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:sangu",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22915
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.32
+   }
+  },
+  "SanguREC-5-10-2026-24h07m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:sangu",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21455
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.31
+   }
+  },
+  "SanguREC-5-10-2026-24h22m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:sangu",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20031
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.33
+   }
+  },
+  "SanguREC-5-10-2026-24h29m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:sangu",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22408
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.42
+   }
+  },
+  "SanguREC-5-10-2026-24h41m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:sangu",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19416
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.31
+   }
+  },
+  "SanguREC-5-10-2026-24h46m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:sangu",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19235
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.18
+   }
+  },
+  "SanguREC-6-10-2026-01h00m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-06:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 14208
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 3.78
+   }
+  },
+  "SanguREC-6-10-2026-01h06m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-06:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21089
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.82
+   }
+  },
+  "SanguREC-6-10-2026-01h11m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-06:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19120
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.27
+   }
+  },
+  "SanguREC-6-10-2026-01h19m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-06:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 27076
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.48
+   }
+  },
+  "SanguREC-6-10-2026-01h24m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-06:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 18992
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 4.97
+   }
+  },
+  "SanguREC-6-10-2026-01h32m (1).hbr2": {
+   "split": "train",
+   "session": "sanguchito:2026-10-06:0",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 21867
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 7.01
+   }
+  },
+  "SanguREC-6-10-2026-24h02m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:sangu",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20715
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.8
+   }
+  },
+  "SanguREC-6-10-2026-24h07m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:sangu",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19925
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.29
+   }
+  },
+  "SanguREC-6-10-2026-24h14m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:sangu",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 17792
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.32
+   }
+  },
+  "SanguREC-6-10-2026-24h20m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:sangu",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 22888
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 6.27
+   }
+  },
+  "SanguREC-6-10-2026-24h26m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:sangu",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19536
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 4.3
+   }
+  },
+  "SanguREC-6-10-2026-24h28m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:sangu",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 8493
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 2.19
+   }
+  },
+  "SanguREC-6-10-2026-24h34m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:sangu",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20534
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.12
+   }
+  },
+  "SanguREC-6-10-2026-24h40m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:sangu",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 20226
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.45
+   }
+  },
+  "SanguREC-6-10-2026-24h46m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:sangu",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 19779
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 5.11
+   }
+  },
+  "SanguREC-6-10-2026-24h51m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:sangu",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 17485
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 4.62
+   }
+  },
+  "SanguREC-6-10-2026-24h56m.hbr2": {
+   "split": "train",
+   "session": "sanguchito:sangu",
+   "family": "sanguchito",
+   "maps": {
+    "sanguchito_rs_x4": 18317
+   },
+   "minutes_4v4": {
+    "SANGUCHITO RS X4": 4.92
+   }
+  },
+  "_MrHOST_-_4_-_Buenos_Aires_-1790563275736 (1).hbr2": {
+   "split": "train",
+   "session": "mrhost:_mrhost_4_buenos_aires_",
+   "family": "mrhost",
+   "maps": {
+    "rs_one": 81089
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 21.98
+   }
+  },
+  "argbol1t__70f72c3802b7.hbr2": {
+   "split": "train",
+   "session": "mrhost:_mrhost_x_haxcl_santiago_2_",
+   "family": "mrhost",
+   "maps": {
+    "rs_one": 44761
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 12.23
+   }
+  },
+  "argbol2t__a6471cbc4a3f.hbr2": {
+   "split": "train",
+   "session": "mrhost:_mrhost_x_ihl_lima_1_",
+   "family": "mrhost",
+   "maps": {
+    "rs_one": 5669
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 0.97
+   }
+  },
+  "argbra1tfinal__cd4dbf2b9761.hbr2": {
+   "split": "train",
+   "session": "mrhost:_mrhost_3_s_o_paulo_",
+   "family": "mrhost",
+   "maps": {
+    "rs_one": 41007
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 11.33
+   }
+  },
+  "argperuu21__8c288f6ecbca.hbr2": {
+   "split": "train",
+   "session": "mrhost:_mrhost_x_haxcl_santiago_3_",
+   "family": "mrhost",
+   "maps": {
+    "rs_one": 79794
+   },
+   "minutes_4v4": {
+    "Real Soccer Revolution": 1.49,
+    "Real Soccer ONE": 21.88
+   }
+  },
+  "izk vs leg (1).hbr2": {
+   "split": "test",
+   "session": "haxarg:_leg_vs_i_haxarg_",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 32993
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 9.0
+   }
+  },
+  "rs flw lpm.hbr2": {
+   "split": "train",
+   "session": "mrhost:_mrhost_3_buenos_aires_",
+   "family": "mrhost",
+   "maps": {
+    "rs_one": 83980
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 22.87
+   }
+  },
+  "sutizkcuartodaida__2a3a252cd0ee.hbr2": {
+   "split": "train",
+   "session": "haxarg:_sut_stadium_i_haxarg_",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 83310
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 22.85
+   }
+  },
+  "sutizkrsx4__7ec4268f1a67.hbr2": {
+   "split": "train",
+   "session": "haxarg:_sut_stadium_i_haxarg_",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 67531
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 18.36
+   }
+  },
+  "sutizkvuelta__99e844e251a0.hbr2": {
+   "split": "train",
+   "session": "haxarg:_sut_stadium_i_haxarg_",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 78430
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 21.66
+   }
+  },
+  "sutmut.hbr2": {
+   "split": "train",
+   "session": "haxarg:_sut_stadium_i_haxarg_",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 92388
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 24.59
+   }
+  },
+  "sutomrsx4__bcf35eb84508.hbr2": {
+   "split": "train",
+   "session": "haxarg:_sut_stadium_i_haxarg_",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 84305
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 22.59
+   }
+  },
+  "sutqacrsx4__d41c2b846bb4.hbr2": {
+   "split": "train",
+   "session": "haxarg:_sut_stadium_i_haxarg_",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 83447
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 22.89
+   }
+  },
+  "sutqdvofi__c3926139e50b.hbr2": {
+   "split": "train",
+   "session": "haxarg:_qdv_vs_sut_i_haxarg_",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 82230
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 22.76
+   }
+  },
+  "sutsffx__1654b79eae86.hbr2": {
+   "split": "train",
+   "session": "haxarg:_sut_stadium_i_haxarg_",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 80030
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 21.84
+   }
+  },
+  "suttvyofi__af5f8ecb53b6.hbr2": {
+   "split": "train",
+   "session": "haxarg:_sut_stadium_i_haxarg_",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 81740
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 22.25
+   }
+  },
+  "suttvyrsx4__034d42773413.hbr2": {
+   "split": "train",
+   "session": "haxarg:_sut_stadium_i_haxarg_",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 82256
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 22.76
+   }
+  },
+  "sutucofi__6b658458764f.hbr2": {
+   "split": "train",
+   "session": "haxarg:_sut_stadium_i_haxarg_",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 89150
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 22.59
+   }
+  },
+  "sutucrsx4__77927942efd5.hbr2": {
+   "split": "train",
+   "session": "haxarg:_sut_stadium_i_haxarg_",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 82174
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 22.45
+   }
+  },
+  "sutvkrsx4__b7cf6c4d09d6.hbr2": {
+   "split": "train",
+   "session": "haxarg:_sut_stadium_i_haxarg_",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 89631
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 24.43
+   }
+  },
+  "sutvtofi__2a3419903494.hbr2": {
+   "split": "train",
+   "session": "haxarg:_sut_stadium_i_haxarg_",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 79732
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 21.7
+   }
+  },
+  "uc3exiled.hbr2": {
+   "split": "train",
+   "session": "haxarg:_uc3_vs_i_haxarg_",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 33197
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 9.05
+   }
+  },
+  "uc3vk.hbr2": {
+   "split": "train",
+   "session": "haxarg:_uc3_vs_i_haxarg_",
+   "family": "haxarg",
+   "maps": {
+    "rs_one": 96617
+   },
+   "minutes_4v4": {
+    "Real Soccer ONE": 23.3
+   }
+  }
+ }
+}

@@ -9,9 +9,10 @@ caché JSONL (`tools.rs4_jsonl_cache`: hash y estado de conversión) y el manifi
   marcador) y ≥ 6 nombres en común. Se conserva el primero por nombre.
 * Grabaciones con bots (nombres `RL-*`): no son datos humanos; quedan fuera del dataset de imitación y de
   la referencia humana, pero sirven para conformidad del script y para medir latencia.
-* Sesión: grabaciones del mismo día y la misma sala con menos de 45 min entre una y la siguiente. En una
-  sala pública los jugadores habituales se repiten entre sesiones: las particiones separan partidos y
-  sesiones, no jugadores (se informa el solapamiento de jugadores).
+* Sesión: grabaciones del mismo día y la misma sala con menos de 45 min entre una y la siguiente, cortadas
+  en bloques de hasta 2 h (una sala pública graba partidos seguidos toda la noche). Los jugadores
+  habituales se repiten entre sesiones: las particiones separan partidos y bloques, no jugadores (se
+  informa el solapamiento de jugadores).
 * Partición por sesión, estable (hash del nombre de la sesión), por familia de sala: ~15% prueba, ~10%
   desarrollo, resto entrenamiento.
 
@@ -34,6 +35,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 BOT_NAME = re.compile(r"^RL-", re.I)
 SESSION_GAP_MIN = 45
+SESSION_MAX_MIN = 120
 TEST_FRAC, DEV_FRAC = 0.15, 0.10
 
 
@@ -130,11 +132,14 @@ def main():
         by_room_day[(r["family"], r["room"] if r["family"] != "sanguchito" else "sangu", day)].append((t, n))
     for (fam, room, day), items in by_room_day.items():
         items.sort(key=lambda x: (x[0] or dt.datetime.min, x[1]))
-        k, last = 0, None
+        k, last, first = 0, None, None
         for t, n in items:
-            if last is not None and (t is None or last is None or (t - last).total_seconds() > SESSION_GAP_MIN * 60):
+            if last is not None and (t is None or last is None or (t - last).total_seconds() > SESSION_GAP_MIN * 60
+                                     or (t - first).total_seconds() > SESSION_MAX_MIN * 60):
                 k += 1
+                first = None
             last = t
+            first = first or t
             rows[n]["session"] = f"{fam}:{day}:{k}" if t else f"{fam}:{re.sub(r'[^a-z0-9]+', '_', (room or n).lower())[:40]}"
     # particiones por sesión dentro de cada familia, estables por hash
     sessions = collections.defaultdict(list)

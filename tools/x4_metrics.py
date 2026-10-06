@@ -326,6 +326,7 @@ def main():
     ap.add_argument("--map", default="sanguchito_rs_x4")
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--out", default=str(ROOT / "reports" / "x4" / "human_metrics.json"))
+    ap.add_argument("--samples-out", default="", help="muestras crudas (por defecto data/<out>.samples.npz)")
     a = ap.parse_args()
     splits = json.loads(Path(a.splits).read_text(encoding="utf-8"))["recordings"]
     map_id = MAP_IDS[a.map]
@@ -352,7 +353,7 @@ def main():
                   ceiling={k: compare(v, ref) for k, v in merged.items() if k != "train"})
     Path(a.out).parent.mkdir(parents=True, exist_ok=True)
     Path(a.out).write_text(json.dumps(report, indent=1, ensure_ascii=False), encoding="utf-8")
-    np.savez_compressed(Path(a.out).with_suffix(".samples.npz"),
+    np.savez_compressed(Path(a.samples_out or ROOT / "data" / (Path(a.out).stem + ".samples.npz")),
                         **{f"{sp}/{k}": np.asarray(v, np.float32) for sp, d in merged.items() for k, v in d.items()})
     print(json.dumps(dict(minutes=minutes, ceiling={sp: {k: (round(v["w1_norm"], 3) if v["w1_norm"] is not None else None)
                                                           for k, v in c.items()} for sp, c in report["ceiling"].items()}),
