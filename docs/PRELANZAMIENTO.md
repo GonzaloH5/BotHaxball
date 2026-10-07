@@ -295,6 +295,15 @@ doble que el pod de la 3090; el A/B y el principal corrieron enteros acá, con e
   cambian los 6 segmentos de la red y sus 4 esquinas de atrás, sólo para los jugadores (la pelota rebota igual). En RS ONE y
   2K23 no cambia nada. La conformidad contra grabaciones reales sigue usando el mapa de la sala (`solid_net=False`).
   Tests: `test_net_stops_players_like_in_the_other_rooms`, `test_solid_net_only_changes_nets_that_let_players_through`.
+- **Corte anticipado en la actualización 3100, decidido por el usuario.** El índice de la cadena estaba en una meseta
+  de ~0,74 desde la 1450 (pendiente de las últimas 8 evaluaciones −0,003, así que la extensión tampoco correspondía), y
+  el error de predicción sobre estados humanos seguía subiendo (0,577 de la BC → 0,65) con λ ya en su piso. La cola se
+  relanzó con `--updates 3100 --extend-to 3100` y siguió con su lógica: sin extensión, certificación y export.
+  - Certificación (64 partidos, con confirmación sólo si aprueba): `best_pase.pt` (1700) índice 0,833 y 0,81 contra la
+    BC; `best.pt` (2500) índice 0,731 y 0,90 contra la BC. Ninguno aprueba el gate (0,93).
+  - Veredicto "no_competitivo". Se exportó `best_pase.pt` a `deploy/rs4z/x4_rl.onnx` para probar en la sala, no para
+    competir.
+  - La próxima corrida ataca el pase con una recompensa de estilo humano: `docs/PROXIMA_CORRIDA.md`.
 - **Operación:** lanzada dentro de tmux, la cola murió por SIGHUP cuando se cerró la sesión. Ahora se lanza con
   `setsid nohup /workspace/cola.sh` y la sesión `cola` de tmux sólo muestra el log.
 

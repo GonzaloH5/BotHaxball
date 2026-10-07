@@ -1,7 +1,7 @@
-# Próxima corrida X4: recompensa de estilo humano (borrador de pre-registro)
+# Próxima corrida X4: recompensa de estilo humano (pre-registro)
 
-Borrador del 2026-10-07, escrito mientras termina la corrida de ese día (`runs/x4_cola`, ver `docs/PRELANZAMIENTO.md` §5).
-Lo que falta antes de lanzar está en §6.
+Pre-registro del 2026-10-07, escrito al cerrar la corrida de ese día (`runs/x4_cola`, ver `docs/PRELANZAMIENTO.md` §5).
+El lanzamiento está en §6.
 
 ## 1. Por qué
 
@@ -100,10 +100,23 @@ Señales de que el agente engaña al discriminador. Si aparecen, el brazo queda 
 El brazo ganador sigue en su carpeta hasta 3000 actualizaciones con los 1024 partidos. Después viene la misma
 certificación contra humanos que en la corrida del 2026-10-07, con confirmación con otras semillas, y el export a ONNX.
 
-## 6. Pendiente antes de lanzar
+## 6. Lanzamiento
 
-- Generalizar la cola (`learn/x4_queue.py`): hoy el A/B está fijo en EPV contra franjas. Hay que pasarle los brazos y
-  sus argumentos, y que el desempate favorezca al control.
-- Que el preflight verifique el banco de estilo (`data/x4_style_bank.npz`, con 211 rasgos) y mida el costo del
-  discriminador en la actualización real.
-- Elegir el `best.pt` de partida cuando termine la corrida actual, y anotar su actualización acá.
+- Punto de partida: `runs/x4_cola/rl_checkpoint/best.pt`, actualización 2500 (certificación: índice 0,731 y 0,90
+  contra la BC; red sólida y penalización del lateral ya aprendidas). `best_pase.pt` (1700) tenía más índice (0,833)
+  pero es de antes de la red sólida y de la penalización: cruzaba la red y sacaba mal el 21% de los laterales.
+- La cola acepta brazos (`--ab-arms`), desempata a favor del control (`--ab-default control`) y aplica los chequeos de
+  engaño de §4 (`--ab-guards`): circulación inútil > 0,15, discriminador colapsado, quietos > 1,5 × el control o
+  distancia a la pelota > 1,2 × el control. La subida de `style_d_agent` hacia `style_d_human` sin mejora del índice se
+  informa (`ab_temprano`) pero no excluye: se revisa a mano.
+- El preflight verifica el checkpoint de `--init` y el banco de estilo, y mide su costo en una actualización real.
+
+```bash
+python -m learn.x4_queue --root runs/x4_estilo --device cuda --ab-updates 600 --updates 3000 --extend-to 3000 \
+  --ab-arms "control=--style-coef 0;estilo=--style-coef 0.002;estilo3=--style-coef 0.006" \
+  --ab-default control --ab-margin 0.03 --ab-min-score 0.6 --ab-guards --ab-max-useless 0.15 \
+  --rl-extra "--init runs/x4_cola/rl_checkpoint/best.pt --shaping-kind none --auto-pass-arm-update 0 \
+              --forfeit-reasons 1,2,3,4 --lambda-dist 0.05 --lambda-decay 1 --lambda-min 0.05"
+```
+
+Sin extensión: la corrida principal termina en la 3000 y pasa a la certificación.
