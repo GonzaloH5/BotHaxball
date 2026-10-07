@@ -101,3 +101,32 @@ Lectura:
   pases y 0,14 de salidas): no viene sólo del RL.
 - Falta separar decisión (a dónde patea) de ejecución (puntería con latencia). El controlador de pase ataca la
   ejecución y, sin presión, tiene tiempo de acomodarse.
+
+## 6. Mecánicas humanas: rifle, usar, cuerpear (2026-10-07)
+
+El usuario aclaró que el problema es de decisión y describió tres mecánicas propias de HaxBall:
+
+- **cuerpear:** usar el cuerpo para tapar al rival y conservar la pelota hasta que llegue un apoyo;
+- **usar:** patear contra un rival buscando un saque a favor, un rebote propio o que su patada la mande a favor;
+- **rifle:** dos compañeros llegan desde +y y −y, patean casi juntos y la pelota sale horizontal.
+
+`tools/x4_mechanics.py` las detecta con la misma definición en grabaciones (test, 293 min de juego abierto) y en
+self-play (48 partidos de 3 min por política). Las definiciones son una traducción mía de las del usuario y falta
+validarlas con ejemplos.
+
+| | Humanos | BC | Agente (control 2000) | A/B control (act. ~450) | A/B pase (act. ~330) |
+|---|---|---|---|---|---|
+| Rifle por min | 0,05 | 0,02 | 0,05 | 0,02 | 0,03 |
+| Usar por min | 3,1 | 2,4 | 2,7 | 2,2 | 2,8 |
+| Usar: resultado favorable | 0,44 | 0,38 | 0,41 | 0,42 | 0,44 |
+| Cuerpear por min | **3,6** | 2,1 | 2,1 | 2,0 | 1,7 |
+| Cuerpear: conserva (apoyo, patea, saque a favor) | **0,54** | 0,32 | 0,40 | 0,42 | 0,36 |
+| Cuerpear: termina en saque en contra | **0,05** | 0,14 | 0,13 | 0,14 | 0,15 |
+
+Lectura:
+- **Rifle:** con esta detección es raro en humanos (14 en 293 min) y en el agente. O es raro en Sanguchito o el
+  detector no lo agarra (por ejemplo, si la segunda patada llega más de 6 ticks después). Hay que validarlo.
+- **Usar:** el agente lo hace casi tan seguido y con casi el mismo resultado que los humanos.
+- **Cuerpear:** es la diferencia clara. Los humanos lo hacen 1,7 veces más seguido y conservan la pelota más (0,54
+  contra 0,40). Cuando el agente cuerpea, termina en saque en contra casi 3 veces más (0,13 contra 0,05): coincide con
+  las salidas de la §5. La BC tampoco lo aprendió (2,1 por min, conserva 0,32): no lo trae la imitación.
