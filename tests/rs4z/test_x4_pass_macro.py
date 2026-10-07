@@ -147,3 +147,22 @@ def test_dev_metrics_with_pass_head(tmp_path):
     t.dev_set = (torch.randn(16, obs_v3.OBS_DIM), torch.randint(0, 18, (16,)))
     m = t.dev_metrics()
     assert np.isfinite(m["kl_bc"]) and m["kl_bc"] < 1e-4      # recién inicializada: la cabeza de pase no cambia las teclas
+
+
+def test_ready_table_only_offers_kicks():
+    from learn.x4_pass_macro import pass_table
+    rng = np.random.default_rng(5)
+    N = 64
+    env = RS4ZEnv(N, map="sanguchito_rs_x4", frame_skip=3, max_delay=15, deadline=0,
+                  kickoff_deadline=C.KICKOFF_SAFETY, seed=0)
+    env.start_match(np.arange(N), delay=rng.choice([8, 9, 10, 11], size=(N, 8)), match_ticks=3 * 3600)
+    for n in range(N):
+        b = rng.uniform([-500, -200], [500, 200])
+        pp = rng.uniform([-600, -250], [600, 250], size=(8, 2))
+        ang = rng.uniform(0, 2 * np.pi)
+        pp[n % 8] = b + (15.0 + 8.325 + rng.uniform(0, 6)) * np.array([np.cos(ang), np.sin(ang)])
+        env.place(n, ball_pos=b, ball_vel=np.zeros(2), player_pos=pp, player_vel=np.zeros((8, 2)))
+    full, ready = pass_table(env), pass_table(env, ready_only=True)
+    off = ready >= 0
+    assert off.any() and (ready[off] >= 9).all() and (ready[off] == full[off]).all()
+    assert not ((full >= 9) & ~off).any()

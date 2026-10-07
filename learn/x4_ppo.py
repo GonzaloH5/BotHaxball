@@ -388,6 +388,7 @@ def load_policy(path, device):
     ck = torch.load(path, map_location="cpu")
     m = SetPolicy(hidden=ck.get("hidden", 256), n_pass=ck.get("n_pass", 0))
     m.load_state_dict(ck["model"])
+    m.pass_ready = bool(ck.get("pass_ready", False))
     return m.to(device).eval()
 
 
@@ -516,6 +517,9 @@ def parse_args(argv=None):
     ap.add_argument("--pass-macro", action=argparse.BooleanOptionalAction, default=False,
                     help="macro-acciones \"pasarle al compañero k\" (learn/x4_pass_macro): 18 + 3 acciones, con compromiso "
                          "hasta patear; el ancla KL compara la distribución efectiva de teclas con la BC")
+    ap.add_argument("--pass-ready", action=argparse.BooleanOptionalAction, default=False,
+                    help="con --pass-macro, \"pase listo\": el pase sólo se ofrece si el controlador patea en los próximos "
+                         "9 ticks con ≤ 8° (la política conserva el movimiento; el macro es la puntería)")
     ap.add_argument("--bf16", action=argparse.BooleanOptionalAction, default=True,
                     help="pasadas hacia adelante del aprendizaje en bfloat16 (autocast; log_softmax y pérdidas siguen "
                          "en fp32). En el A4000 (2026-10-07, 1024×64): aprendizaje 1,90 → 1,29–1,39 s por "
@@ -548,6 +552,7 @@ class Trainer:
         self.hidden = ck.get("hidden", 256)
         self.n_pass = N_PASS if a.pass_macro else 0
         self.policy = SetPolicy(hidden=self.hidden, n_pass=self.n_pass).to(self.dev)
+        self.policy.pass_ready = bool(a.pass_ready)
         load_weights(self.policy, ck["model"])
         self.bc = load_policy(a.bc, self.dev)
         for p in self.bc.parameters():
@@ -849,7 +854,7 @@ class Trainer:
             for t in range(T):
                 obs = obs_v3.observe(env, delay=arena.delay_obs)
                 crit = self.critic_input(arena, obs, phi)
-                table = pass_table(env) if use_macro else None
+                table = pass_table(env, ready_only=a.pass_ready) if use_macro else None
                 acts, logp, bc_logp, v = self.act(arena, obs, crit, table)
                 ob[t], cr[t], ac[t], lp[t], bl[t], vv[t] = obs, crit, acts, logp, bc_logp, v
                 lm[t] = arena.learner & env.active
@@ -1191,7 +1196,7 @@ class Trainer:
             raise SystemExit(f"pesos no finitos: no se guarda {name} (la última copia buena queda en disco)")
         tmp = self.out / (name + ".tmp")
         torch.save(dict(model=self.policy.state_dict(), critic=self.critic.state_dict(), hidden=self.hidden,
-                        n_pass=int(self.n_pass),
+                        n_pass=int(self.n_pass), pass_ready=bool(self.a.pass_ready),
                         obs_version=obs_v3.OBS_VERSION, update=int(self.update), decisions=int(self.decisions),
                         vnorm=[float(self.vnorm.mean), float(self.vnorm.sq), float(self.vnorm.w)],
                         pool_wins=[float(x) for x in self.pool_wins],
@@ -1214,6 +1219,7 @@ class Trainer:
         self.save(path.name)
         m = SetPolicy(hidden=self.hidden, n_pass=self.n_pass).to(self.dev)
         m.load_state_dict(self.policy.state_dict())
+        m.pass_ready = bool(self.a.pass_ready)
         m.eval()
         self.pool.append((path.stem, m))
         self.pool_wins = np.append(self.pool_wins, 0.5)
@@ -1333,7 +1339,7 @@ class Trainer:
         d = self.out / "evals"
         d.mkdir(exist_ok=True)
         torch.save(dict(model=self.policy.state_dict(), hidden=self.hidden, n_pass=int(self.n_pass),
-                        obs_version=obs_v3.OBS_VERSION, update=int(self.update)), d / f"pi_{self.update:05d}.pt")
+                        pass_ready=bool(self.a.pass_ready), obs_version=obs_v3.OBS_VERSION, update=int(self.update)), d / f"pi_{self.update:05d}.pt")
         eps = self.last_eval_episodes
         if eps:
             arr = {}

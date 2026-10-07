@@ -38,6 +38,7 @@ class SetPolicy(nn.Module):
         self.logits = nn.Linear(hidden, n_actions)
         self.hidden = hidden
         self.n_pass = int(n_pass)
+        self.pass_ready = False         # "pase listo" (pass_table ready_only); lo fija quien carga el checkpoint
         if self.n_pass:
             assert self.n_pass == obs_v3.N_MATES
             self.pass_gate = nn.Linear(hidden, 1)
@@ -91,6 +92,7 @@ def load_policy(ck, **kw):
     """SetPolicy desde un checkpoint (dict de torch.load) con su tamaño y sus macro-acciones."""
     m = SetPolicy(hidden=ck.get("hidden", 256), n_pass=ck.get("n_pass", 0), **kw)
     m.load_state_dict(ck["model"])
+    m.pass_ready = bool(ck.get("pass_ready", False))
     return m
 
 

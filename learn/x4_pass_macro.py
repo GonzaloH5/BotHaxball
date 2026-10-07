@@ -343,7 +343,7 @@ def _plan_nb(px, py, vx0, vy0, bx0, by0, bvx0, bvy0, tx, ty, contact, align, aim
 
 @njit(cache=True, parallel=True)
 def _pass_table_nb(ball_pos, ball_vel, ball_r, ppos, pvel, act_hist, delay, active, max_gap, max_turn_cos,
-                   align, aim_tol, unit, mirror, out):
+                   align, aim_tol, unit, mirror, ready_only, out):
     N = ppos.shape[0]
     H = act_hist.shape[2]
     for n in prange(N):
@@ -404,21 +404,27 @@ def _pass_table_nb(ball_pos, ball_vel, ball_r, ppos, pvel, act_hist, delay, acti
                 tx += pvel[n, q, 0] * tt * 0.6
                 ty += pvel[n, q, 1] * tt * 0.6
                 m, kick = _plan_nb(x, y, vx, vy, pbx, pby, bvx, bvy, tx, ty, contact, align, aim_tol, unit)
+                if ready_only and not kick:
+                    continue
                 if team == 1:
                     m = mirror[m]
                 out[n, p, k] = m + (9 if kick else 0)
 
 
-def pass_table(env, out=None, max_gap=MAX_GAP, max_turn_cos=MAX_TURN_COS, align=0.94, aim_tol_deg=8.0):
+def pass_table(env, out=None, max_gap=MAX_GAP, max_turn_cos=MAX_TURN_COS, align=0.94, aim_tol_deg=8.0,
+               ready_only=False):
     """(N, 8, N_PASS) int64: acción del marco propio que ejecuta "pasarle al compañero k" (k en el orden de la
-    observación v3), o −1 si no se ofrece (sin compañero, pelota lejos o giro > 90°)."""
+    observación v3), o −1 si no se ofrece (sin compañero, pelota lejos o giro > 90°). `ready_only` ("pase listo"):
+    sólo se ofrece si el controlador patea dentro de PLAN_TICKS con la puntería pedida (la acción es siempre una
+    patada); en la primera corrida con el pase completo, más de la mitad de los pases elegidos no llegaban a patear
+    (el controlador tarda en ponerse detrás de la pelota) y la política dejó de usarlos."""
     N = env.N
     if out is None:
         out = np.empty((N, 8, N_PASS), np.int64)
     _pass_table_nb(np.ascontiguousarray(env.pos[:, 0]), np.ascontiguousarray(env.vel[:, 0]),
                    np.ascontiguousarray(env.radius[:, 0]), env.player_pos, env.player_vel, env.act_hist, env.delay,
                    env.active, float(max_gap), float(max_turn_cos), float(align),
-                   math.cos(math.radians(aim_tol_deg)), _UNIT, _MIRROR, out)
+                   math.cos(math.radians(aim_tol_deg)), _UNIT, _MIRROR, bool(ready_only), out)
     return out
 
 

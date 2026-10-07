@@ -114,7 +114,15 @@ def play(red, blue, *, map_name="sanguchito_rs_x4", matches=16, minutes=3.0, del
     macro = MacroState(matches) if (getattr(red, "n_pass", 0) or getattr(blue, "n_pass", 0)) else None
     while not done.all() and steps < limit:
         obs = obs_v3.observe(env, delay=obs_delay)
-        table = pass_table(env) if macro is not None else None
+        table = None
+        if macro is not None:
+            # cada política con la tabla con que se entrenó (pase completo o "pase listo")
+            ready = lambda pol: bool(getattr(getattr(pol, "model", None), "pass_ready", False))
+            tabs = {f: pass_table(env, ready_only=f) for f in {ready(p) for p in (red, blue) if getattr(p, "n_pass", 0)}}
+            table = np.full((matches, 8, 3), -1, np.int64)
+            for pol, side in ((red, slice(0, 4)), (blue, slice(4, 8))):
+                if getattr(pol, "n_pass", 0):
+                    table[:, side] = tabs[ready(pol)][:, side]
         acts = np.zeros((matches, 8), np.int64)
         for pol, side in ((red, slice(0, 4)), (blue, slice(4, 8))):
             kw = dict(pass_mask=(table[:, side] >= 0).reshape(-1, table.shape[-1])) \

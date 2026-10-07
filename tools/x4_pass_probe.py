@@ -7,6 +7,8 @@ controlada, con la latencia de la sala (D de 8 a 11 ticks). Desde los mismos est
   A. igual con el controlador predictivo (teclas en cola y búsqueda sobre las 18 acciones);
   B. como A, pero el receptor va a buscar la pelota después de la patada;
   C. el agente solo (sin controlador): qué hace hoy en esas situaciones.
+  R. "pase listo": el agente juega y, apenas el controlador puede patear en los próximos 9 ticks con ≤ 8° hacia
+     un compañero (pass_table con ready_only), el jugador del equipo con la pelota le pasa al más libre de esos.
 Cada modo también se desglosa por el giro necesario: el ángulo entre jugador → pelota y pelota → receptor.
 El pase se cuenta como en tools/x4_pass_chain: el primer toque después de la patada es de un compañero.
 
@@ -160,6 +162,89 @@ def run(env, snap, carrier, receiver, agent, mode, decisions, seed, aim_tol=8.0)
     return out
 
 
+def openness(pos, ball, team, m):
+    """Distancia del rival más cercano a la línea pelota → compañero m."""
+    seg = pos[m] - ball
+    L = float(np.linalg.norm(seg)) + 1e-9
+    u = seg / L
+    return min(float(np.linalg.norm((pos[q] - ball) - np.clip((pos[q] - ball) @ u, 0, L) * u))
+               for q in range(8) if TEAM[q] != team)
+
+
+def run_ready(env, snap, carrier, agent, decisions, seed):
+    """Modo R. Resultado del primer pase con el controlador del equipo con la pelota (receptor, otro_compañero,
+    rival, saque, gol); "rival", "saque" o "gol" sin kick_step si la jugada termina antes de que aparezca uno listo
+    (los pases propios del agente mantienen la posesión y no cortan), "nadie" si no pasa nada en el horizonte."""
+    from learn.x4_pass_macro import MacroState, pass_table
+    env.restore(snap)
+    rng = np.random.default_rng(seed)
+    n = env.N
+    rows = np.flatnonzero(carrier >= 0)
+    macro = MacroState(n)
+    out = {r: dict(result=None, kick_step=None, aim_err=None) for r in rows}
+    target = {}
+    kicker = {}
+    for s in range(decisions):
+        obs = obs_v3.observe(env)
+        acts = agent(obs.reshape(n * 8, -1), rng).reshape(n, 8)
+        table = pass_table(env, ready_only=True)
+        for r in rows:
+            o = out[r]
+            team = TEAM[carrier[r]]
+            if o["result"] is not None or r in kicker:
+                table[r] = -1
+                continue
+            table[r, TEAM != team] = -1
+            for p in np.flatnonzero(TEAM == team):
+                offered = np.flatnonzero(table[r, p] >= 0)
+                if len(offered) and macro.k[r, p] < 0:
+                    mates = [q for q in range(8) if q != p and TEAM[q] == team and env.active[r, q]]
+                    k = max(offered, key=lambda kk: openness(env.player_pos[r], env.pos[r, 0], team, mates[kk]))
+                    acts[r, p] = 18 + k
+                    target[r] = mates[k]
+        prim, _ = macro.apply(acts, table)
+        running = macro.running().copy()
+        ev = env.step(prim)
+        macro.after(ev["kicked"], ())
+        touched = ev["touched"] | ev["kicked"]
+        live = open_play(env)
+        for r in rows:
+            o = out[r]
+            if o["result"] is not None:
+                continue
+            team = TEAM[carrier[r]]
+            mk = np.flatnonzero(running[r] & ev["kicked"][r])
+            if r not in kicker and len(mk):
+                kicker[r] = (int(mk[0]), s)
+                o["kick_step"] = s
+                v = env.vel[r, 0]
+                aim = env.player_pos[r, target[r]] - env.pos[r, 0]
+                o["aim_err"] = math.degrees(math.acos(max(-1.0, min(1.0, float(v @ aim) / (
+                    np.linalg.norm(v) * np.linalg.norm(aim) + 1e-9)))))
+                continue
+            others = touched[r].copy()
+            if r in kicker:
+                p, ks = kicker[r]
+                if s - ks <= 2:
+                    others[p] = False
+            if not live[r] or ev["goal"][r] != 0:
+                o["result"] = "gol" if ev["goal"][r] != 0 else "saque"
+            elif others[TEAM != team].any():
+                o["result"] = "rival"
+            elif r in kicker:
+                p = kicker[r][0]
+                if others[target[r]]:
+                    o["result"] = "receptor"
+                elif others[(TEAM == team) & (np.arange(8) != p)].any():
+                    o["result"] = "otro_compañero"
+        if all(out[r]["result"] is not None for r in rows):
+            break
+    for r in rows:
+        if out[r]["result"] is None:
+            out[r]["result"] = "nadie"
+    return out
+
+
 def turn_angles(env, carrier, receiver):
     """Giro necesario al empezar (grados): entre jugador → pelota y pelota → receptor."""
     out = {}
@@ -224,8 +309,12 @@ def main(argv=None):
     rep = dict(agente=a.agent, partidos=int((carrier >= 0).sum()), delays=a.delays, aim_tol=a.aim_tol)
     turns = turn_angles(env, carrier, receiver)
     names = dict(A0="controlador_reactivo", A="controlador", B="controlador_receptor_busca", C="agente_solo")
+    names["R"] = "pase_listo"
     for mode in a.modes.split(","):
-        out = run(env, snap, carrier, receiver, agent, mode, a.decisions, a.seed + 1, a.aim_tol)
+        if mode == "R":
+            out = run_ready(env, snap, carrier, agent, a.decisions, a.seed + 1)
+        else:
+            out = run(env, snap, carrier, receiver, agent, mode, a.decisions, a.seed + 1, a.aim_tol)
         rep[names[mode]] = summarize(out)
         rep[names[mode]]["por_giro"] = by_turn(out, turns)
         print(names[mode], json.dumps(rep[names[mode]], ensure_ascii=False), flush=True)
