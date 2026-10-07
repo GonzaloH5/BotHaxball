@@ -445,7 +445,9 @@ def parse_args(argv=None):
     ap.add_argument("--human-starts", type=float, default=0.4)
     ap.add_argument("--human-restart-frac", type=float, default=0.3)
     ap.add_argument("--pool-frac", type=float, default=0.2)
-    ap.add_argument("--pool", default="", help="checkpoints extra del pool, separados por coma (la BC siempre está)")
+    ap.add_argument("--pool", default="", help="checkpoints extra del pool, separados por coma (la BC está salvo --no-pool-bc)")
+    ap.add_argument("--pool-bc", action=argparse.BooleanOptionalAction, default=True,
+                    help="la BC como rival del pool (sin ella, p. ej. un explotador que juega sólo contra su objetivo)")
     ap.add_argument("--snapshot-every", type=int, default=100, help="actualizaciones entre snapshots al pool")
     ap.add_argument("--delays", default="6:0.05,7:0.1,8:0.15,9:0.2,10:0.2,11:0.15,14:0.15",
                     help="retardo D en ticks:peso. En sala se midió un lag (frame aplicado − observado) de 9–12 ticks "
@@ -534,7 +536,11 @@ class Trainer:
         self.opt_pi = torch.optim.Adam(self.policy.parameters(), lr=a.lr, eps=1e-5)
         self.opt_v = torch.optim.Adam(self.critic.parameters(), lr=a.critic_lr, eps=1e-5)
         self.vnorm = RunningNorm()
-        self.pool = [("bc", self.bc)] + [(Path(p).stem, load_policy(p, self.dev)) for p in a.pool.split(",") if p]
+        self.pool = (([("bc", self.bc)] if a.pool_bc else [])
+                     + [(Path(p).stem, load_policy(p, self.dev)) for p in a.pool.split(",") if p])
+        if not self.pool and a.pool_frac > 0:
+            raise SystemExit("--pool-frac > 0 sin rivales: --no-pool-bc necesita --pool")
+        self.bc_slot = 0 if a.pool_bc else -1       # lugar de la BC en el pool (el crítico distingue BC de snapshot)
         self.pool_wins = np.full(len(self.pool), 0.5)   # tasa de victoria del aprendiz contra cada miembro
         bank = None
         if a.bank_recordings and a.human_starts > 0:
@@ -706,8 +712,13 @@ class Trainer:
         for name in ck.get("pool_names", []):
             if (self.out / f"{name}.pt").exists():
                 self.pool.append((name, load_policy(self.out / f"{name}.pt", self.dev)))
-        wins = list(ck.get("pool_wins", []))
-        self.pool_wins = np.array(wins + [0.5] * (len(self.pool) - len(wins)))[:len(self.pool)]
+        by_name = ck.get("pool_wins_by_name")
+        if by_name:
+            # por nombre: el pool fijo puede cambiar entre lanzamientos (la liga agrega explotadores con --pool)
+            self.pool_wins = np.array([float(by_name.get(n, 0.5)) for n, _ in self.pool])
+        else:
+            wins = list(ck.get("pool_wins", []))
+            self.pool_wins = np.array(wins + [0.5] * (len(self.pool) - len(wins)))[:len(self.pool)]
         for ar in self.arenas:
             ar.pool_size = len(self.pool)
         if self.style is not None and ck.get("style"):
@@ -772,7 +783,7 @@ class Trainer:
         lam = np.broadcast_to(self.lam_eff(arena)[:, None, None], (arena.N, 8, 1)).astype(np.float32)
         # tipo de rival del partido: self-play, la BC o un snapshot (el valor depende de contra quién se juega)
         kind = np.zeros((arena.N, 3), np.float32)
-        kind[np.arange(arena.N), np.where(arena.opp < 0, 0, np.where(arena.opp == 0, 1, 2))] = 1.0
+        kind[np.arange(arena.N), np.where(arena.opp < 0, 0, np.where(arena.opp == self.bc_slot, 1, 2))] = 1.0
         kind = np.broadcast_to(kind[:, None, :], (arena.N, 8, 3))
         if phi is None:
             phi = self.epv.phi_env(env) if self.epv is not None else np.zeros(arena.N)
@@ -1128,6 +1139,7 @@ class Trainer:
                         obs_version=obs_v3.OBS_VERSION, update=int(self.update), decisions=int(self.decisions),
                         vnorm=[float(self.vnorm.mean), float(self.vnorm.sq), float(self.vnorm.w)],
                         pool_wins=[float(x) for x in self.pool_wins],
+                        pool_wins_by_name={n: float(w) for (n, _), w in zip(self.pool, self.pool_wins)},
                         opt_pi=self.opt_pi.state_dict(), opt_v=self.opt_v.state_dict(),
                         best_score=float(self.best_score), drift_count=int(self.drift_count),
                         shaping=float(self.a.shaping), retire_count=int(self.retire_count),

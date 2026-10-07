@@ -73,7 +73,8 @@ class Queue:
         self.root = Path(a.root)
         self.root.mkdir(parents=True, exist_ok=True)
         self.state_path = self.root / "queue_state.json"
-        self.state = json.loads(self.state_path.read_text()) if self.state_path.exists() else dict(done={}, log=[])
+        self.state = (json.loads(self.state_path.read_text(encoding="utf-8")) if self.state_path.exists()
+                      else dict(done={}, log=[]))
         self.arms = parse_arms(getattr(a, "ab_arms", DEFAULT_ARMS))
         self.default_arm = getattr(a, "ab_default", "epv")
         if self.default_arm not in self.arms:
@@ -87,7 +88,7 @@ class Queue:
 
     def save(self):
         tmp = self.state_path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(self.state, indent=1, ensure_ascii=False))
+        tmp.write_text(json.dumps(self.state, indent=1, ensure_ascii=False), encoding="utf-8")
         tmp.replace(self.state_path)
 
     def run(self, name, cmd, retries=5, ok_codes=(0,)):
