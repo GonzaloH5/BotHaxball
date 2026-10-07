@@ -266,6 +266,30 @@ Ninguno de estos estaba a la vista con "el comando corre". Cada uno tiene test o
   - La corrida se detuvo y quedó archivada (`runs/x4_cola_v1_bug_lateral` en el pod anterior); la cola se relanzó desde
     cero en un pod con RTX 3090 y 24 hilos, con 6000 actualizaciones (antes 3000) y TF32 en la GPU (`--tf32`).
 
+**Desvíos durante la corrida del 2026-10-07** (pod con RTX A4000 y Ryzen 5950X, cuota de 10 CPUs: ~18k decisiones/s, el
+doble que el pod de la 3090; el A/B y el principal corrieron enteros acá, con el código 1770ddc)
+- **El shaping se retiró solo en la actualización 1100.** El entrenador lo apaga para siempre cuando el puntaje contra la
+  BC es ≥ 0,75 en dos evaluaciones seguidas (`--shaping-retire 0.75`, `--retire-patience 2`, valores por defecto). Esto
+  no estaba en este documento ni en la cola. Además, `docs/PLAN.md` dice "cuando le gana a la BC el 75% de los
+  partidos", pero el código usa el puntaje (empate = 0,5): al retirarse ganaba el 53% (34 ganados, 29 empatados y 1
+  perdido de 64, en la 1050 y en la 1100).
+  - Efecto, desde la actualización 1101 justa: los laterales mal ejecutados en el entrenamiento pasaron de 0,72/min
+    (700–1100) a 1,3–1,5/min (1250–1480), el nivel de la actualización ~100. El crítico se descolocó en la misma
+    actualización (`v_loss` 0,11 → 0,04, varianza explicada 0,86 → 0,81). Mecanismo: las franjas son de suma cero, así
+    que perder la pelota costaba enseguida; sin ellas el lateral mal ejecutado no cuesta nada salvo un gol lejano.
+  - En las evaluaciones el 80% de esos laterales termina con una patada a lo largo de la línea, pateada desde el lado de la
+    cancha (86%); la pelota se corre ~265 px por fuera. Los humanos sacan mal el 8% de sus laterales; el agente, 31% en
+    1150–1250 (21% en 500–600). En juego abierto su equipo manda la pelota afuera por la banda 5,8 veces por minuto de
+    juego abierto, contra 3,4 de los humanos.
+  - La fuerza siguió subiendo sin el shaping (puntaje contra la BC 0,70–0,72 en 1150–1250 y 0,76–0,81 en 1300–1450).
+- **Opción C, decidida por el usuario (actualización 1480, 03:24 UTC):** el shaping sigue retirado y el lateral mal
+  ejecutado se penaliza igual que las esperas (−0,1 de suma cero, `--forfeit-reasons 1,2,3,4`). Se pasa con
+  `--rl-extra` de la cola, así que vale también para la recuperación y la extensión; queda en `run_meta.jsonl`. La
+  corrida reanudó desde `last.pt` de la 1480 sin perder actualizaciones. `best.pt` (1050) y `best_pase.pt` (600) son de
+  antes del retiro.
+- **Operación:** lanzada dentro de tmux, la cola murió por SIGHUP cuando se cerró la sesión. Ahora se lanza con
+  `setsid nohup /workspace/cola.sh` y la sesión `cola` de tmux sólo muestra el log.
+
 ## 6. Riesgos que siguen
 
 Ordenados por cuánto pueden cambiar la conclusión de la corrida. Ninguno impide lanzar; cada uno dice qué mirar.
@@ -300,8 +324,8 @@ Ordenados por cuánto pueden cambiar la conclusión de la corrida. Ninguno impid
 8. **Fidelidad que sigue supuesta.** El plazo del lateral de Sanguchito (599 ticks) no se verificó: ningún lateral grabado
    pasó de 301 ticks. Los arranques desde estados humanos empiezan con las acciones pendientes en "quieto" durante hasta
    14 ticks (menos del 0,1% de las decisiones).
-9. **Operación.** Un reinicio del pod mata la sesión de tmux: hay que relanzar a mano el mismo comando, y la cola sigue
-   donde estaba. La imitación no se reentrena en paralelo con la cola, porque compite por la GPU y por los hilos que midió
+9. **Operación.** Un reinicio del pod corta la cola: hay que relanzar a mano el mismo comando (`/workspace/cola.sh`, con
+   `setsid nohup`, no dentro de tmux), y la cola sigue donde estaba. La imitación no se reentrena en paralelo con la cola, porque compite por la GPU y por los hilos que midió
    el preflight. La duración total no está acotada: el preflight estima 3000 actualizaciones, la corrida principal tiene
    6000 y la extensión (hasta 9000) o la recuperación la alargan.
 
