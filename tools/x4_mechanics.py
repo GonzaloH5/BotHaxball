@@ -15,6 +15,11 @@ sí. La pregunta es si el agente las usa y con qué frecuencia y resultado lo ha
   más lejos de la pelota y detrás suyo (el portador entre el rival y la pelota). Tramos de muestreos seguidos; resultado
   en 1,5 s desde que termina: la toca un compañero (apoyo), el mismo portador sigue y patea, o la toca un rival.
 
+* **Saques**: cuánto vale un saque (lateral, córner, saque de arco) para el que lo tiene: si lo cede (lo ejecuta mal o
+  se le vence el tiempo y pasa al rival), si el primer toque después de ejecutarlo es propio y si conserva la pelota 3 s
+  (ningún toque rival ni saque en contra). Si en self-play los saques valen menos que entre humanos, sacar la pelota por
+  la línea le cuesta menos al agente que lo que le costaría contra un humano.
+
 Todo se cuenta por minuto de juego abierto, en el formato `Episode` de tools/x4_metrics (muestreo cada 3 ticks), igual
 para grabaciones (`episodes_from_ticks`) y simulación (`EpisodeRecorder` vía learn.x4_eval.play).
 
@@ -67,7 +72,7 @@ def detect(ep):
             v = bv[i + 2]
             sp = float(np.hypot(*v))
             g = (goal[i:i + 3 * SAMPLES_PER_S] == (1 if team == 0 else -1)).any()
-            rifles.append(dict(speed=sp, horizontal=abs(float(v[0])) / (sp + 1e-9),
+            rifles.append(dict(i=i, team=team, speed=sp, horizontal=abs(float(v[0])) / (sp + 1e-9),
                                forward=bool(v[0] * sign(team) > 0), goal=bool(g)))
             used[i:i + 2] = True
     # ---- patadas simples (referencia) y usar
@@ -115,7 +120,7 @@ def detect(ep):
             else:
                 continue
             break
-        usos.append(dict(result=res, rival_kick_favor=rival_kick_favor))
+        usos.append(dict(i=i, team=int(team), result=res, rival_kick_favor=rival_kick_favor))
     # ---- cuerpear
     i = 0
     while i < T:
@@ -151,10 +156,46 @@ def detect(ep):
             else:
                 continue
             break
-        cuerpeos.append(dict(samples=i - start + 1, result=res))
+        cuerpeos.append(dict(i=start, team=int(TEAMS[s]), samples=i - start + 1, result=res))
+        i += 1
+    # ---- saques: tramos seguidos sin juego abierto con saque del script (sin el saque inicial)
+    saques = []
+    rk = ep.restart_kind
+    i = 0
+    while i < T:
+        if open_[i] or rk[i] == 0 or rteam[i] < 0 or ep.kickoff[i]:
+            i += 1
+            continue
+        start, kind, t0 = i, int(rk[i]), int(rteam[i])
+        while i + 1 < T and not open_[i + 1] and rk[i + 1] > 0 and not ep.kickoff[i + 1]:
+            i += 1
+        t1 = int(rteam[i])
+        j = i + 1
+        first, kept = None, j < T
+        for k in range(j, min(T, j + 3 * SAMPLES_PER_S)):
+            o = owner[k]
+            if goal[k] != 0 or ep.kickoff[k]:
+                break
+            if not open_[k] and rk[k] > 0:
+                if rteam[k] != t1:
+                    kept = False
+                break
+            if o >= 0:
+                if first is None:
+                    first = int(TEAMS[o])
+                if TEAMS[o] != t1:
+                    kept = False
+                    break
+            if o == -2:
+                kept = False
+                break
+        if j + 3 * SAMPLES_PER_S > T:
+            i += 1
+            continue
+        saques.append(dict(i=start, team=t0, kind=kind, ceded=t1 != t0, first_own=first == t1, kept_3s=bool(kept)))
         i += 1
     return dict(minutes=float(open_.sum()) / SAMPLES_PER_S / 60.0, rifles=rifles, usos=usos, cuerpeos=cuerpeos,
-                simples=simples)
+                simples=simples, saques=saques)
 
 
 def summarize(dets):
@@ -186,6 +227,14 @@ def summarize(dets):
         out["cuerpear"]["duracion_s_p50"] = round(float(np.median([c["samples"] for c in cue])) / SAMPLES_PER_S, 2)
         out["cuerpear"]["resultados"] = {k: round(res.count(k) / len(res), 3) for k in sorted(set(res))}
         out["cuerpear"]["conserva"] = round(sum(r in ("apoyo", "patea", "saque_a_favor") for r in res) / len(res), 3)
+    sq = [s for x in dets for s in x["saques"]]
+    out["saques"] = {}
+    for kind, name in ((1, "lateral"), (2, "corner"), (3, "saque_de_arco")):
+        rows = [s for s in sq if s["kind"] == kind]
+        if rows:
+            out["saques"][name] = dict(por_min=round(len(rows) / max(mins, 1e-9), 3), n=len(rows),
+                                       cede=frac(rows, "ceded", True), primer_toque_propio=frac(rows, "first_own", True),
+                                       conserva_3s=frac(rows, "kept_3s", True))
     return out
 
 
@@ -200,11 +249,45 @@ def human_episodes(split="test", limit=80, map_name="sanguchito_rs_x4"):
         path = ROOT / "data" / "x4_ticks" / f"{Path(name).stem}.npz"
         if not path.exists():
             continue
-        eps += XM.episodes_from_ticks(str(path), map_id=MAP_IDS[map_name])
+        for ep in XM.episodes_from_ticks(str(path), map_id=MAP_IDS[map_name]):
+            ep.meta.update(recording=name, path=str(path))
+            eps.append(ep)
         n += 1
         if n >= limit:
             break
     return eps
+
+
+def mmss(sec):
+    sec = max(0, int(round(sec)))
+    return f"{sec // 60}:{sec % 60:02d}"
+
+
+def examples(eps, dets, per_kind, seed=0):
+    """Momentos de cada mecánica en las repeticiones (.hbr2) para validar la detección a ojo."""
+    rng = np.random.default_rng(seed)
+    cache = {}
+    out = {}
+    for kind in ("rifles", "usos", "cuerpeos"):
+        items = [(ep, ev) for ep, d in zip(eps, dets) for ev in d[kind]]
+        pick = rng.permutation(len(items))[:per_kind] if len(items) > per_kind else range(len(items))
+        rows = []
+        for k in sorted(pick, key=lambda k: (items[k][0].meta["recording"], items[k][1]["i"])):
+            ep, ev = items[k]
+            path = ep.meta["path"]
+            if path not in cache:
+                d = np.load(path)
+                cache[path] = (d["frame"], d["clock"], d["score"])
+            frame, clock, score = cache[path]
+            f0 = ep.meta["frames"][0]
+            f = f0 + (-f0) % ep.stride + ev["i"] * ep.stride
+            j = min(int(np.searchsorted(frame, f)), len(frame) - 1)
+            row = dict(repeticion=ep.meta["recording"], tiempo_repeticion=mmss(f / 60.0), reloj=mmss(float(clock[j])),
+                       marcador=f"{int(score[j, 0])}-{int(score[j, 1])}", equipo="rojo" if ev["team"] == 0 else "azul")
+            row.update({k: v for k, v in ev.items() if k not in ("i", "team")})
+            rows.append(row)
+        out[kind] = rows
+    return out
 
 
 def selfplay_episodes(spec, matches, minutes, device, seed):
@@ -223,10 +306,15 @@ def main(argv=None):
     ap.add_argument("--matches", type=int, default=48)
     ap.add_argument("--minutes", type=float, default=3.0)
     ap.add_argument("--device", default="cpu")
+    ap.add_argument("--examples", type=int, default=0, help="momentos humanos por mecánica para validar a ojo")
     ap.add_argument("--out", default="")
     a = ap.parse_args(argv)
     rep = {}
-    rep["humanos"] = summarize([detect(ep) for ep in human_episodes(limit=a.recordings)])
+    heps = human_episodes(limit=a.recordings)
+    hdets = [detect(ep) for ep in heps]
+    rep["humanos"] = summarize(hdets)
+    if a.examples:
+        rep["ejemplos_humanos"] = examples(heps, hdets, a.examples)
     print("humanos", json.dumps(rep["humanos"], ensure_ascii=False), flush=True)
     for i, spec in enumerate([a.bc] + a.agent):
         name = "bc" if i == 0 else Path(spec).parent.name + "/" + Path(spec).stem
