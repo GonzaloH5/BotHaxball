@@ -120,3 +120,22 @@ python -m learn.x4_queue --root runs/x4_estilo --device cuda --ab-updates 600 --
 ```
 
 Sin extensión: la corrida principal termina en la 3000 y pasa a la certificación.
+
+## 7. Resultado (2026-10-07)
+
+- **A/B (600 actualizaciones):** ganó el **control**. Media de las últimas 3 evaluaciones: control 0,733, estilo 0,709,
+  estilo fuerte 0,697. Ninguno quedó afuera por los chequeos de engaño. La recompensa de estilo no mejoró el pase: el
+  puntaje de estilo del agente quedó plano (~0,59 contra ~0,83 de humanos que el discriminador no vio). Mantuvo el juego
+  más parecido al humano en las métricas generales (W1 0,38–0,41 contra 0,44–0,48 del control), que no era el objetivo.
+- **Principal (control, hasta la 3000, sin extensión: pendiente −0,001):** el índice subió al principio (0,76 en
+  50–600) y volvió a ~0,72 desde la 1250. Fuerza contra la BC 0,82 → 0,86. Pases por posesión ~0,20, pérdida bajo
+  presión ~0,65, salidas de presión ~1 por minuto: sin cambios. Duelos 1v1 al final: pasa 10% y pierde 64% (antes 13%
+  y 61%; humanos 22% y 49%). Sin deriva.
+- **Certificación:** `best.pt` (2000) índice 0,776 y 0,867 contra la BC (97 ganados, 28 empatados, 3 perdidos);
+  `best_pase.pt` índice 0,765 y 0,867. Ninguno aprueba. Veredicto "no_competitivo".
+- **Export:** la cola lo marcó como fallido por una diferencia de logits de 1,2e-4 (con logits de hasta 355; en
+  probabilidades, 1,8e-6). El chequeo ahora compara probabilidades y logits relativos (`export/to_onnx_x4.py`).
+  Modelo: `deploy/rs4z/x4_rl_c2000.onnx`.
+- **Conclusión:** con imitación + ancla + RL contra sí mismo, ni el bonus de pase, ni las franjas, ni el estilo humano
+  produjeron juego colectivo; mejoran la fuerza contra la BC y los detalles (laterales, red). Lo siguiente es medir
+  contra humanos en la sala (E4) y, si es explotable, el explotador barato de `docs/PLAN.md` §2 (E3).
