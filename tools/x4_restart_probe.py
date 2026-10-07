@@ -77,8 +77,8 @@ def run(env, snap, taker, receiver, team, agent, mode, decisions, seed):
     rng = np.random.default_rng(seed)
     n = env.N
     rows = np.flatnonzero(taker >= 0)
-    macros = {r: PassMacro(receiver[r], ball_r=float(env.radius[r, 0]), timeout=10 ** 6) for r in rows} \
-        if mode == "M" else {}
+    macros = {r: PassMacro(receiver[r], ball_r=float(env.radius[r, 0]), timeout=10 ** 6, no_push=True)
+              for r in rows} if mode == "M" else {}
     out = {r: dict(result=None, first=None, released_at=None) for r in rows}
     for s in range(decisions):
         obs = obs_v3.observe(env)
@@ -98,6 +98,8 @@ def run(env, snap, taker, receiver, team, agent, mode, decisions, seed):
             if o["result"] is not None:
                 continue
             p, tm = taker[r], team[r]
+            if ev["forfeit"][r] >= 0:
+                o["why"] = int(ev["forfeit_why"][r])
             if mode == "M" and not macros[r].kicked:
                 macros[r].saw_kick(bool(ev["kicked"][r, p]))
             if o["released_at"] is None:
@@ -136,7 +138,9 @@ def summarize(out):
     res = [o["result"] for o in out.values()]
     n = len(res)
     rel = [o for o in out.values() if o["released_at"] is not None]
+    why = [o.get("why") for o in out.values() if o["result"] == "cede"]
     return dict(n=n, resultados={k: round(res.count(k) / n, 3) for k in sorted(set(res))},
+                cede_por={str(k): why.count(k) for k in sorted(set(why), key=str)},
                 cede=round(res.count("cede") / n, 3),
                 primer_toque_propio=round(sum(o["first"] == "propio" for o in out.values()) / n, 3),
                 conserva_3s=round(res.count("conserva_3s") / n, 3),
