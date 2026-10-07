@@ -130,3 +130,20 @@ def test_trainer_with_pass_macro_runs_and_resumes(tmp_path):
     me = ModelPolicy(t2.policy, "cpu", "aprendiz")
     r = play(me, me, matches=2, minutes=0.2, record=0)
     assert r["goals"].shape == (2, 2)
+
+
+def test_dev_metrics_with_pass_head(tmp_path):
+    from pathlib import Path
+
+    import pytest
+    import torch
+    from env.rs4z import obs_v3
+    from learn.x4_ppo import Trainer, parse_args
+    bc = Path(__file__).resolve().parents[2] / "runs" / "x4_bc" / "final_sangu_rsone" / "best.pt"
+    if not bc.exists():
+        pytest.skip("falta el checkpoint de la imitación")
+    t = Trainer(parse_args(["--bc", str(bc), "--out", str(tmp_path), "--device", "cpu", "--envs", "2", "--rollout", "2",
+                            "--bank-recordings", "0", "--eval-every", "0", "--pass-macro"]))
+    t.dev_set = (torch.randn(16, obs_v3.OBS_DIM), torch.randint(0, 18, (16,)))
+    m = t.dev_metrics()
+    assert np.isfinite(m["kl_bc"]) and m["kl_bc"] < 1e-4      # recién inicializada: la cabeza de pase no cambia las teclas

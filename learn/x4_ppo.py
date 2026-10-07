@@ -1149,7 +1149,8 @@ class Trainer:
         en estados humanos" de "visita otros estados" (el KL del log se mide sobre los estados que visita)."""
         obs, lab = self.dev_set
         self.policy.eval()
-        lp = F.log_softmax(self.policy(obs), -1)
+        # sin pases ofrecidos la política con macros es la de 18 teclas (las 3 de pase quedan en −1e9)
+        lp = F.log_softmax(self.policy(obs)[:, :18].float(), -1)
         lb = F.log_softmax(self.bc(obs), -1)
         nll = float(-lp.gather(1, lab[:, None]).mean())
         nll_bc = float(-lb.gather(1, lab[:, None]).mean())

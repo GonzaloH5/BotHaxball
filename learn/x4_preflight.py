@@ -242,7 +242,7 @@ def scale_test(tr, a, check):
                 rng.integers(0, 18, (T, N, 8)), np.full((T, N, 8), u, np.float32),
                 np.full((T, N, 8, 18), u, np.float32), np.zeros((T, N, 8), np.float32),
                 rng.standard_normal((T, N, 8)).astype(np.float32) * 0.01, rng.random((T, N)) < 0.001,
-                np.ones((T, N, 8), bool), np.full((T, N), 0.2, np.float32), np.zeros((N, 8), np.float32))]
+                np.ones((T, N, 8), bool), np.full((T, N), 0.2, np.float32), np.zeros((N, 8), np.float32), None)]
         t0 = time.time()
         info = tr.learn(buf)
         dt = time.time() - t0
