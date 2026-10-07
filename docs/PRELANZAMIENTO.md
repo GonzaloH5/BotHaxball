@@ -287,6 +287,14 @@ doble que el pod de la 3090; el A/B y el principal corrieron enteros acá, con e
   `--rl-extra` de la cola, así que vale también para la recuperación y la extensión; queda en `run_meta.jsonl`. La
   corrida reanudó desde `last.pt` de la 1480 sin perder actualizaciones. `best.pt` (1050) y `best_pase.pt` (600) son de
   antes del retiro.
+- **Red sólida en todos los mapas, decidido por el usuario (2026-10-07).** En el mapa de Sanguchito la red sólo frena la
+  pelota (`cMask: ["ball"]`), y los humanos la cruzan 0,05 veces por minuto; en RS ONE y 2K23 la red frena a los
+  jugadores y los humanos no la cruzan nunca (691 min). El agente aprendió el atajo: lo usó 0,23–0,30 veces por minuto
+  (seis veces más que los humanos) y pasaba 4 veces más tiempo metido dentro del arco. En las salas con red sólida eso lo
+  deja trabado. Ahora `RS4ZEnv` usa red sólida por defecto (`solid_net=True`, `sim/stadium.load_stadium`): en Sanguchito
+  cambian los 6 segmentos de la red y sus 4 esquinas de atrás, sólo para los jugadores (la pelota rebota igual). En RS ONE y
+  2K23 no cambia nada. La conformidad contra grabaciones reales sigue usando el mapa de la sala (`solid_net=False`).
+  Tests: `test_net_stops_players_like_in_the_other_rooms`, `test_solid_net_only_changes_nets_that_let_players_through`.
 - **Operación:** lanzada dentro de tmux, la cola murió por SIGHUP cuando se cerró la sesión. Ahora se lanza con
   `setsid nohup /workspace/cola.sh` y la sesión `cola` de tmux sólo muestra el log.
 

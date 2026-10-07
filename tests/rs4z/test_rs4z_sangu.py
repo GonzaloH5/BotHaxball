@@ -54,6 +54,47 @@ def test_lateral_released_behind_the_end_line_is_an_end_line_out():
     assert starts == [(K.GOAL_KICK, 0)]
 
 
+def _into_the_net(vel, solid_net):
+    """Jugador rojo dentro de su arco (izquierda), lanzado contra la red. Devuelve su recorrido."""
+    env = RS4ZEnv(1, contract="v2", map=MAP, seed=0, frame_skip=1, deadline=0, kickoff_deadline=0, max_delay=0,
+                  solid_net=solid_net)
+    players = list(FAR)
+    players[0] = (-1180.0, 0.0)
+    pv = np.zeros((8, 2))
+    pv[0] = vel
+    env.place(0, ball_pos=(0.0, 0.0), ball_vel=(0.0, 0.0), player_pos=np.asarray(players, dtype=float),
+              player_vel=pv, last_touch=-1)
+    path = []
+    for _ in range(60):
+        env.step(_act())
+        path.append(env.player_pos[0, 0].copy())
+    return np.array(path)
+
+
+def test_net_stops_players_like_in_the_other_rooms():
+    """En la sala de Sanguchito la red sólo frena la pelota; el entrenamiento la usa sólida, como RS ONE y 2K23, para
+    que el agente no aprenda a cruzarla (en las salas con red sólida queda trabado contra ella)."""
+    back = _into_the_net((-6.0, 0.0), solid_net=True)
+    assert back[:, 0].min() > -1210.09 + 15 - 2               # el fondo de la red (x = −1210) lo frena
+    side = _into_the_net((0.0, -6.0), solid_net=True)
+    assert side[:, 1].min() > -123.95 + 15 - 2                # el costado de la red también
+    assert _into_the_net((-6.0, 0.0), solid_net=False)[-1, 0] < -1225     # con el mapa de la sala la cruza
+    assert _into_the_net((0.0, -6.0), solid_net=False)[-1, 1] < -130
+
+
+def test_solid_net_only_changes_nets_that_let_players_through():
+    from sim.stadium import BLUE, RED, load_stadium
+    for name in ("rs_one", "haxarg_2k23"):                   # ya tienen la red sólida
+        a, b = load_stadium(name), load_stadium(name, solid_net=True)
+        assert (a.s_mask == b.s_mask).all() and (a.v_mask == b.v_mask).all()
+    a, b = load_stadium(MAP), load_stadium(MAP, solid_net=True)
+    changed = np.flatnonzero(a.s_mask != b.s_mask)
+    assert len(changed) == 6                                  # fondo y costados de los dos arcos
+    assert ((b.s_mask[changed] & (RED | BLUE)) == (RED | BLUE)).all()
+    assert (((a.s_mask ^ b.s_mask) & ~(RED | BLUE)) == 0).all()          # para la pelota no cambia nada
+    assert (np.flatnonzero(a.v_mask != b.v_mask).size == 4)              # las cuatro esquinas de atrás
+
+
 def test_map_adds_sanguchito_script_to_contract():
     env = _env()
     assert env.flags & C.FIX_SANGU and env.flags & C.FIX_LATERAL

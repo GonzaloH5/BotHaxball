@@ -139,7 +139,31 @@ def _arc(p0: np.ndarray, p1: np.ndarray, curve_deg: float, bias: float):
     return p0, p1, (1 if a <= math.pi + 1e-9 else 2), center, radius, t0, t1, bias
 
 
-def load_stadium(name_or_path: str = "classic") -> Stadium:
+def _net_segments(goals: list, segs: list) -> list[int]:
+    """Índices de los segmentos de la red de cada arco que sólo frenan la pelota: detrás de la línea de gol, dentro de
+    la boca del arco (con 5 px de margen) y con al menos un extremo 20 px más allá de la línea. Las prolongaciones en
+    diagonal de RS ONE (hasta y = ±158) y la boca del arco quedan afuera."""
+    out = []
+    for g in goals:
+        (x0, y0), (x1, y1) = g["p0"], g["p1"]
+        if x0 != x1:                       # sólo arcos con la línea de gol vertical
+            continue
+        gx, gh = abs(float(x0)), max(abs(float(y0)), abs(float(y1)))
+        side = math.copysign(1.0, float(x0))
+        for i, (arc, _, _, mask, _) in enumerate(segs):
+            xs = np.array([arc[0][0], arc[1][0]]) * side
+            ys = np.abs([arc[0][1], arc[1][1]])
+            if (mask & BALL and not mask & (RED | BLUE) and xs.min() >= gx - 15 and xs.max() >= gx + 20
+                    and ys.max() <= gh + 5):
+                out.append(i)
+    return out
+
+
+def load_stadium(name_or_path: str = "classic", solid_net: bool = False) -> Stadium:
+    """`solid_net`: la red de los arcos frena también a los jugadores, como en RS ONE y HaXArg 2K23. En Sanguchito la
+    red sólo frena la pelota y los humanos a veces la cruzan (0,05 veces por minuto); el agente aprendió a usar ese
+    atajo seis veces más, y en las salas con red sólida queda trabado contra ella. Por pedido del usuario (2026-10-07)
+    el entrenamiento usa red sólida en todos los mapas; la conformidad con grabaciones reales usa el mapa tal cual."""
     path = Path(name_or_path)
     if not path.exists():
         path = STADIUM_DIR / f"{name_or_path}.hbs"
@@ -158,6 +182,7 @@ def load_stadium(name_or_path: str = "classic") -> Stadium:
     v_mask = np.array([_flags(v.get("cMask"), ALL) for v in verts_raw], dtype=np.int64)
 
     segs = []
+    seg_v = []
     for s in (resolve(s) for s in data.get("segments", [])):
         p0 = v_pos[s["v0"]].copy()
         p1 = v_pos[s["v1"]].copy()
@@ -176,6 +201,18 @@ def load_stadium(name_or_path: str = "classic") -> Stadium:
             arc = arc[:7] + (-arc[7],)
         segs.append((arc, s.get("bCoef", 1.0), _flags(s.get("cGroup"), WALL), _flags(s.get("cMask"), ALL),
                      bool(s.get("vis", True))))
+        seg_v.append((s["v0"], s["v1"]))
+
+    if solid_net:
+        for i in _net_segments(data.get("goals", []), segs):
+            arc, bcoef, group, mask, vis = segs[i]
+            segs[i] = (arc, bcoef, group, mask | RED | BLUE, vis)
+            # los extremos de atrás también (si no, un jugador se escurre por la esquina de la red); los de la línea de
+            # gol son los postes, que ya frenan a los jugadores
+            back = max(abs(arc[0][0]), abs(arc[1][0])) - 1
+            for v in seg_v[i]:
+                if v_mask[v] & BALL and abs(v_pos[v, 0]) >= back:
+                    v_mask[v] |= RED | BLUE
 
     def col(i, dtype=np.float64, shape=None):
         arr = np.array([x[0][i] for x in segs], dtype=dtype)

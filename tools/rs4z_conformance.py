@@ -120,8 +120,9 @@ class Replayer:
 
     def __init__(self, tick0, map_name="rs_one"):
         from env.rs4z.core import RS4ZEnv
+        # el mapa tal como es en la sala (en Sanguchito la red no frena a los jugadores); sorteos reproducibles
         self.env = RS4ZEnv(1, contract="v2", frame_skip=1, deadline=0, kickoff_deadline=0, max_delay=0, map=map_name,
-                           seed=0)  # sorteos (último toque desconocido) reproducibles
+                           seed=0, solid_net=False)
         self.order = [p[0] for p in sorted(tick0["players"], key=lambda p: (p[1], p[0]))]
 
     def by_slot(self, t):

@@ -230,7 +230,8 @@ def audit_file(path, map_name):
     ticks = [t for t in ticks if in_spans(t["frame"], spans)]
     by_frame = {t["frame"]: t for t in ticks}
     phase = mass_phases(ticks, events)
-    env = RS4ZEnv(1, contract="v2", frame_skip=1, deadline=0, kickoff_deadline=0, max_delay=0, map=map_name, seed=0)
+    env = RS4ZEnv(1, contract="v2", frame_skip=1, deadline=0, kickoff_deadline=0, max_delay=0, map=map_name, seed=0,
+                  solid_net=False)       # el mapa tal como es en la sala
     rows = []
     restarts = real_restarts(ticks, events)
     reassigned = {r["end"][1] for r in restarts if r["end"] and r["end"][0] == "reassigned"}
