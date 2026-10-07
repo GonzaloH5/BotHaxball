@@ -237,14 +237,17 @@ class PassMacro:
                 rel = bb - np.array([x, y])
                 dist = float(np.linalg.norm(rel))
                 cos = float(rel @ d) / max(dist, 1e-9)
-                if cos < 0.3 and dist < contact + 40.0:
-                    # rodeo: al costado y bien atrás, para que al llegar ya esté del lado de la patada (coseno ≈ 0,64 >
-                    # 0,3). Con −d·10 el punto seguía del lado equivocado y el jugador se quedaba quieto ahí
-                    point = bb + side * (contact + 12.0) - d * (contact + 6.0)
+                behind = bb - d * (contact + 2.0)
+                if cos < 0.3:
+                    # del lado equivocado: el camino pasa por un punto al costado y bien atrás (coseno ≈ 0,64 > 0,3 al
+                    # llegar) y sigue hasta detrás de la pelota. El costo es el largo de ese camino: continuo al cruzar
+                    # al lado bueno (con la distancia al punto de rodeo solo, el jugador se quedaba quieto cerca de él)
+                    way = bb + side * (contact + 12.0) - d * (contact + 6.0)
+                    path = math.hypot(way[0] - x, way[1] - y) + math.hypot(*(behind - way))
                 else:
-                    point = bb - d * (contact + 2.0)
+                    path = math.hypot(behind[0] - x, behind[1] - y)
                 w = self.push_cost if self.push_cost is not None else 15.0 * (1.0 if cos < self.align else 0.2)
-                cost = math.hypot(point[0] - x, point[1] - y) + w * bump
+                cost = path + w * bump
                 if cost < best_cost:
                     best_move, best_cost = m, cost
         if best_kick >= 0:
@@ -333,13 +336,15 @@ def _plan_nb(px, py, vx0, vy0, bx0, by0, bvx0, bvy0, tx, ty, contact, align, aim
             rx, ry = bx - x, by - y
             dist = math.sqrt(rx * rx + ry * ry)
             cos = (rx * ddx + ry * ddy) / max(dist, 1e-9)
-            if cos < 0.3 and dist < contact + 40.0:
+            hx = bx - ddx * (contact + 2.0)
+            hy = by - ddy * (contact + 2.0)
+            if cos < 0.3:
                 qx = bx + sx * (contact + 12.0) - ddx * (contact + 6.0)
                 qy = by + sy * (contact + 12.0) - ddy * (contact + 6.0)
+                path = math.sqrt((qx - x) ** 2 + (qy - y) ** 2) + math.sqrt((hx - qx) ** 2 + (hy - qy) ** 2)
             else:
-                qx = bx - ddx * (contact + 2.0)
-                qy = by - ddy * (contact + 2.0)
-            cost = math.sqrt((qx - x) ** 2 + (qy - y) ** 2) + 15.0 * bump * (1.0 if cos < align else 0.2)
+                path = math.sqrt((hx - x) ** 2 + (hy - y) ** 2)
+            cost = path + 15.0 * bump * (1.0 if cos < align else 0.2)
             if cost < best_cost:
                 best_move, best_cost = m, cost
     if best_kick >= 0:
