@@ -28,6 +28,10 @@ KICK_REACH = 4.0
 PLAYER_R = 15.0
 BALL_DAMP = 0.99
 KICK_IMPULSE = 5.85 * 1.05
+P_ACC, P_KACC, P_DAMP = 0.12, 0.07, 0.96
+FRAME_SKIP = 3
+PLAN_TICKS = 9                  # horizonte de la búsqueda de una acción (3 decisiones)
+AIM_TOL = math.cos(math.radians(8.0))   # patada aceptada si sale a menos de 8° del objetivo
 TEAM = np.array([0, 0, 0, 0, 1, 1, 1, 1])
 # direcciones de movimiento del mundo (las del kernel): índice → (dx, dy)
 MOVES = np.array([(0, 0), (0, -1), (1, -1), (1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1)], dtype=float)
@@ -80,6 +84,42 @@ def predict(pos, vel, ticks, damp):
     return np.asarray(pos, float) + np.asarray(vel, float) * f
 
 
+def _hist_index(t, delay, frame_skip=FRAME_SKIP):
+    """Para el tick t (0 = primer tick del próximo paso): cuántas decisiones antes de la de ahora se tomó la acción que
+    aplica el kernel (decision_step: h = ⌈(delay − k)/frame_skip⌉ en el historial ya con la decisión nueva). ≤ 0 si
+    ya aplica la de ahora o una posterior."""
+    j, k = divmod(t, frame_skip)
+    lag = delay - k
+    h = -(-lag // frame_skip) if lag > 0 else 0
+    return h - j
+
+
+def queued_ticks(delay, frame_skip=FRAME_SKIP):
+    """Ticks desde el próximo paso hasta que empieza a aplicarse la acción decidida ahora (delay 9 → 9, 10 → 10)."""
+    t = 0
+    while _hist_index(t, delay, frame_skip) > 0:
+        t += 1
+    return t
+
+
+def roll_queue(pos, vel, hist, delay, frame_skip=FRAME_SKIP):
+    """Jugador (sin choques) hasta que aplica la decisión de ahora, con las teclas que ya están en cola.
+    `hist`: acciones del mundo de este jugador, hist[0] la última decidida (RS4ZEnv.act_hist[n, p])."""
+    x, y = float(pos[0]), float(pos[1])
+    vx, vy = float(vel[0]), float(vel[1])
+    T = queued_ticks(delay, frame_skip)
+    for t in range(T):
+        a = int(hist[min(_hist_index(t, delay, frame_skip), len(hist)) - 1])
+        acc = P_KACC if a >= 9 else P_ACC
+        vx += UNIT[a % 9, 0] * acc
+        vy += UNIT[a % 9, 1] * acc
+        x += vx
+        y += vy
+        vx *= P_DAMP
+        vy *= P_DAMP
+    return np.array([x, y]), np.array([vx, vy]), T
+
+
 class PassMacro:
     """Estado del pase de un jugador: a quién, desde cuándo, si ya pateó. Una instancia por (partido, jugador)."""
 
@@ -93,18 +133,23 @@ class PassMacro:
         self.done = False
         self.aim = None                 # punto al que apuntó al patear (para medir la precisión)
 
-    def act(self, me, ball, ball_vel, my_pos, my_vel, mates_pos, mates_vel, lag):
+    def act(self, me, ball, ball_vel, my_pos, my_vel, mates_pos, mates_vel, lag, hist=None, delay=None):
         """Acción del marco propio para esta decisión. `mates_pos/vel`: (8, 2) de todos los lugares (mundo); `lag`:
-        ticks entre esta decisión y su aplicación (retardo D + 1)."""
+        ticks entre esta decisión y su aplicación (retardo D + 1). Con `hist` (RS4ZEnv.act_hist[n, me]) y `delay`
+        (RS4ZEnv.delay[n, me]) usa las teclas en cola y elige la acción simulando (`_plan`)."""
         team = int(TEAM[me])
         self.steps += 1
         if self.steps > self.timeout:
             self.done = True
         if self.done or self.kicked:
             return own_action(0, False, team)
+        if hist is not None:
+            p, v, lag = roll_queue(my_pos, my_vel, hist, int(delay))
+        else:
+            p = predict(my_pos, my_vel, lag, 0.96)
+            v = None
         b = predict(ball, ball_vel, lag, BALL_DAMP)
         bv = np.asarray(ball_vel, float) * BALL_DAMP ** lag
-        p = predict(my_pos, my_vel, lag, 0.96)
         # objetivo: el compañero adelantado según el tiempo de viaje
         r = self.receiver
         tgt = np.asarray(mates_pos[r], float)
@@ -114,6 +159,8 @@ class PassMacro:
         tgt = tgt + np.asarray(mates_vel[r], float) * t * 0.6
         d = kick_direction(bv, tgt - b)
         contact = PLAYER_R + self.ball_r
+        if v is not None:
+            return self._plan(team, p, v, b, bv, tgt, contact)
         behind = b - d * (contact + 2.0)
         rel = b - p                                     # jugador → pelota
         dist_pb = float(np.linalg.norm(rel))
@@ -130,6 +177,68 @@ class PassMacro:
             way = b + side * (contact + 18.0) - d * 10.0
             return own_action(move_toward(*(way - p)), False, team)
         return own_action(move_toward(*(behind - p), dead=2.0), False, team)
+
+    def _plan(self, team, p, v, b, bv, tgt, contact):
+        """Elige entre las 18 acciones simulando desde el momento en que se aplica la de ahora (jugador sin choques,
+        pelota libre). Patear: la acción sostenida PLAN_TICKS ticks; vale si la patada sale dentro del horizonte a menos
+        de 8° del objetivo, y gana la que patea antes. Si ninguna, moverse: la acción 3 ticks y después sin teclas, y
+        gana la que termina más cerca del punto de patada (detrás de la pelota sobre la línea, o rodeándola si está del
+        lado equivocado), con castigo si empuja la pelota con el cuerpo."""
+        best_kick, best_kick_t = -1, PLAN_TICKS
+        best_move, best_cost = 0, math.inf
+        # lado por el que rodear, fijo en la decisión (con el jugador de ahora)
+        d0 = kick_direction(bv, tgt - b)
+        side = np.array([-d0[1], d0[0]])
+        if float((p - b) @ side) < 0:
+            side = -side
+        for m in range(9):
+            ux, uy = UNIT[m]
+            for kick in (True, False):
+                x, y, vx, vy = float(p[0]), float(p[1]), float(v[0]), float(v[1])
+                bx, by, bvx, bvy = float(b[0]), float(b[1]), float(bv[0]), float(bv[1])
+                bump = 0.0
+                for t in range(PLAN_TICKS):
+                    dx, dy = bx - x, by - y
+                    dist = math.hypot(dx, dy)
+                    if kick and dist - contact < KICK_REACH and dist > 0:
+                        ox, oy = bvx + dx / dist * KICK_IMPULSE, bvy + dy / dist * KICK_IMPULSE
+                        wx, wy = tgt[0] - bx, tgt[1] - by
+                        c = (ox * wx + oy * wy) / (math.hypot(ox, oy) * math.hypot(wx, wy) + 1e-9)
+                        if c > AIM_TOL and t < best_kick_t:
+                            best_kick, best_kick_t = m, t
+                        break
+                    if not kick and dist < contact + 1.0:
+                        bump += 1.0
+                    held = kick or t < FRAME_SKIP
+                    acc = (P_KACC if kick else P_ACC) if held else 0.0
+                    vx += ux * acc
+                    vy += uy * acc
+                    x += vx
+                    y += vy
+                    vx *= P_DAMP
+                    vy *= P_DAMP
+                    bx += bvx
+                    by += bvy
+                    bvx *= BALL_DAMP
+                    bvy *= BALL_DAMP
+                if kick:
+                    continue
+                bb = np.array([bx, by])
+                d = kick_direction(np.array([bvx, bvy]), tgt - bb)
+                rel = bb - np.array([x, y])
+                dist = float(np.linalg.norm(rel))
+                cos = float(rel @ d) / max(dist, 1e-9)
+                if cos < 0.3 and dist < contact + 40.0:
+                    point = bb + side * (contact + 18.0) - d * 10.0
+                else:
+                    point = bb - d * (contact + 2.0)
+                cost = math.hypot(point[0] - x, point[1] - y) + 15.0 * bump * (1.0 if cos < self.align else 0.2)
+                if cost < best_cost:
+                    best_move, best_cost = m, cost
+        if best_kick >= 0:
+            self.aim = tgt
+            return own_action(best_kick, True, team)
+        return own_action(best_move, False, team)
 
     def saw_kick(self, kicked_now):
         """Llamar después de cada paso con si este jugador pateó."""

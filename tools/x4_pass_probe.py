@@ -2,9 +2,12 @@
 
 Arranca de momentos de partidos humanos de Sanguchito (split de entrenamiento) en que un jugador tiene la pelota
 controlada, con la latencia de la sala (D de 8 a 11 ticks). Desde los mismos estados compara:
-  A. el que tiene la pelota usa el controlador para pasarle al compañero más libre; el resto, el agente;
-  B. igual, pero el receptor va a buscar la pelota después de la patada;
+  A0. el que tiene la pelota usa el controlador reactivo (predice su posición sin las teclas en cola) para pasarle al
+      compañero más libre; el resto, el agente;
+  A. igual con el controlador predictivo (teclas en cola y búsqueda sobre las 18 acciones);
+  B. como A, pero el receptor va a buscar la pelota después de la patada;
   C. el agente solo (sin controlador): qué hace hoy en esas situaciones.
+Cada modo también se desglosa por el giro necesario: el ángulo entre jugador → pelota y pelota → receptor.
 El pase se cuenta como en tools/x4_pass_chain: el primer toque después de la patada es de un compañero.
 
   python -m tools.x4_pass_probe --agent runs/x4_estilo/rl_control/best.pt --n 512 --out reports/x4/pass_probe.json
@@ -79,7 +82,8 @@ def setup(n, seed, names_limit, delays):
 
 
 def run(env, snap, carrier, receiver, agent, mode, decisions, seed):
-    """Juega desde el estado guardado. mode: "A" controlador, "B" controlador + receptor que va a la pelota, "C" agente."""
+    """Juega desde el estado guardado. mode: "A0" controlador reactivo, "A" predictivo, "B" predictivo + receptor que
+    va a la pelota, "C" agente."""
     env.restore(snap)
     rng = np.random.default_rng(seed)
     n = env.N
@@ -98,8 +102,9 @@ def run(env, snap, carrier, receiver, agent, mode, decisions, seed):
             if mode != "C":
                 mac = macros[r]
                 if not mac.kicked:
+                    q = dict(hist=env.act_hist[r, p], delay=int(env.delay[r, p])) if mode != "A0" else {}
                     acts[r, p] = mac.act(p, env.pos[r, 0], env.vel[r, 0], env.player_pos[r, p], env.player_vel[r, p],
-                                         env.player_pos[r], env.player_vel[r], lag)
+                                         env.player_pos[r], env.player_vel[r], lag, **q)
                 elif mode == "B":
                     m = receiver[r]
                     tgt = env.pos[r, 0] + env.vel[r, 0] * 8.0
@@ -155,6 +160,29 @@ def run(env, snap, carrier, receiver, agent, mode, decisions, seed):
     return out
 
 
+def turn_angles(env, carrier, receiver):
+    """Giro necesario al empezar (grados): entre jugador → pelota y pelota → receptor."""
+    out = {}
+    for r in np.flatnonzero(carrier >= 0):
+        b = env.pos[r, 0]
+        u = b - env.player_pos[r, carrier[r]]
+        w = env.player_pos[r, receiver[r]] - b
+        c = float(u @ w) / (np.linalg.norm(u) * np.linalg.norm(w) + 1e-9)
+        out[r] = math.degrees(math.acos(max(-1.0, min(1.0, c))))
+    return out
+
+
+def by_turn(out, turns, bins=((0, 45), (45, 90), (90, 181))):
+    """Pase completado (a un compañero) por giro necesario."""
+    res = {}
+    for lo, hi in bins:
+        rows = [r for r in out if lo <= turns[r] < hi]
+        if rows:
+            ok = sum(out[r]["result"] in ("receptor", "otro_compañero", "pase") for r in rows)
+            res[f"{lo}-{min(hi, 180)}"] = dict(n=len(rows), pase=round(ok / len(rows), 3))
+    return res
+
+
 def summarize(out):
     res = [o["result"] for o in out.values()]
     n = len(res)
@@ -180,6 +208,7 @@ def main(argv=None):
     ap.add_argument("--decisions", type=int, default=100, help="5 s")
     ap.add_argument("--delays", default="8,9,10,11")
     ap.add_argument("--device", default="cpu")
+    ap.add_argument("--modes", default="A0,A,C")
     ap.add_argument("--out", default="")
     a = ap.parse_args(argv)
     import torch
@@ -189,9 +218,13 @@ def main(argv=None):
     env, carrier, receiver = setup(a.n, a.seed, a.recordings, tuple(int(x) for x in a.delays.split(",")))
     snap = env.snapshot()
     rep = dict(agente=a.agent, partidos=int((carrier >= 0).sum()), delays=a.delays)
-    for mode, name in (("A", "controlador"), ("B", "controlador_receptor_busca"), ("C", "agente_solo")):
-        rep[name] = summarize(run(env, snap, carrier, receiver, agent, mode, a.decisions, a.seed + 1))
-        print(name, json.dumps(rep[name], ensure_ascii=False), flush=True)
+    turns = turn_angles(env, carrier, receiver)
+    names = dict(A0="controlador_reactivo", A="controlador", B="controlador_receptor_busca", C="agente_solo")
+    for mode in a.modes.split(","):
+        out = run(env, snap, carrier, receiver, agent, mode, a.decisions, a.seed + 1)
+        rep[names[mode]] = summarize(out)
+        rep[names[mode]]["por_giro"] = by_turn(out, turns)
+        print(names[mode], json.dumps(rep[names[mode]], ensure_ascii=False), flush=True)
     if a.out:
         Path(a.out).parent.mkdir(parents=True, exist_ok=True)
         Path(a.out).write_text(json.dumps(rep, indent=1, ensure_ascii=False), encoding="utf-8")
