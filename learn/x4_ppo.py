@@ -21,6 +21,9 @@ Receta y fuentes (docs/PLAN.md §2, revisión §8):
   inicial (plazo de entrenamiento). Sin ella, en self-play quedarse quieto en el saque inicial vale exactamente 0
   (reloj congelado y el saque pasa al rival, que es la misma política): una corrida en CPU desde la BC dejó de
   sacar a las 50 actualizaciones. En la sala no hay plazo y quedarse quieto no es una opción.
+* Recompensa de estilo humano (`--style-coef`, apagada por defecto; AMP arXiv 2104.02180, `learn/x4_style.py`): un
+  discriminador separa el último segundo de juego de cada equipo entre grabaciones humanas de Sanguchito y el agente;
+  cada decisión con el último segundo en juego abierto cobra coef·(r − r̄), r = max(0, 1 − ¼(D − 1)²).
 * Arranques desde estados humanos grabados (`--human-starts`; Salimans & Chen arXiv 1812.03381, Backplay
   arXiv 1807.06919): juego abierto y saques del split de entrenamiento.
 * Rivales (TiZero arXiv 2302.07515, OpenAI Five arXiv 1912.06680): `--pool-frac` de los partidos contra el
@@ -47,6 +50,7 @@ from torch import nn
 from env.rs4z import kernel as K
 from env.rs4z import obs_v2, obs_v3
 from env.rs4z.core import MIRROR_ACTION, RS4ZEnv
+from learn import x4_style as XS
 from learn.x4_policy import SetPolicy
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -423,6 +427,16 @@ def parse_args(argv=None):
                          "3 plazo de entrenamiento, 4 saque inicial")
     ap.add_argument("--pass-bonus", type=float, default=0.0,
                     help="brazo pre-registrado de TiZero: +x por pase de la posesión que termina en gol (0 = apagado)")
+    ap.add_argument("--style-coef", type=float, default=0.0,
+                    help="recompensa de estilo humano por decisión (learn/x4_style.py; 0 = apagada)")
+    ap.add_argument("--style-bank", default=str(ROOT / "data" / "x4_style_bank.npz"),
+                    help="ventanas humanas del discriminador (`python -m learn.x4_style --bank`)")
+    ap.add_argument("--style-lr", type=float, default=1e-4)
+    ap.add_argument("--style-gp", type=float, default=5.0, help="penalización de gradiente sobre los humanos (AMP)")
+    ap.add_argument("--style-steps", type=int, default=8, help="pasos del discriminador por actualización")
+    ap.add_argument("--style-batch", type=int, default=4096)
+    ap.add_argument("--style-warmup", type=int, default=20,
+                    help="actualizaciones en que el discriminador aprende sin pagar recompensa")
     ap.add_argument("--shaping-anneal", type=float, default=0.0, help="decisiones hasta llevar el shaping a 0 (0 = fijo)")
     ap.add_argument("--critic-warmup", type=int, default=20, help="actualizaciones sólo del crítico al empezar")
     ap.add_argument("--human-starts", type=float, default=0.4)
@@ -531,6 +545,14 @@ class Trainer:
         for m, w in a.map_mix:
             n = max(1, int(round(a.envs * w / total)))
             self.arenas.append(Arena(m, n, a, self.rng, bank if m == "sanguchito_rs_x4" else None, len(self.pool)))
+        self.style = None
+        if a.style_coef > 0:
+            if not Path(a.style_bank).exists():
+                raise SystemExit(f"--style-coef necesita el banco {a.style_bank}: `python -m learn.x4_style --bank`")
+            self.style = XS.Style(a.style_bank, self.dev, lr=a.style_lr, gp=a.style_gp, steps=a.style_steps,
+                                  batch=a.style_batch, seed=a.seed)
+        for ar in self.arenas:
+            ar.style_hist = XS.History(ar.N) if self.style is not None else None
         self.decisions = 0
         self.update = 0
         self.best_score = -1.0
@@ -683,6 +705,8 @@ class Trainer:
         self.pool_wins = np.array(wins + [0.5] * (len(self.pool) - len(wins)))[:len(self.pool)]
         for ar in self.arenas:
             ar.pool_size = len(self.pool)
+        if self.style is not None and ck.get("style"):
+            self.style.load_state_dict(ck["style"])
         print(f"reanudando desde {path}: actualización {self.update}, {self.decisions} decisiones, "
               f"pool {len(self.pool)}", flush=True)
 
@@ -757,7 +781,9 @@ class Trainer:
         buf = []
         stats = dict(goals=0, matches=0, shaping=0.0, kickoff_wait=[], decisions=0, forfeits=0, passes=0, pass_bonus=0.0,
                      forfeits_by={v: 0 for v in FORFEIT_NAMES.values()}, epv_shaping=0.0, lambda_eff=[],
-                     dist_ball=0.0, dist_n=0, still=0, kick=0, acts_n=0, kickoff_steps=0)
+                     dist_ball=0.0, dist_n=0, still=0, kick=0, acts_n=0, kickoff_steps=0,
+                     style_r=0.0, style_n=0, style_abs=0.0, style_slots=0)
+        style_on = self.style is not None and self.update > a.style_warmup
         shaping_scale = 1.0
         if a.shaping_anneal > 0:
             shaping_scale = max(0.0, 1.0 - self.decisions / a.shaping_anneal)
@@ -820,6 +846,25 @@ class Trainer:
                 pb = pass_bonus_reward(goal, scored_p, a.pass_bonus)
                 team_r += pb
                 stats["pass_bonus"] += float(np.abs(pb).sum())
+                if self.style is not None:
+                    # estilo humano del último segundo de cada equipo (sólo si fue entero juego abierto)
+                    arena.style_hist.push(env)
+                    win, valid = arena.style_hist.windows()
+                    rows = np.flatnonzero(valid)
+                    stats["style_slots"] += 2 * N
+                    if len(rows):
+                        n_r = len(rows)
+                        f = np.concatenate([XS.features(win[rows], np.zeros(n_r, np.int64)),
+                                            XS.features(win[rows], np.ones(n_r, np.int64))])
+                        r = self.style.reward(f)
+                        self.style.add(f, r)
+                        stats["style_r"] += float(r.sum())
+                        stats["style_n"] += len(r)
+                        if style_on:
+                            sr = a.style_coef * (r - self.style.baseline)
+                            team_r[rows, 0] += sr[:n_r]
+                            team_r[rows, 1] += sr[n_r:]
+                            stats["style_abs"] += float(np.abs(sr).sum())
                 rw[t] = team_r[:, TEAM]
                 arena.ep_goals[:, 0] += goal > 0
                 arena.ep_goals[:, 1] += goal < 0
@@ -836,6 +881,8 @@ class Trainer:
                         self.pool_wins[k] = 0.97 * self.pool_wins[k] + 0.03 * res
                 stats["matches"] += len(ends)
                 arena.new_match(ends, pfsp)
+                if arena.style_hist is not None:
+                    arena.style_hist.reset(ends)
                 if self.epv is not None:
                     phi = self.epv.phi_env(env) if len(ends) else phi_new
             obs = obs_v3.observe(env, delay=arena.delay_obs)
@@ -1088,6 +1135,7 @@ class Trainer:
                         pass_arm_on=bool(self.pass_arm_on), pass_bonus=float(self.a.pass_bonus),
                         pass_arm_decided=bool(self.pass_arm_decided),
                         pool_names=[n for n, _ in self.pool[self.n_fixed_pool:]],
+                        style=self.style.state_dict() if self.style is not None else None,
                         args={k: plain(v) for k, v in vars(self.a).items()}),
                    tmp)
         os.replace(tmp, self.out / name)          # atómico: un corte durante la escritura no rompe --resume
@@ -1126,6 +1174,11 @@ class Trainer:
         a = self.a
         ev = self.evaluate()
         ev.update(update=self.update, decisions=self.decisions, shaping=a.shaping)
+        if self.style is not None and self.last_eval_episodes:
+            # r medio que el discriminador de este momento le da al self-play de la evaluación y a humanos que no vio
+            w = [XS.episode_windows(e) for e in self.last_eval_episodes]
+            w = np.concatenate(w) if w else np.zeros((0, XS.FEAT), np.float32)
+            ev["estilo"] = dict(agente=self.style.score(w), humanos_dev=self.style.score(self.style.human_dev))
         score = ev["vs_bc"]["score"]
         pc = ev.get("cadena_pase") or {}
         if pc.get("indice") is not None:
@@ -1239,6 +1292,11 @@ class Trainer:
             buf, stats = self.rollout()
             tl = time.time()
             info = self.learn(buf, critic_only=u < a.critic_warmup)
+            if self.style is not None:
+                info.update(self.style.fit())
+                info.update(style_r_mean=round(stats["style_r"] / max(1, stats["style_n"]), 4),
+                            style_valid_frac=round(stats["style_n"] / max(1, stats["style_slots"]), 4),
+                            style_abs=round(stats["style_abs"], 3), style_coef=a.style_coef if u >= a.style_warmup else 0.0)
             row = dict(update=self.update, decisions=self.decisions, critic_only=u < a.critic_warmup,
                        rollout_s=round(tl - tr, 2), learn_s=round(time.time() - tl, 2),
                        dps=round(stats["decisions"] / max(1e-6, time.time() - tr)), goals=stats["goals"],
