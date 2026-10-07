@@ -130,3 +130,25 @@ Lectura:
 - **Cuerpear:** es la diferencia clara. Los humanos lo hacen 1,7 veces más seguido y conservan la pelota más (0,54
   contra 0,40). Cuando el agente cuerpea, termina en saque en contra casi 3 veces más (0,13 contra 0,05): coincide con
   las salidas de la §5. La BC tampoco lo aprendió (2,1 por min, conserva 0,32): no lo trae la imitación.
+
+## 7. Resultado del A/B (2026-10-07 22:10 UTC): sin mejora
+
+1500 actualizaciones por rama; enfrentamientos de 256 partidos (128 por lado), 3 min, retardo 8–11
+(`runs/x4_pase/veredicto.json` en el pod).
+
+| Enfrentamiento | Puntaje | G-E-P | Goles |
+|---|---|---|---|
+| pase contra control | **0,539** | 84-108-64 | 145-114 |
+| pase contra BC | 0,856 | 186-66-4 | 318-15 |
+| control contra BC | 0,852 | 183-70-3 | 339-6 |
+| pase contra el punto de partida | 0,471 | 75-91-90 | 144-159 |
+| control contra el punto de partida | 0,502 | 74-109-73 | 132-133 |
+
+- Criterio 1 (pase ≥ 0,55 contra control): **no** (0,539, dentro del error de ±0,03). Criterio 2 (≥ 0,8 contra BC): sí.
+  Veredicto: **sin mejora**.
+- La política dejó el macro apenas empezó a entrenar (950 pases empezados por actualización con la compuerta inicial →
+  ~5–15 desde la actualización 100). Más de la mitad de los pases empezados no llegaban a patear.
+- Ninguna rama mejoró sobre el punto de partida en 1500 actualizaciones (0,47 y 0,50): con esta configuración el
+  agente está estancado.
+- Después del A/B apareció un error del controlador (§8): al rodear la pelota se quedaba quieto al costado. Afectaba
+  sobre todo los giros grandes, así que el A/B midió una versión con un defecto.
