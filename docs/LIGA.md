@@ -60,3 +60,14 @@ python -m learn.x4_league --root runs/x4_liga --device cuda --init runs/x4_estil
 ```
 
 Duración estimada: ~9–10 h (tramos de ~3,5 h y explotadores de ~40 min).
+
+## 5. Resultado (2026-10-07, interrumpida)
+
+- **Explotador 0** (600 actualizaciones solo contra el punto de partida): puntaje **0,39** contra su objetivo
+  (48 ganados, 104 empatados, 104 perdidos; goles 112 a 190). No entró al pool (< 0,55). En el entrenamiento ya se veía
+  la caída: su registro contra el objetivo bajó de 0,52 a 0,44.
+- El tramo 1 del principal arrancó sin explotadores y el usuario detuvo el pod a las ~18:30 UTC. Los datos de la liga
+  quedaron en ese pod; el resultado del explotador 0 está acá.
+- Lectura: con este presupuesto y este método, afinar al principal contra sí mismo congelado no encuentra debilidades y
+  lo desajusta. No se investigó si parte de la caída viene del crítico, que arranca entrenado en self-play y ve otro tipo
+  de rival.
