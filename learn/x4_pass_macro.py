@@ -128,12 +128,15 @@ def roll_queue(pos, vel, hist, delay, frame_skip=FRAME_SKIP):
 class PassMacro:
     """Estado del pase de un jugador: a quién, desde cuándo, si ya pateó. Una instancia por (partido, jugador)."""
 
-    def __init__(self, receiver, timeout=40, align=0.94, ball_r=8.325, aim_tol_deg=8.0):
+    def __init__(self, receiver, timeout=40, align=0.94, ball_r=8.325, aim_tol_deg=8.0, no_push=False):
         self.receiver = int(receiver)
         self.timeout = timeout          # decisiones para patear (40 = 2 s); después se abandona
         self.align = align              # coseno mínimo entre jugador → pelota y la dirección de patada
         self.ball_r = ball_r
         self.aim_tol = math.cos(math.radians(aim_tol_deg))   # patada aceptada si sale a menos de esto del objetivo
+        # en un lateral empujar la pelota sin patear es "lateral mal ejecutado" (kernel: pushed_in / too_far): el
+        # plan no acepta ningún contacto sin patada
+        self.push_cost = 1000.0 if no_push else None
         self.steps = 0
         self.kicked = False
         self.done = False
@@ -238,7 +241,8 @@ class PassMacro:
                     point = bb + side * (contact + 18.0) - d * 10.0
                 else:
                     point = bb - d * (contact + 2.0)
-                cost = math.hypot(point[0] - x, point[1] - y) + 15.0 * bump * (1.0 if cos < self.align else 0.2)
+                w = self.push_cost if self.push_cost is not None else 15.0 * (1.0 if cos < self.align else 0.2)
+                cost = math.hypot(point[0] - x, point[1] - y) + w * bump
                 if cost < best_cost:
                     best_move, best_cost = m, cost
         if best_kick >= 0:
