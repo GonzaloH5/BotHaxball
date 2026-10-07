@@ -81,14 +81,14 @@ def setup(n, seed, names_limit, delays):
     return env, carrier, receiver
 
 
-def run(env, snap, carrier, receiver, agent, mode, decisions, seed):
+def run(env, snap, carrier, receiver, agent, mode, decisions, seed, aim_tol=8.0):
     """Juega desde el estado guardado. mode: "A0" controlador reactivo, "A" predictivo, "B" predictivo + receptor que
     va a la pelota, "C" agente."""
     env.restore(snap)
     rng = np.random.default_rng(seed)
     n = env.N
     rows = np.flatnonzero(carrier >= 0)
-    macros = {r: PassMacro(receiver[r], ball_r=float(env.radius[r, 0])) for r in rows} if mode != "C" else {}
+    macros = {r: PassMacro(receiver[r], ball_r=float(env.radius[r, 0]), aim_tol_deg=aim_tol) for r in rows}         if mode != "C" else {}
     out = {r: dict(result=None, kick_step=None, aim_err=None) for r in rows}
     kick_at = {}
     for s in range(decisions):
@@ -179,7 +179,10 @@ def by_turn(out, turns, bins=((0, 45), (45, 90), (90, 181))):
         rows = [r for r in out if lo <= turns[r] < hi]
         if rows:
             ok = sum(out[r]["result"] in ("receptor", "otro_compañero", "pase") for r in rows)
-            res[f"{lo}-{min(hi, 180)}"] = dict(n=len(rows), pase=round(ok / len(rows), 3))
+            kinds = [out[r]["result"] for r in rows]
+            res[f"{lo}-{min(hi, 180)}"] = dict(n=len(rows), pase=round(ok / len(rows), 3),
+                                               resultados={k: round(kinds.count(k) / len(rows), 3)
+                                                           for k in sorted(set(kinds))})
     return res
 
 
@@ -209,6 +212,7 @@ def main(argv=None):
     ap.add_argument("--delays", default="8,9,10,11")
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--modes", default="A0,A,C")
+    ap.add_argument("--aim-tol", type=float, default=8.0, help="grados de error aceptados al patear (predictivo)")
     ap.add_argument("--out", default="")
     a = ap.parse_args(argv)
     import torch
@@ -217,11 +221,11 @@ def main(argv=None):
     agent = Policy(a.agent, device=a.device)
     env, carrier, receiver = setup(a.n, a.seed, a.recordings, tuple(int(x) for x in a.delays.split(",")))
     snap = env.snapshot()
-    rep = dict(agente=a.agent, partidos=int((carrier >= 0).sum()), delays=a.delays)
+    rep = dict(agente=a.agent, partidos=int((carrier >= 0).sum()), delays=a.delays, aim_tol=a.aim_tol)
     turns = turn_angles(env, carrier, receiver)
     names = dict(A0="controlador_reactivo", A="controlador", B="controlador_receptor_busca", C="agente_solo")
     for mode in a.modes.split(","):
-        out = run(env, snap, carrier, receiver, agent, mode, a.decisions, a.seed + 1)
+        out = run(env, snap, carrier, receiver, agent, mode, a.decisions, a.seed + 1, a.aim_tol)
         rep[names[mode]] = summarize(out)
         rep[names[mode]]["por_giro"] = by_turn(out, turns)
         print(names[mode], json.dumps(rep[names[mode]], ensure_ascii=False), flush=True)

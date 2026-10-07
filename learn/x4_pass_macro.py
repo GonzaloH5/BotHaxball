@@ -31,7 +31,6 @@ KICK_IMPULSE = 5.85 * 1.05
 P_ACC, P_KACC, P_DAMP = 0.12, 0.07, 0.96
 FRAME_SKIP = 3
 PLAN_TICKS = 9                  # horizonte de la búsqueda de una acción (3 decisiones)
-AIM_TOL = math.cos(math.radians(8.0))   # patada aceptada si sale a menos de 8° del objetivo
 TEAM = np.array([0, 0, 0, 0, 1, 1, 1, 1])
 # direcciones de movimiento del mundo (las del kernel): índice → (dx, dy)
 MOVES = np.array([(0, 0), (0, -1), (1, -1), (1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1)], dtype=float)
@@ -123,11 +122,12 @@ def roll_queue(pos, vel, hist, delay, frame_skip=FRAME_SKIP):
 class PassMacro:
     """Estado del pase de un jugador: a quién, desde cuándo, si ya pateó. Una instancia por (partido, jugador)."""
 
-    def __init__(self, receiver, timeout=40, align=0.94, ball_r=8.325):
+    def __init__(self, receiver, timeout=40, align=0.94, ball_r=8.325, aim_tol_deg=8.0):
         self.receiver = int(receiver)
         self.timeout = timeout          # decisiones para patear (40 = 2 s); después se abandona
         self.align = align              # coseno mínimo entre jugador → pelota y la dirección de patada
         self.ball_r = ball_r
+        self.aim_tol = math.cos(math.radians(aim_tol_deg))   # patada aceptada si sale a menos de esto del objetivo
         self.steps = 0
         self.kicked = False
         self.done = False
@@ -181,7 +181,7 @@ class PassMacro:
     def _plan(self, team, p, v, b, bv, tgt, contact):
         """Elige entre las 18 acciones simulando desde el momento en que se aplica la de ahora (jugador sin choques,
         pelota libre). Patear: la acción sostenida PLAN_TICKS ticks; vale si la patada sale dentro del horizonte a menos
-        de 8° del objetivo, y gana la que patea antes. Si ninguna, moverse: la acción 3 ticks y después sin teclas, y
+        de `aim_tol_deg` del objetivo, y gana la que patea antes. Si ninguna, moverse: la acción 3 ticks y después sin teclas, y
         gana la que termina más cerca del punto de patada (detrás de la pelota sobre la línea, o rodeándola si está del
         lado equivocado), con castigo si empuja la pelota con el cuerpo."""
         best_kick, best_kick_t = -1, PLAN_TICKS
@@ -204,7 +204,7 @@ class PassMacro:
                         ox, oy = bvx + dx / dist * KICK_IMPULSE, bvy + dy / dist * KICK_IMPULSE
                         wx, wy = tgt[0] - bx, tgt[1] - by
                         c = (ox * wx + oy * wy) / (math.hypot(ox, oy) * math.hypot(wx, wy) + 1e-9)
-                        if c > AIM_TOL and t < best_kick_t:
+                        if c > self.aim_tol and t < best_kick_t:
                             best_kick, best_kick_t = m, t
                         break
                     if not kick and dist < contact + 1.0:
