@@ -74,3 +74,30 @@ seguir por este lado sin una idea nueva.
 
 **Límite:** es simulación contra versiones del mismo agente. El controlador usa el estado verdadero con el retardo
 verdadero; en la sala el bot estima su retardo, y un error ahí afecta la puntería. La prueba de verdad es la sala.
+
+## 5. Medición de conducción (2026-10-07, durante el A/B)
+
+Pregunta: ¿la política no pasa porque en self-play conducir no se castiga como lo castiga un humano?
+`tools/x4_dribble_probe.py`, 1024 momentos humanos de test 4v4 con un portador claro, 5 s, retardo 8–11. Un equipo lo
+maneja el atacante y el otro el defensor; la referencia humana es lo que pasó en la grabación desde los mismos estados.
+Agente = `runs/x4_estilo/rl_control/best.pt`. Error de ~±0,015 en el total y ~±0,025 por rango de presión.
+
+| Primer evento del portador | Humanos vs humanos | Agente vs agente | Agente vs BC | BC vs agente | BC vs BC |
+|---|---|---|---|---|---|
+| Pasa (lo toca un compañero) | **0,41** | 0,18 | 0,24 | 0,20 | 0,23 |
+| Pierde conduciendo | 0,14 | 0,15 | 0,11 | 0,24 | 0,20 |
+| Patea y la toma un rival | **0,36** | 0,50 | 0,45 | 0,39 | 0,38 |
+| Sale (lateral, córner, saque de arco) | **0,05** | 0,14 | 0,14 | 0,14 | 0,14 |
+
+Con presión (rival a < 90 px), pierde conduciendo: humanos 0,20, agente contra agente 0,26, BC contra agente 0,37. Sin
+presión (> 160 px): humanos pasan 0,49 y patean a un rival 0,36; el agente, 0,22 y 0,60.
+
+Lectura:
+- **La hipótesis no se confirma.** El agente como defensor castiga conducir más que la BC y que los humanos entre sí
+  (el agente pierde conduciendo contra sí mismo más que un humano contra humanos). Entrenar contra defensores tipo BC
+  castigaría menos, no más.
+- **La brecha está en las patadas:** cuando el portador patea, la pelota termina en un rival o afuera mucho más que con
+  humanos, sobre todo sin presión, que es justo cuando un humano arma el pase. La BC tiene el mismo problema (0,23 de
+  pases y 0,14 de salidas): no viene sólo del RL.
+- Falta separar decisión (a dónde patea) de ejecución (puntería con latencia). El controlador de pase ataca la
+  ejecución y, sin presión, tiene tiempo de acomodarse.
