@@ -26,6 +26,9 @@ def main():
     ap.add_argument("--stage", default="")
     a = ap.parse_args()
     ck = torch.load(a.ckpt, map_location="cpu")
+    if ck.get("n_pass", 0):
+        # el bot de la sala todavía no tiene el controlador de pase (learn/x4_pass_macro) ni la entrada pass_mask
+        raise SystemExit(f"{a.ckpt} usa macro-acciones de pase: el export y el bot todavía no las soportan")
     model = SetPolicy(hidden=ck.get("hidden", 256))
     model.load_state_dict(ck["model"])
     model.eval()

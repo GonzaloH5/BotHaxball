@@ -22,7 +22,7 @@ import torch
 import torch.nn.functional as F
 
 from learn import x4_data as XD
-from learn.x4_policy import SetPolicy
+from learn.x4_policy import load_policy
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -61,8 +61,7 @@ def main():
     maps = tuple(a.maps.split(","))
     data = XD.load(XD.split_names(a.splits, a.split, None, maps), maps=maps)
     ck = torch.load(a.ckpt, map_location="cpu")
-    model = SetPolicy(hidden=ck.get("hidden", 256))
-    model.load_state_dict(ck["model"])
+    model = load_policy(ck)
     model.eval()
     delays = np.array([int(x) for x in a.delays.split(",")])
     t, p = XD.Sampler(data).fixed(a.n, seed=7)

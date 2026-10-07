@@ -52,6 +52,7 @@ from env.rs4z import kernel as K
 from env.rs4z import obs_v2, obs_v3
 from env.rs4z.core import MIRROR_ACTION, RS4ZEnv
 from learn import x4_style as XS
+from learn.x4_pass_macro import N_PASS, MacroState, pass_table
 from learn.x4_policy import SetPolicy
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -184,6 +185,7 @@ class Arena:
         self.pool_size = pool_size
         self.ep_goals = np.zeros((n, 2))
         self.passes = PassTracker(n)
+        self.macro = MacroState(n)                # macro-acciones de pase en curso (--pass-macro o rivales con pases)
         self.restart_all()
 
     def _delays(self, k):
@@ -198,6 +200,7 @@ class Arena:
         lo, hi = self.a.match_minutes
         ticks = (self.rng.uniform(lo, hi, len(rows)) * 3600).astype(np.int64)
         env.start_match(rows, delay=self._delays(len(rows)), match_ticks=ticks)
+        self.macro.k[rows] = -1
         # el bot de la sala informa siempre --delay-feature-fixed (10): la mitad de los partidos lo ven así y el resto
         # ve el retardo verdadero ± 2, para que la política no dependa de conocerlo con exactitud
         D = env.delay[rows]
@@ -383,9 +386,18 @@ def forfeit_reward(forfeit, penalty, why=None, reasons=None):
 # ------------------------------------------------------------------------------------- trainer
 def load_policy(path, device):
     ck = torch.load(path, map_location="cpu")
-    m = SetPolicy(hidden=ck.get("hidden", 256))
+    m = SetPolicy(hidden=ck.get("hidden", 256), n_pass=ck.get("n_pass", 0))
     m.load_state_dict(ck["model"])
     return m.to(device).eval()
+
+
+def load_weights(model, state):
+    """Pesos de un checkpoint; con macro-acciones de pase, uno sin ellas (la BC, un RL anterior) carga todo menos la
+    cabeza de pase, que queda en su inicialización (compuerta σ(−3))."""
+    missing, unexpected = model.load_state_dict(state, strict=False)
+    bad = [k for k in missing if not k.startswith("pass_")] + list(unexpected)
+    if bad:
+        raise RuntimeError(f"pesos incompatibles con la política: {bad[:6]}")
 
 
 def parse_args(argv=None):
@@ -501,6 +513,9 @@ def parse_args(argv=None):
     ap.add_argument("--tf32", action=argparse.BooleanOptionalAction, default=True,
                     help="productos de matrices en TF32 en GPUs Ampere o más nuevas (3060, 3090): más rápidos, con "
                          "precisión relativa ~1e-3, la de uso corriente para entrenar")
+    ap.add_argument("--pass-macro", action=argparse.BooleanOptionalAction, default=False,
+                    help="macro-acciones \"pasarle al compañero k\" (learn/x4_pass_macro): 18 + 3 acciones, con compromiso "
+                         "hasta patear; el ancla KL compara la distribución efectiva de teclas con la BC")
     ap.add_argument("--bf16", action=argparse.BooleanOptionalAction, default=True,
                     help="pasadas hacia adelante del aprendizaje en bfloat16 (autocast; log_softmax y pérdidas siguen "
                          "en fp32). En el A4000 (2026-10-07, 1024×64): aprendizaje 1,90 → 1,29–1,39 s por "
@@ -531,8 +546,9 @@ class Trainer:
         self.out.mkdir(parents=True, exist_ok=True)
         ck = torch.load(a.bc, map_location="cpu")
         self.hidden = ck.get("hidden", 256)
-        self.policy = SetPolicy(hidden=self.hidden).to(self.dev)
-        self.policy.load_state_dict(ck["model"])
+        self.n_pass = N_PASS if a.pass_macro else 0
+        self.policy = SetPolicy(hidden=self.hidden, n_pass=self.n_pass).to(self.dev)
+        load_weights(self.policy, ck["model"])
         self.bc = load_policy(a.bc, self.dev)
         for p in self.bc.parameters():
             p.requires_grad_(False)
@@ -609,7 +625,7 @@ class Trainer:
                 del dd
         if a.init:
             ck = torch.load(a.init, map_location="cpu")
-            self.policy.load_state_dict(ck["model"])
+            load_weights(self.policy, ck["model"])
             if "critic" in ck:
                 self.critic.load_state_dict(ck["critic"])
             if "vnorm" in ck:
@@ -748,11 +764,14 @@ class Trainer:
         return o
 
     @torch.no_grad()
-    def act(self, arena, obs, crit):
-        """Acciones (N, 8) y datos del aprendiz para un paso de una arena."""
+    def act(self, arena, obs, crit, table=None):
+        """Acciones (N, 8) y datos del aprendiz para un paso de una arena. Con `table` (pass_table) las acciones
+        pueden ser macros de pase (18 + k) de las políticas que las tienen."""
         N = arena.N
         o = torch.from_numpy(obs.reshape(N * 8, -1)).to(self.dev)
-        logits = self.policy(o)
+        offered = table >= 0 if table is not None else None
+        pm = torch.from_numpy(offered.reshape(N * 8, -1)).to(self.dev) if offered is not None else None
+        logits = self.policy(o, pm)
         dist = torch.distributions.Categorical(logits=logits, validate_args=False)
         a = dist.sample()
         logp = dist.log_prob(a)
@@ -765,7 +784,8 @@ class Trainer:
             rows = np.flatnonzero(arena.opp == k)
             sel = ~arena.learner[rows]
             ob = torch.from_numpy(obs_bc[rows][sel]).to(self.dev)
-            oa = torch.distributions.Categorical(logits=self.pool[k][1](ob), validate_args=False).sample().cpu().numpy()
+            opm = torch.from_numpy(offered[rows][sel]).to(self.dev) if offered is not None else None
+            oa = torch.distributions.Categorical(logits=self.pool[k][1](ob, opm), validate_args=False).sample().cpu().numpy()
             sub = acts[rows]
             sub[sel] = oa
             acts[rows] = sub
@@ -802,7 +822,9 @@ class Trainer:
         stats = dict(goals=0, matches=0, shaping=0.0, kickoff_wait=[], decisions=0, forfeits=0, passes=0, pass_bonus=0.0,
                      forfeits_by={v: 0 for v in FORFEIT_NAMES.values()}, epv_shaping=0.0, lambda_eff=[],
                      dist_ball=0.0, dist_n=0, still=0, kick=0, acts_n=0, kickoff_steps=0,
-                     style_r=0.0, style_n=0, style_abs=0.0, style_slots=0)
+                     style_r=0.0, style_n=0, style_abs=0.0, style_slots=0, macro_starts=0, macro_kicks=0,
+                     macro_busy=0)
+        use_macro = bool(self.n_pass) or any(getattr(m, "n_pass", 0) for _, m in self.pool)
         style_on = self.style is not None and self.update > a.style_warmup
         shaping_scale = 1.0
         if a.shaping_anneal > 0:
@@ -821,14 +843,26 @@ class Trainer:
             dn = np.zeros((T, N), bool)
             lm = np.zeros((T, N, 8), bool)
             la = np.zeros((T, N), np.float32)
+            pc = np.zeros((T, N, 8, N_PASS), np.int8) if self.n_pass else None
             pfsp = self.pfsp()
             phi = self.epv.phi_env(env) if self.epv is not None else np.zeros(N)
             for t in range(T):
                 obs = obs_v3.observe(env, delay=arena.delay_obs)
                 crit = self.critic_input(arena, obs, phi)
-                acts, logp, bc_logp, v = self.act(arena, obs, crit)
+                table = pass_table(env) if use_macro else None
+                acts, logp, bc_logp, v = self.act(arena, obs, crit, table)
                 ob[t], cr[t], ac[t], lp[t], bl[t], vv[t] = obs, crit, acts, logp, bc_logp, v
                 lm[t] = arena.learner & env.active
+                if table is not None:
+                    # macro-acciones: los que ya venían pasando siguen con el controlador y esa decisión no entra en
+                    # la pérdida (la acción de la política fue la que empezó el pase)
+                    sampled = acts
+                    acts, busy = arena.macro.apply(sampled, table)
+                    stats["macro_starts"] += int((~busy & (sampled >= 18) & lm[t]).sum())
+                    stats["macro_busy"] += int((busy & lm[t]).sum())
+                    lm[t] &= ~busy
+                    if pc is not None:
+                        pc[t] = table
                 la[t] = self.lam_eff(arena)
                 # conducta del aprendiz: jugador más cercano a la pelota, quietos, patadas y saques iniciales
                 dpb = np.hypot(env.player_pos[..., 0] - env.ball_pos[:, None, 0], env.player_pos[..., 1] - env.ball_pos[:, None, 1])
@@ -842,6 +876,9 @@ class Trainer:
                 stats["kickoff_steps"] += int((env.ri[:, K.RI_KO] != 0).sum())
                 ev = env.step(acts)
                 goal = ev["goal"]
+                if table is not None:
+                    stats["macro_kicks"] += int((arena.macro.running() & ev["kicked"] & arena.learner).sum())
+                    arena.macro.after(ev["kicked"], np.flatnonzero((goal != 0) | ev["match_end"]))
                 team_r = np.zeros((N, 2))
                 team_r[:, 0] += np.sign(goal)
                 team_r[:, 1] -= np.sign(goal)
@@ -905,7 +942,7 @@ class Trainer:
             crit = self.critic_input(arena, obs, phi)
             with torch.no_grad():
                 last_v = self.critic(torch.from_numpy(crit.reshape(N * 8, -1)).to(self.dev)).view(N, 8).cpu().numpy()
-            buf.append((ob, cr, ac, lp, bl, vv, rw, dn, lm, la, last_v))
+            buf.append((ob, cr, ac, lp, bl, vv, rw, dn, lm, la, last_v, pc))
             stats["decisions"] += T * N
             stats["lambda_eff"].append(float(la.mean()))
         self.decisions += stats["decisions"]
@@ -930,15 +967,17 @@ class Trainer:
     # -------------------------------------------------------------- actualización
     def learn(self, buf, critic_only=False):
         a = self.a
-        cols = [[] for _ in range(9)]
-        for ob, cr, ac, lp, bl, vv, rw, dn, lm, la, last_v in buf:
+        cols = [[] for _ in range(10)]
+        for ob, cr, ac, lp, bl, vv, rw, dn, lm, la, last_v, pc in buf:
             adv, ret = self.gae(vv, rw, dn, last_v)
             m = lm
             v_old = vv * self.vnorm.std + self.vnorm.mu
-            for i, x in enumerate((ob, cr, ac, lp, bl, adv, ret, np.broadcast_to(la[..., None], lm.shape), v_old)):
+            if pc is None:
+                pc = np.zeros(lm.shape + (0,), np.int8)
+            for i, x in enumerate((ob, cr, ac, lp, bl, adv, ret, np.broadcast_to(la[..., None], lm.shape), v_old, pc)):
                 cols[i].append(x[m])
         buf.clear()                                   # libera el rollout antes de armar los tensores
-        ob, cr, ac, lp, bl, adv, ret, lam, v_old = (c[0] if len(c) == 1 else np.concatenate(c) for c in cols)
+        ob, cr, ac, lp, bl, adv, ret, lam, v_old, pc = (c[0] if len(c) == 1 else np.concatenate(c) for c in cols)
         del cols
         # varianza explicada por el crítico (con los valores con que se calcularon las ventajas)
         explained = float(1.0 - np.var(ret - v_old) / max(np.var(ret), 1e-8))
@@ -954,7 +993,8 @@ class Trainer:
         # una sola subida al dispositivo por actualización (~1 GB con 1024×64) y minibatches indexados ahí
         f32 = lambda x: torch.as_tensor(np.ascontiguousarray(x, dtype=np.float32), device=dev)
         G = dict(ob=f32(ob), cr=f32(cr), lp=f32(lp), bl=f32(bl), adv=f32(adv), ret=f32(ret_n), lam=f32(lam),
-                 ac=torch.as_tensor(np.ascontiguousarray(ac, dtype=np.int64), device=dev))
+                 ac=torch.as_tensor(np.ascontiguousarray(ac, dtype=np.int64), device=dev),
+                 pc=torch.as_tensor(np.ascontiguousarray(pc, dtype=np.int64), device=dev))
         del ob, cr, bl
         gen = torch.Generator(device=dev)
         gen.manual_seed(int(a.seed) * 1_000_003 + int(self.update))
@@ -977,8 +1017,9 @@ class Trainer:
                 self.opt_v.step()
                 sums[1] += v_loss.detach()
                 if not critic_only:
+                    tb = G["pc"][mb]
                     with amp:
-                        logits = self.policy(G["ob"][mb])
+                        logits = self.policy(G["ob"][mb], tb >= 0 if self.n_pass else None)
                     logp_all = F.log_softmax(logits.float(), -1)
                     logp = logp_all.gather(1, G["ac"][mb][:, None])[:, 0]
                     old = G["lp"][mb]
@@ -986,7 +1027,13 @@ class Trainer:
                     A = G["adv"][mb]
                     pg = -torch.min(ratio * A, torch.clamp(ratio, 1 - a.clip, 1 + a.clip) * A)
                     bc = G["bl"][mb]
-                    kl = (bc.exp() * (bc - logp_all)).sum(-1)              # KL(BC‖π) por muestra
+                    if self.n_pass:
+                        # distribución efectiva de teclas: cada pase suma su probabilidad a la tecla que ejecuta ahora
+                        pr = logp_all.exp()
+                        eff = pr[:, :18].scatter_add(1, tb.clamp(min=0), pr[:, 18:] * (tb >= 0))
+                        kl = (bc.exp() * (bc - torch.log(eff.clamp_min(1e-12)))).sum(-1)
+                    else:
+                        kl = (bc.exp() * (bc - logp_all)).sum(-1)              # KL(BC‖π) por muestra
                     ent = -(logp_all.exp() * logp_all).sum(-1)
                     L = G["lam"][mb]
                     loss = ((1 - L) * (pg - a.ent * ent) + L * kl).mean()
@@ -1143,6 +1190,7 @@ class Trainer:
             raise SystemExit(f"pesos no finitos: no se guarda {name} (la última copia buena queda en disco)")
         tmp = self.out / (name + ".tmp")
         torch.save(dict(model=self.policy.state_dict(), critic=self.critic.state_dict(), hidden=self.hidden,
+                        n_pass=int(self.n_pass),
                         obs_version=obs_v3.OBS_VERSION, update=int(self.update), decisions=int(self.decisions),
                         vnorm=[float(self.vnorm.mean), float(self.vnorm.sq), float(self.vnorm.w)],
                         pool_wins=[float(x) for x in self.pool_wins],
@@ -1163,7 +1211,7 @@ class Trainer:
     def snapshot(self):
         path = self.out / f"snap_{self.update:05d}.pt"
         self.save(path.name)
-        m = SetPolicy(hidden=self.hidden).to(self.dev)
+        m = SetPolicy(hidden=self.hidden, n_pass=self.n_pass).to(self.dev)
         m.load_state_dict(self.policy.state_dict())
         m.eval()
         self.pool.append((path.stem, m))
@@ -1283,8 +1331,8 @@ class Trainer:
             return
         d = self.out / "evals"
         d.mkdir(exist_ok=True)
-        torch.save(dict(model=self.policy.state_dict(), hidden=self.hidden, obs_version=obs_v3.OBS_VERSION,
-                        update=int(self.update)), d / f"pi_{self.update:05d}.pt")
+        torch.save(dict(model=self.policy.state_dict(), hidden=self.hidden, n_pass=int(self.n_pass),
+                        obs_version=obs_v3.OBS_VERSION, update=int(self.update)), d / f"pi_{self.update:05d}.pt")
         eps = self.last_eval_episodes
         if eps:
             arr = {}
@@ -1336,6 +1384,8 @@ class Trainer:
                        still_frac=round(stats["still"] / max(1, stats["acts_n"]), 4),
                        kick_frac=round(stats["kick"] / max(1, stats["acts_n"]), 4),
                        kickoff_frac=round(stats["kickoff_steps"] / max(1, stats["decisions"]), 4),
+                       macro_starts=stats["macro_starts"], macro_kicks=stats["macro_kicks"],
+                       macro_busy_frac=round(stats["macro_busy"] / max(1, stats["acts_n"] + stats["macro_busy"]), 4),
                        pool_wins={n: round(float(w), 3) for (n, _), w in zip(self.pool, self.pool_wins)},
                        **{k: (round(v, 5) if isinstance(v, float) else v) for k, v in info.items()})
             self.log.write(json.dumps(row) + "\n")

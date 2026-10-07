@@ -17,6 +17,12 @@ El controlador (por decisión, cada 3 ticks, con el estado que ve la política):
 4. Va al punto detrás de la pelota sobre −d; si está del lado del objetivo, la rodea por el costado.
 5. Aprieta patear cuando está alineado (el vector jugador → pelota casi igual a d) y cerca: la patada sale sola al
    entrar en alcance.
+La versión predictiva (`act` con `hist`; `pass_table` en numba para el RL) reemplaza 1 por las teclas que ya están en
+cola (exacto contra el kernel) y 4–5 por una búsqueda sobre las 18 acciones (`_plan`).
+
+Prueba desde momentos humanos (tools/x4_pass_probe, 256 situaciones, 2026-10-07): patea en el 33%, completa el 68% de lo
+que patea (humanos 0,69) con 5,5° de error; con el receptor a ≤ 45° de giro pasa el 46% (el agente solo, 25%), con más
+de 90° pierde la pelota antes de patear (79%). Por eso en el RL sólo se ofrece con giro ≤ 90° y la pelota cerca.
 """
 from __future__ import annotations
 
@@ -245,3 +251,224 @@ class PassMacro:
         if kicked_now and not self.kicked:
             self.kicked = True
             self.done = True
+
+
+# ---------------------------------------------------------------------------------------------- versión numba (RL)
+from numba import njit, prange  # noqa: E402
+
+N_PASS = 3                      # compañeros en la observación v3 (obs_v3.N_MATES), en el mismo orden
+MAX_GAP = 40.0                  # px entre bordes jugador–pelota para ofrecer el pase
+MAX_TURN_COS = 0.0              # giro ≤ 90° entre jugador → pelota y pelota → compañero
+_UNIT = np.ascontiguousarray(UNIT)
+_MIRROR = np.ascontiguousarray(MIRROR_MOVE.astype(np.int64))
+
+
+@njit(cache=True)
+def _kick_dir_nb(bvx, bvy, wx, wy):
+    L = math.sqrt(wx * wx + wy * wy) + 1e-9
+    ux, uy = wx / L, wy / L
+    uv = ux * bvx + uy * bvy
+    disc = uv * uv - (bvx * bvx + bvy * bvy) + KICK_IMPULSE * KICK_IMPULSE
+    if disc < 0:
+        return ux, uy
+    lam = uv + math.sqrt(disc)
+    dx, dy = (lam * ux - bvx) / KICK_IMPULSE, (lam * uy - bvy) / KICK_IMPULSE
+    n = math.sqrt(dx * dx + dy * dy)
+    if n > 1e-9:
+        return dx / n, dy / n
+    return ux, uy
+
+
+@njit(cache=True)
+def _plan_nb(px, py, vx0, vy0, bx0, by0, bvx0, bvy0, tx, ty, contact, align, aim_tol, unit):
+    """Igual que PassMacro._plan; devuelve (movimiento del mundo, patear)."""
+    best_kick, best_kick_t = -1, PLAN_TICKS
+    best_move, best_cost = 0, 1e18
+    d0x, d0y = _kick_dir_nb(bvx0, bvy0, tx - bx0, ty - by0)
+    sx, sy = -d0y, d0x
+    if (px - bx0) * sx + (py - by0) * sy < 0:
+        sx, sy = -sx, -sy
+    for m in range(9):
+        ux, uy = unit[m, 0], unit[m, 1]
+        for kk in range(2):
+            kick = kk == 0
+            x, y, vx, vy = px, py, vx0, vy0
+            bx, by, bvx, bvy = bx0, by0, bvx0, bvy0
+            bump = 0.0
+            for t in range(PLAN_TICKS):
+                dx, dy = bx - x, by - y
+                dist = math.sqrt(dx * dx + dy * dy)
+                if kick and dist - contact < KICK_REACH and dist > 0:
+                    ox, oy = bvx + dx / dist * KICK_IMPULSE, bvy + dy / dist * KICK_IMPULSE
+                    wx, wy = tx - bx, ty - by
+                    c = (ox * wx + oy * wy) / (math.sqrt(ox * ox + oy * oy) * math.sqrt(wx * wx + wy * wy) + 1e-9)
+                    if c > aim_tol and t < best_kick_t:
+                        best_kick, best_kick_t = m, t
+                    break
+                if not kick and dist < contact + 1.0:
+                    bump += 1.0
+                held = kick or t < FRAME_SKIP
+                acc = 0.0
+                if held:
+                    acc = P_KACC if kick else P_ACC
+                vx += ux * acc
+                vy += uy * acc
+                x += vx
+                y += vy
+                vx *= P_DAMP
+                vy *= P_DAMP
+                bx += bvx
+                by += bvy
+                bvx *= BALL_DAMP
+                bvy *= BALL_DAMP
+            if kick:
+                continue
+            ddx, ddy = _kick_dir_nb(bvx, bvy, tx - bx, ty - by)
+            rx, ry = bx - x, by - y
+            dist = math.sqrt(rx * rx + ry * ry)
+            cos = (rx * ddx + ry * ddy) / max(dist, 1e-9)
+            if cos < 0.3 and dist < contact + 40.0:
+                qx = bx + sx * (contact + 18.0) - ddx * 10.0
+                qy = by + sy * (contact + 18.0) - ddy * 10.0
+            else:
+                qx = bx - ddx * (contact + 2.0)
+                qy = by - ddy * (contact + 2.0)
+            cost = math.sqrt((qx - x) ** 2 + (qy - y) ** 2) + 15.0 * bump * (1.0 if cos < align else 0.2)
+            if cost < best_cost:
+                best_move, best_cost = m, cost
+    if best_kick >= 0:
+        return best_kick, True
+    return best_move, False
+
+
+@njit(cache=True, parallel=True)
+def _pass_table_nb(ball_pos, ball_vel, ball_r, ppos, pvel, act_hist, delay, active, max_gap, max_turn_cos,
+                   align, aim_tol, unit, mirror, out):
+    N = ppos.shape[0]
+    H = act_hist.shape[2]
+    for n in prange(N):
+        for p in range(8):
+            for k in range(N_PASS):
+                out[n, p, k] = -1
+            if not active[n, p]:
+                continue
+            contact = PLAYER_R + ball_r[n]
+            bx, by = ball_pos[n, 0], ball_pos[n, 1]
+            rx, ry = bx - ppos[n, p, 0], by - ppos[n, p, 1]
+            rd = math.sqrt(rx * rx + ry * ry)
+            if rd - contact > max_gap:
+                continue
+            # jugador al momento en que aplica la decisión de ahora, con las teclas en cola (roll_queue)
+            D = delay[n, p]
+            x, y, vx, vy = ppos[n, p, 0], ppos[n, p, 1], pvel[n, p, 0], pvel[n, p, 1]
+            t = 0
+            while True:
+                j = t // FRAME_SKIP
+                kt = t % FRAME_SKIP
+                lag = D - kt
+                h = (lag + FRAME_SKIP - 1) // FRAME_SKIP if lag > 0 else 0
+                idx = h - j
+                if idx <= 0:
+                    break
+                a = act_hist[n, p, min(idx, H) - 1]
+                acc = P_KACC if a >= 9 else P_ACC
+                vx += unit[a % 9, 0] * acc
+                vy += unit[a % 9, 1] * acc
+                x += vx
+                y += vy
+                vx *= P_DAMP
+                vy *= P_DAMP
+                t += 1
+            f = (1.0 - BALL_DAMP ** t) / (1.0 - BALL_DAMP) if t > 0 else 0.0
+            pbx, pby = bx + ball_vel[n, 0] * f, by + ball_vel[n, 1] * f
+            bvx, bvy = ball_vel[n, 0] * BALL_DAMP ** t, ball_vel[n, 1] * BALL_DAMP ** t
+            team = 0 if p < 4 else 1
+            e = 0
+            for q in range(8):
+                if q == p or not active[n, q] or (0 if q < 4 else 1) != team:
+                    continue
+                if e >= N_PASS:
+                    break
+                k = e
+                e += 1
+                wx, wy = ppos[n, q, 0] - bx, ppos[n, q, 1] - by
+                if (rx * wx + ry * wy) / (rd * math.sqrt(wx * wx + wy * wy) + 1e-9) < max_turn_cos:
+                    continue
+                tx, ty = ppos[n, q, 0], ppos[n, q, 1]
+                dist = math.sqrt((tx - pbx) ** 2 + (ty - pby) ** 2)
+                v0 = KICK_IMPULSE + math.sqrt(bvx * bvx + bvy * bvy)
+                reach = v0 / (1 - BALL_DAMP)
+                tt = 60.0
+                if dist < reach * 0.98:
+                    tt = min(math.log(1 - dist / reach) / math.log(BALL_DAMP), 60.0)
+                tx += pvel[n, q, 0] * tt * 0.6
+                ty += pvel[n, q, 1] * tt * 0.6
+                m, kick = _plan_nb(x, y, vx, vy, pbx, pby, bvx, bvy, tx, ty, contact, align, aim_tol, unit)
+                if team == 1:
+                    m = mirror[m]
+                out[n, p, k] = m + (9 if kick else 0)
+
+
+def pass_table(env, out=None, max_gap=MAX_GAP, max_turn_cos=MAX_TURN_COS, align=0.94, aim_tol_deg=8.0):
+    """(N, 8, N_PASS) int64: acción del marco propio que ejecuta "pasarle al compañero k" (k en el orden de la
+    observación v3), o −1 si no se ofrece (sin compañero, pelota lejos o giro > 90°)."""
+    N = env.N
+    if out is None:
+        out = np.empty((N, 8, N_PASS), np.int64)
+    _pass_table_nb(np.ascontiguousarray(env.pos[:, 0]), np.ascontiguousarray(env.vel[:, 0]),
+                   np.ascontiguousarray(env.radius[:, 0]), env.player_pos, env.player_vel, env.act_hist, env.delay,
+                   env.active, float(max_gap), float(max_turn_cos), float(align),
+                   math.cos(math.radians(aim_tol_deg)), _UNIT, _MIRROR, out)
+    return out
+
+
+def to_primitive(acts, table):
+    """Acciones con macros (0..17 teclas, 18+k pasarle al compañero k) → teclas (0..17). Un pase no ofrecido queda
+    quieto (no debería muestrearse: la política lo enmascara)."""
+    acts = np.asarray(acts)
+    if acts.max(initial=0) < 18:
+        return acts
+    k = np.clip(acts - 18, 0, N_PASS - 1)
+    mac = np.take_along_axis(table, k[..., None], -1)[..., 0]
+    return np.where(acts >= 18, np.maximum(mac, 0), acts)
+
+
+MACRO_TIMEOUT = 20              # decisiones (1 s) para patear; después se suelta
+
+
+class MacroState:
+    """Compromiso de las macro-acciones de pase de N partidos: elegido "pasarle a k", el controlador maneja al jugador
+    hasta que patea, el pase deja de ofrecerse (pelota lejos, giro > 90°) o pasa MACRO_TIMEOUT. Como el pase en Google
+    Research Football: una acción. Mientras dura, lo que muestrea la política para ese jugador se ignora."""
+
+    def __init__(self, N):
+        self.k = np.full((N, 8), -1, np.int64)
+        self.steps = np.zeros((N, 8), np.int64)
+
+    def apply(self, acts, table):
+        """acts (N, 8) con macros → (teclas (N, 8), jugadores que ya venían comprometidos (N, 8))."""
+        acts = np.asarray(acts)
+        cur = np.take_along_axis(table, np.maximum(self.k, 0)[..., None], -1)[..., 0]
+        self.k[(self.k >= 0) & (cur < 0)] = -1
+        busy = self.k >= 0
+        new = ~busy & (acts >= 18)
+        if new.any():
+            kk = np.clip(acts - 18, 0, N_PASS - 1)
+            ok = np.take_along_axis(table, kk[..., None], -1)[..., 0] >= 0
+            self.k[new & ok] = kk[new & ok]
+            self.steps[new & ok] = 0
+        run = self.k >= 0
+        mac = np.take_along_axis(table, np.maximum(self.k, 0)[..., None], -1)[..., 0]
+        prim = np.where(run, mac, np.where(acts >= 18, 0, acts))
+        return prim, busy
+
+    def after(self, kicked, reset_rows=()):
+        """Después del paso: suelta a los que patearon o se pasaron de tiempo, y a los partidos que se reiniciaron."""
+        run = self.k >= 0
+        self.steps[run] += 1
+        self.k[run & (np.asarray(kicked) | (self.steps >= MACRO_TIMEOUT))] = -1
+        if len(reset_rows):
+            self.k[reset_rows] = -1
+
+    def running(self):
+        return self.k >= 0

@@ -118,7 +118,7 @@ def main():
 
     # 4. checkpoint de la imitación
     from env.rs4z import obs_v3
-    from learn.x4_policy import SetPolicy
+    from learn.x4_policy import SetPolicy, load_policy
     try:
         ck = torch.load(a.bc, map_location="cpu")          # weights_only=True por defecto
         m = SetPolicy(hidden=ck.get("hidden", 256))
@@ -140,7 +140,7 @@ def main():
     if a.init:
         try:
             ck = torch.load(a.init, map_location="cpu")
-            SetPolicy(hidden=ck.get("hidden", 256)).load_state_dict(ck["model"])
+            load_policy(ck)
             check("checkpoint_init", ck.get("obs_version") == obs_v3.OBS_VERSION and "critic" in ck,
                   f"{a.init}: actualización {ck.get('update')}, obs {ck.get('obs_version')}, crítico {'critic' in ck}")
         except Exception as e:  # noqa: BLE001

@@ -43,23 +43,26 @@ class Policy:
         self.name = Path(spec).stem if spec not in ("still", "random") else spec
         self.spec, self.greedy, self.temperature = spec, greedy, temperature
         self.model = None
+        self.n_pass = 0
         if spec not in ("still", "random"):
-            from learn.x4_policy import SetPolicy
-            ck = torch.load(spec, map_location="cpu")
-            self.model = SetPolicy(hidden=ck.get("hidden", 256))
-            self.model.load_state_dict(ck["model"])
+            from learn.x4_policy import load_policy
+            self.model = load_policy(torch.load(spec, map_location="cpu"))
             self.model.to(device).eval()
+            self.n_pass = self.model.n_pass
             self.name = f"{Path(spec).parent.name}/{Path(spec).stem}"
         self.device = device
 
     @torch.no_grad()
-    def __call__(self, obs, rng):
+    def __call__(self, obs, rng, pass_mask=None):
+        """`pass_mask` (n, 3): pases ofrecidos (learn/x4_pass_macro.pass_table ≥ 0) para políticas con macros; sin
+        él no se ofrece ninguno y la política juega sólo con teclas."""
         n = len(obs)
         if self.spec == "still":
             return np.zeros(n, np.int64)
         if self.spec == "random":
             return rng.integers(0, 18, size=n)
-        logits = self.model(torch.from_numpy(obs).to(self.device))
+        pm = torch.from_numpy(pass_mask).to(self.device) if pass_mask is not None else None
+        logits = self.model(torch.from_numpy(obs).to(self.device), pm)
         if self.greedy:
             return logits.argmax(-1).cpu().numpy()
         return torch.distributions.Categorical(logits=logits / self.temperature).sample().cpu().numpy()
@@ -73,10 +76,12 @@ class ModelPolicy:
         (las evaluaciones de distintos checkpoints ven así el mismo azar)."""
         self.model, self.device, self.name, self.greedy, self.spec = model, device, name, greedy, name
         self.generator = generator
+        self.n_pass = getattr(model, "n_pass", 0)
 
     @torch.no_grad()
-    def __call__(self, obs, rng):
-        logits = self.model(torch.from_numpy(obs).to(self.device))
+    def __call__(self, obs, rng, pass_mask=None):
+        pm = torch.from_numpy(pass_mask).to(self.device) if pass_mask is not None else None
+        logits = self.model(torch.from_numpy(obs).to(self.device), pm)
         if self.greedy:
             return logits.argmax(-1).cpu().numpy()
         if self.generator is not None:
@@ -104,15 +109,25 @@ def play(red, blue, *, map_name="sanguchito_rs_x4", matches=16, minutes=3.0, del
     done = np.zeros(matches, bool)
     limit = max_decisions or int(ticks / 3 * 4)
     steps = 0
+    # macro-acciones de pase (learn/x4_pass_macro) de las políticas que las tienen
+    from learn.x4_pass_macro import MacroState, pass_table
+    macro = MacroState(matches) if (getattr(red, "n_pass", 0) or getattr(blue, "n_pass", 0)) else None
     while not done.all() and steps < limit:
         obs = obs_v3.observe(env, delay=obs_delay)
+        table = pass_table(env) if macro is not None else None
         acts = np.zeros((matches, 8), np.int64)
-        acts[:, :4] = red(obs[:, :4].reshape(-1, obs.shape[-1]), rng).reshape(matches, 4)
-        acts[:, 4:] = blue(obs[:, 4:].reshape(-1, obs.shape[-1]), rng).reshape(matches, 4)
+        for pol, side in ((red, slice(0, 4)), (blue, slice(4, 8))):
+            kw = dict(pass_mask=(table[:, side] >= 0).reshape(-1, table.shape[-1])) \
+                if table is not None and getattr(pol, "n_pass", 0) else {}
+            acts[:, side] = pol(obs[:, side].reshape(-1, obs.shape[-1]), rng, **kw).reshape(matches, 4)
+        if macro is not None:
+            acts, _ = macro.apply(acts, table)
         for rec in recs:
             if not done[rec.row]:
                 rec.pre(env)
         ev = env.step(acts)
+        if macro is not None:
+            macro.after(ev["kicked"], np.flatnonzero((ev["goal"] != 0) | ev["match_end"]))
         live = ~done
         goals[live, 0] += ev["goal"][live] > 0
         goals[live, 1] += ev["goal"][live] < 0
