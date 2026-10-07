@@ -238,7 +238,9 @@ class PassMacro:
                 dist = float(np.linalg.norm(rel))
                 cos = float(rel @ d) / max(dist, 1e-9)
                 if cos < 0.3 and dist < contact + 40.0:
-                    point = bb + side * (contact + 18.0) - d * 10.0
+                    # rodeo: al costado y bien atrás, para que al llegar ya esté del lado de la patada (coseno ≈ 0,64 >
+                    # 0,3). Con −d·10 el punto seguía del lado equivocado y el jugador se quedaba quieto ahí
+                    point = bb + side * (contact + 12.0) - d * (contact + 6.0)
                 else:
                     point = bb - d * (contact + 2.0)
                 w = self.push_cost if self.push_cost is not None else 15.0 * (1.0 if cos < self.align else 0.2)
@@ -332,8 +334,8 @@ def _plan_nb(px, py, vx0, vy0, bx0, by0, bvx0, bvy0, tx, ty, contact, align, aim
             dist = math.sqrt(rx * rx + ry * ry)
             cos = (rx * ddx + ry * ddy) / max(dist, 1e-9)
             if cos < 0.3 and dist < contact + 40.0:
-                qx = bx + sx * (contact + 18.0) - ddx * 10.0
-                qy = by + sy * (contact + 18.0) - ddy * 10.0
+                qx = bx + sx * (contact + 12.0) - ddx * (contact + 6.0)
+                qy = by + sy * (contact + 12.0) - ddy * (contact + 6.0)
             else:
                 qx = bx - ddx * (contact + 2.0)
                 qy = by - ddy * (contact + 2.0)
