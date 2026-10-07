@@ -8,7 +8,8 @@ Estados: de las grabaciones humanas de test de Sanguchito, momentos de juego abi
 pelota (a ≤ 12 px del borde) y nadie más está a menos de 20 px de ella. Se juega `--horizon` decisiones (5 s) con la latencia
 de sala; el equipo con la pelota lo maneja el atacante y el otro el defensor. Se registra qué pasa primero con el
 portador:
-  pierde: la toca un rival (contacto o patada) antes que un compañero;
+  pierde_conduciendo: la toca un rival (contacto o patada) antes que un compañero, sin que el portador haya pateado;
+  pateo_y_rival: la toca un rival después de una patada del portador (pase o remate que no llegó);
   pasa: la toca primero un compañero;
   gol / gol_en_contra / sale (lateral, córner o saque de arco);
   conserva: nada de eso en el horizonte.
@@ -72,17 +73,20 @@ class Outcome:
         self.result = np.full(n, "conserva", dtype=object)
         self.done = np.zeros(n, bool)
         self.steps = np.zeros(n, int)
+        self.kicked = np.zeros(n, bool)
         self.x0 = None
         self.adv = np.zeros(n)
 
     def start(self, ball_x):
         self.x0 = np.where(self.team == 0, ball_x, -ball_x)
 
-    def step(self, i, s, ball_x, touch, goal, out):
-        """touch (8,) bool en este paso; goal: +1 rojo, −1 azul, 0; out: la pelota salió o empezó un saque."""
+    def step(self, i, s, ball_x, touch, goal, out, kicked):
+        """touch (8,) bool en este paso; goal: +1 rojo, −1 azul, 0; out: la pelota salió o empezó un saque;
+        kicked (8,) bool: patadas de este paso."""
         if self.done[i]:
             return
         c, team = self.carrier[i], self.team[i]
+        self.kicked[i] |= bool(kicked[c])
         self.steps[i] = s + 1
         self.adv[i] = max(self.adv[i], (ball_x if team == 0 else -ball_x) - self.x0[i])
         if goal != 0:
@@ -90,7 +94,7 @@ class Outcome:
         elif out:
             self.result[i] = "sale"
         elif touch[TEAM != team].any():
-            self.result[i] = "pierde"
+            self.result[i] = "pateo_y_rival" if self.kicked[i] else "pierde_conduciendo"
         elif touch[(TEAM == team) & (np.arange(8) != c)].any():
             self.result[i] = "pasa"
         else:
@@ -139,7 +143,7 @@ def simulate(attacker, defender, data, states, horizon, delays, seed):
         out = ev["out"] | (ev["restart_start"] != 0)
         bx = env.ball_pos[:, 0]
         for i in np.flatnonzero(~oc.done):
-            oc.step(i, s, bx[i], touch[i], int(ev["goal"][i]), bool(out[i]))
+            oc.step(i, s, bx[i], touch[i], int(ev["goal"][i]), bool(out[i]), ev["kicked"][i])
         if oc.done.all():
             break
     return oc
@@ -160,8 +164,9 @@ def human(data, states, horizon, stride=3):
             out = data.state[u] != 1 or data.rkind[u] > 0
             b = data.ball[u, :2]
             gap = np.hypot(data.pos[u, :, 0] - b[0], data.pos[u, :, 1] - b[1]) - PLAYER_R - data.ball_r[u]
-            touch = (gap < REACH) | data.kick_ev[u - stride + 1:u + 1].any(0)
-            oc.step(i, s, data.ball[u, 0], touch, goal, bool(out and goal == 0))
+            kicked = data.kick_ev[u - stride + 1:u + 1].any(0)
+            touch = (gap < REACH) | kicked
+            oc.step(i, s, data.ball[u, 0], touch, goal, bool(out and goal == 0), kicked)
             if oc.done[i]:
                 break
     return oc
