@@ -152,3 +152,56 @@ Lectura:
   agente está estancado.
 - Después del A/B apareció un error del controlador (§8): al rodear la pelota se quedaba quieto al costado. Afectaba
   sobre todo los giros grandes, así que el A/B midió una versión con un defecto.
+
+## 8. Controlador corregido (2026-10-07, después del A/B)
+
+Probándolo en laterales aparecieron dos errores del planificador (`learn/x4_pass_macro.py`, versión Python y numba):
+
+1. **Rodeo que no rodeaba:** para ponerse del lado de la patada iba a un punto "al costado y 10 px atrás". Desde ese
+   punto seguía del lado equivocado, así que lo volvía a elegir y se quedaba quieto. Ahora el punto es al costado y
+   bien atrás (coseno ≈ 0,64 al llegar).
+2. **Costo discontinuo:** cerca del cambio de lado, la distancia al punto de rodeo era menor que la distancia
+   a detrás de la pelota, así que el jugador prefería no cruzar. Ahora el costo es el largo del camino: pasa por el
+   rodeo si está del lado equivocado, a cualquier distancia.
+
+En laterales también hace falta no empujar la pelota sin patear (`no_push`), que es "mal ejecutado".
+
+| | Agente solo | Controlador del A/B | Corregido | Humanos |
+|---|---|---|---|---|
+| Lateral (512 humanos): primer toque propio | 0,32 | 0,36 (cede 0,35) | **0,60** (cede 0,05) | 0,75 |
+| Lateral: conserva 3 s | 0,11 | 0,09 | **0,17** | 0,34 |
+| Lateral: segundos hasta sacar (mediana) | 2,5 | 1,85 | 1,65 | – |
+| Juego abierto (512): pase completado | 0,20 | 0,22 | **0,40** | – |
+| ↳ giro 0–45° / 45–90° / 90–180° | 0,25 / 0,18 / 0,17 | 0,46 / 0,16 / 0,02 | 0,48 / 0,40 / 0,32 | – |
+| Juego abierto: patea / completa lo que patea | – | 0,33 / 0,68 | 0,62 / 0,64 | 0,69 |
+
+Lectura: el A/B midió un controlador con un defecto que lo hacía fallar justo en los giros grandes. Corregido,
+pasa el doble que el agente en juego abierto y casi duplica el lateral propio.
+
+## 9. Segunda rama (pre-registro, 2026-10-07)
+
+Cambios respecto de la rama `pase` del A/B. Todos salen de los datos de la §8:
+
+- el controlador corregido;
+- pase ofrecido con cualquier giro (antes, ≤ 90°);
+- en saques propios (lateral, córner, saque de arco y saque inicial), el pase sólo se le ofrece al equipo que saca,
+  hasta 150 px de la pelota, y en el lateral sin empujar;
+- compromiso de hasta 3 s (antes, 1 s; la mediana para patear es 0,8 s en juego abierto y 1,65 s en laterales).
+
+Mismo punto de partida, configuración y 1500 actualizaciones: `runs/x4_pase/pase2`. Se compara contra
+`runs/x4_pase/control/last.pt`, que ya está.
+
+**Veredicto** (mismo criterio que §4):
+
+1. pase2 contra control ≥ 0,55;
+2. pase2 contra la BC ≥ 0,8.
+
+Como dato:
+
+- pases empezados y pateados por actualización;
+- el lateral propio en self-play (`tools/x4_mechanics.py`: primer toque propio y conserva 3 s; humanos 0,75 y 0,34,
+  control 0,33 y 0,15);
+- laterales por minuto (humanos 3,1, control 6,3).
+
+Si la política vuelve a abandonar el pase aun con el controlador corregido, el problema es de exploración o de
+crédito, no de ejecución.

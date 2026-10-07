@@ -63,7 +63,10 @@ def test_pass_table_matches_python_controller():
         env.step(rng.integers(0, 18, size=(N, 8)))
     table = pass_table(env)
     checked = 0
+    from env.rs4z import kernel as K
     for n in range(N):
+        if env.ri[n, K.RI_KIND] > 0 or env.ri[n, K.RI_KO] != 0:
+            continue                                  # saques: los compara test_pass_table_lateral_matches_python
         for p in range(8):
             mates = [q for q in range(8) if q != p and TEAM[q] == TEAM[p] and env.active[n, q]]
             for k, q in enumerate(mates[:3]):
@@ -166,3 +169,37 @@ def test_ready_table_only_offers_kicks():
     off = ready >= 0
     assert off.any() and (ready[off] >= 9).all() and (ready[off] == full[off]).all()
     assert not ((full >= 9) & ~off).any()
+
+
+def test_pass_table_lateral_matches_python():
+    """En un lateral propio la tabla sólo se ofrece al equipo que saca, desde ≤ 150 px, y coincide con el controlador
+    Python sin empujar (no_push)."""
+    from env.rs4z import kernel as K
+    from learn.x4_pass_macro import pass_table
+    from learn.x4_ppo import restart_spot
+    rng = np.random.default_rng(7)
+    N = 32
+    env = RS4ZEnv(N, map="sanguchito_rs_x4", frame_skip=3, max_delay=15, deadline=0,
+                  kickoff_deadline=C.KICKOFF_SAFETY, seed=0)
+    env.start_match(np.arange(N), delay=rng.choice([8, 9, 10, 11], size=(N, 8)), match_ticks=3 * 3600)
+    for n in range(N):
+        bx, sy = rng.uniform(-800, 800), (1 if n % 2 else -1)
+        pp = np.column_stack([rng.uniform(-900, 900, 8), rng.uniform(-450, 450, 8)])
+        pp[0] = [bx + rng.uniform(-60, 60), sy * rng.uniform(560, 660)]
+        env.place(n, ball_pos=np.array([bx, sy * 690.0]), ball_vel=np.zeros(2), player_pos=pp,
+                  player_vel=np.zeros((8, 2)))
+        env.start_restart(n, K.LATERAL, 0, restart_spot(env, K.LATERAL, np.array([bx, sy * 690.0])))
+    table = pass_table(env)
+    assert (table[:, 4:] < 0).all()                    # el rival no tiene pase durante el lateral
+    checked = 0
+    for n in range(N):
+        mates = [q for q in range(1, 4) if env.active[n, q]]
+        for k, q in enumerate(mates):
+            if table[n, 0, k] < 0:
+                continue
+            m = PassMacro(q, ball_r=float(env.radius[n, 0]), no_push=True)
+            a = m.act(0, env.pos[n, 0], env.vel[n, 0], env.player_pos[n, 0], env.player_vel[n, 0], env.player_pos[n],
+                      env.player_vel[n], 0, hist=env.act_hist[n, 0], delay=int(env.delay[n, 0]))
+            assert a == table[n, 0, k], (n, k)
+            checked += 1
+    assert checked >= 30
