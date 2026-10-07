@@ -501,6 +501,9 @@ def parse_args(argv=None):
     ap.add_argument("--tf32", action=argparse.BooleanOptionalAction, default=True,
                     help="productos de matrices en TF32 en GPUs Ampere o más nuevas (3060, 3090): más rápidos, con "
                          "precisión relativa ~1e-3, la de uso corriente para entrenar")
+    ap.add_argument("--bf16", action=argparse.BooleanOptionalAction, default=False,
+                    help="pasadas hacia adelante del aprendizaje en bfloat16 (autocast; log_softmax y pérdidas siguen "
+                         "en fp32). En el A4000 el aprendizaje está limitado por la GPU")
     a = ap.parse_args(argv)
     a.delay_values = np.array([int(x.split(":")[0]) for x in a.delays.split(",")])
     w = np.array([float(x.split(":")[1]) for x in a.delays.split(",")])
@@ -749,7 +752,7 @@ class Trainer:
         N = arena.N
         o = torch.from_numpy(obs.reshape(N * 8, -1)).to(self.dev)
         logits = self.policy(o)
-        dist = torch.distributions.Categorical(logits=logits)
+        dist = torch.distributions.Categorical(logits=logits, validate_args=False)
         a = dist.sample()
         logp = dist.log_prob(a)
         obs_bc = self.bc_view(arena, obs)
@@ -761,7 +764,7 @@ class Trainer:
             rows = np.flatnonzero(arena.opp == k)
             sel = ~arena.learner[rows]
             ob = torch.from_numpy(obs_bc[rows][sel]).to(self.dev)
-            oa = torch.distributions.Categorical(logits=self.pool[k][1](ob)).sample().cpu().numpy()
+            oa = torch.distributions.Categorical(logits=self.pool[k][1](ob), validate_args=False).sample().cpu().numpy()
             sub = acts[rows]
             sub[sel] = oa
             acts[rows] = sub
@@ -957,11 +960,13 @@ class Trainer:
         sums = torch.zeros(8, device=dev)   # pi_loss, v_loss, kl_bc, entropy, clipfrac, approx_kl, |∇π|, |∇V|
         steps = 0
         skipped = 0
+        amp = torch.autocast(dev.type, dtype=torch.bfloat16, enabled=bool(a.bf16) and dev.type == "cuda")
         for _ in range(a.epochs):
             perm = torch.randperm(n, device=dev, generator=gen)
             for mb in perm.chunk(a.minibatches):
-                v = self.critic(G["cr"][mb])
-                v_loss = F.mse_loss(v, G["ret"][mb])
+                with amp:
+                    v = self.critic(G["cr"][mb])
+                v_loss = F.mse_loss(v.float(), G["ret"][mb])
                 if not bool(torch.isfinite(v_loss)):
                     skipped += 1
                     continue
@@ -971,8 +976,9 @@ class Trainer:
                 self.opt_v.step()
                 sums[1] += v_loss.detach()
                 if not critic_only:
-                    logits = self.policy(G["ob"][mb])
-                    logp_all = F.log_softmax(logits, -1)
+                    with amp:
+                        logits = self.policy(G["ob"][mb])
+                    logp_all = F.log_softmax(logits.float(), -1)
                     logp = logp_all.gather(1, G["ac"][mb][:, None])[:, 0]
                     old = G["lp"][mb]
                     ratio = torch.exp(logp - old)
@@ -1312,7 +1318,11 @@ class Trainer:
                             style_abs=round(stats["style_abs"], 3), style_coef=a.style_coef if u >= a.style_warmup else 0.0)
             row = dict(update=self.update, decisions=self.decisions, critic_only=u < a.critic_warmup,
                        rollout_s=round(tl - tr, 2), learn_s=round(time.time() - tl, 2),
-                       dps=round(stats["decisions"] / max(1e-6, time.time() - tr)), goals=stats["goals"],
+                       dps=round(stats["decisions"] / max(1e-6, time.time() - tr)),
+                       # las unidades del entrenador archivado (train/rs4z/run.py: sps = muestras del aprendiz por
+                       # segundo) y jugador-decisiones por segundo; dps cuenta una por partido (8 jugadores)
+                       sps=round(info["samples"] / max(1e-6, time.time() - tr)),
+                       player_dps=round(8 * stats["decisions"] / max(1e-6, time.time() - tr)), goals=stats["goals"],
                        matches=stats["matches"], shaping_abs=round(stats["shaping"], 3), forfeits=stats["forfeits"],
                        passes=stats["passes"],
                        # contador del kernel (toque de otro compañero): da 40–57% más que la métrica de x4_metrics;
