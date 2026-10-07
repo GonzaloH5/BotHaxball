@@ -27,7 +27,7 @@ def test_features_are_the_same_for_a_team_and_its_mirror():
     win = _random_windows(50)
     a = XS.features(win, np.zeros(50, np.int64))
     b = XS.features(_mirror(win), np.ones(50, np.int64))
-    assert a.shape == (50, XS.FEAT)
+    assert a.shape == (50, XS.POS_FEAT)
     assert np.allclose(a, b)
 
 
@@ -44,43 +44,96 @@ def test_features_order_players_by_distance_to_the_ball_now():
 
 class _FakeEnv:
     def __init__(self, n):
+        self.N = n
         self.pos = np.zeros((n, 1, 2))
         self.vel = np.zeros((n, 1, 2))
-        self.player_pos = np.zeros((n, 8, 2))
+        self.player_pos = np.full((n, 8, 2), 900.0)          # jugadores lejos de la pelota: sin toques
         self.player_vel = np.zeros((n, 8, 2))
+        self.radius = np.full((n, 9), 8.0)
         self.ri = np.zeros((n, 32), np.int64)
         self.ri[:, K.RI_TEAM] = -1
 
 
-def test_history_needs_a_whole_second_of_open_play():
+def test_history_needs_two_seconds_of_open_play():
     env = _FakeEnv(2)
     h = XS.History(2)
+    h.prime(env)
+    kicked = np.zeros((2, 8), bool)
     for t in range(XS.DEPTH):
-        env.pos[:, 0, 0] = t                                  # la pelota marca el número de muestreo
+        env.pos[:, 0, 0] = t + 1                             # la pelota marca el número de muestreo
         if t == 5:
-            env.ri[1, K.RI_TEAM] = 0                          # el partido 1 tiene un saque en el muestreo 5
+            env.ri[1, K.RI_TEAM] = 0                          # el partido 1 tiene un saque en el muestreo 6
         elif t == 6:
             env.ri[1, K.RI_TEAM] = -1
-        h.push(env)
-    win, valid = h.windows()
-    assert valid.tolist() == [True, False]
-    assert win[0, :, 0, 0].tolist() == [XS.DEPTH - 1 - o for o in XS.OFFSETS]
-    h.reset([0])
-    assert not h.windows()[1][0]
+        feats, rows = h.observe(env, kicked)
+    assert rows.tolist() == [0] and feats.shape == (2, XS.FEAT)
+    # posiciones: la pelota de hace 1 s, 0,5 s, 0,25 s y ahora (el estado antes del último paso)
+    pos = feats[0, :XS.POS_FEAT].reshape(len(XS.OFFSETS), XS.BODIES, 4)
+    assert np.allclose(pos[:, 0, 0] * XS.SCALE[0], [XS.DEPTH - 1 - o for o in XS.OFFSETS])
+    h.reset([0], env)
+    assert len(h.observe(env, kicked)[1]) == 0
 
 
 def test_episode_windows_skip_restarts_and_cover_both_teams():
     from tools.x4_metrics import Episode
-    T = 60
+    T = 120
     open_play = np.ones(T, bool)
     open_play[30] = False
-    ep = Episode(stride=3, ball=np.zeros((T, 4)), ball_r=8.0, pos=np.zeros((T, 8, 2)), vel=np.zeros((T, 8, 2)),
+    ep = Episode(stride=3, ball=np.zeros((T, 4)), ball_r=8.0, pos=np.full((T, 8, 2), 900.0), vel=np.zeros((T, 8, 2)),
                  move=np.zeros((T, 8), np.int64), kick_key=np.zeros((T, 8), bool), kicked=np.zeros((T, 8), bool),
                  open_play=open_play, restart_kind=np.zeros(T, np.int64), restart_age=np.zeros(T, np.int64),
                  kickoff=np.zeros(T, bool))
     w = XS.episode_windows(ep)
-    # momentos válidos: 20..29 (antes del saque) y 51..59 (un segundo entero después): 19, por dos equipos
-    assert w.shape == (2 * 19, XS.FEAT)
+    # momentos válidos: 71..119 (2 s enteros después del saque del muestreo 30): 49, por dos equipos
+    assert w.shape == (2 * 49, XS.FEAT)
+
+
+def test_history_matches_the_recorded_episode():
+    """Los rasgos del entrenamiento (History) son exactamente los de la grabación del mismo partido (episode_windows),
+    la ruta de los humanos: si no, el discriminador aprendería la diferencia de cálculo."""
+    from env.rs4z.core import RS4ZEnv
+    from tools import x4_metrics as XM
+    env = RS4ZEnv(2, map="sanguchito_rs_x4", seed=4, frame_skip=3, max_delay=0, deadline=0, kickoff_deadline=0)
+    rng = np.random.default_rng(4)
+    for row in range(2):
+        pp = np.zeros((8, 2))
+        pp[:4] = rng.uniform([-120, -80], [-20, 80], (4, 2))
+        pp[4:] = rng.uniform([20, -80], [120, 80], (4, 2))
+        env.place(row, ball_pos=(0.0, 0.0), ball_vel=(0.0, 0.0), player_pos=pp, player_vel=np.zeros((8, 2)),
+                  last_touch=-1)
+    recs = [XM.EpisodeRecorder(env, row=r) for r in range(2)]
+    h = XS.History(2)
+    h.prime(env)
+    seen = {}
+    touches = 0
+    for s in range(140):
+        acts = rng.integers(0, 18, (2, 8))
+        for rec in recs:
+            rec.pre(env)
+        ev = env.step(acts)
+        assert not ev["match_end"].any()
+        for rec in recs:
+            rec.record(env, ev, acts)
+        feats, rows = h.observe(env, ev["kicked"])
+        for n, r in enumerate(rows):
+            seen[(int(r), s)] = (feats[n], feats[len(rows) + n])
+        touches += int(ev["kicked"].sum())
+    assert touches > 0
+    compared = 0
+    for r, rec in enumerate(recs):
+        ep = rec.episode()
+        w = XS.episode_windows(ep)
+        T = len(ep.ball)
+        bad = np.concatenate([[0], np.cumsum(~np.asarray(ep.open_play, bool))])
+        ts = np.arange(XS.OPEN, T)
+        ts = ts[bad[ts + 1] - bad[ts - XS.OPEN] == 0]
+        assert len(w) == 2 * len(ts)
+        assert {s for (rr, s) in seen if rr == r} == set(ts.tolist())
+        for i, t in enumerate(ts):
+            red, blue = seen[(r, int(t))]
+            assert np.allclose(red, w[i], atol=1e-5) and np.allclose(blue, w[len(ts) + i], atol=1e-5)
+            compared += 1
+    assert compared > 50
 
 
 def _bank(path, n=4000, seed=0):
@@ -113,7 +166,7 @@ def test_trainer_pays_style_and_resumes_the_discriminator(tmp_path):
         import pytest
         pytest.skip("falta el checkpoint de la imitación")
     _bank(tmp_path / "bank.npz")
-    common = ["--bc", str(bc), "--out", str(tmp_path / "run"), "--device", "cpu", "--envs", "4", "--rollout", "30",
+    common = ["--bc", str(bc), "--out", str(tmp_path / "run"), "--device", "cpu", "--envs", "4", "--rollout", "50",
               "--critic-warmup", "0", "--bank-recordings", "0", "--eval-every", "0", "--threads", "1",
               "--epochs", "1", "--minibatches", "1", "--snapshot-every", "0", "--style-coef", "0.01",
               "--style-bank", str(tmp_path / "bank.npz"), "--style-warmup", "0", "--style-steps", "2",
@@ -124,6 +177,7 @@ def test_trainer_pays_style_and_resumes_the_discriminator(tmp_path):
     for row in range(env.N):                                  # juego abierto (sin saque inicial que esperar)
         env.place(row, ball_pos=(0.0, 0.0), ball_vel=(0.0, 0.0), player_pos=rng.uniform(-500, 500, (8, 2)),
                   player_vel=np.zeros((8, 2)), last_touch=-1)
+    t1.arenas[0].style_hist.prime(env)
     t1.train()
     rows = [json.loads(l) for l in open(tmp_path / "run" / "log.jsonl")]
     assert all("style_d_human" in r and r["style_valid_frac"] >= 0 for r in rows)

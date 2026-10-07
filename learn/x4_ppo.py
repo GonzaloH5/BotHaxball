@@ -22,8 +22,9 @@ Receta y fuentes (docs/PLAN.md §2, revisión §8):
   (reloj congelado y el saque pasa al rival, que es la misma política): una corrida en CPU desde la BC dejó de
   sacar a las 50 actualizaciones. En la sala no hay plazo y quedarse quieto no es una opción.
 * Recompensa de estilo humano (`--style-coef`, apagada por defecto; AMP arXiv 2104.02180, `learn/x4_style.py`): un
-  discriminador separa el último segundo de juego de cada equipo entre grabaciones humanas de Sanguchito y el agente;
-  cada decisión con el último segundo en juego abierto cobra coef·(r − r̄), r = max(0, 1 − ¼(D − 1)²).
+  discriminador separa el juego de cada equipo (posiciones del último segundo y cadena de toques de los últimos 4 s)
+  entre grabaciones humanas de Sanguchito y el agente; cada decisión con los últimos 2 s en juego abierto cobra
+  coef·(r − r̄), r = max(0, 1 − ¼(D − 1)²).
 * Arranques desde estados humanos grabados (`--human-starts`; Salimans & Chen arXiv 1812.03381, Backplay
   arXiv 1807.06919): juego abierto y saques del split de entrenamiento.
 * Rivales (TiZero arXiv 2302.07515, OpenAI Five arXiv 1912.06680): `--pool-frac` de los partidos contra el
@@ -431,8 +432,10 @@ def parse_args(argv=None):
                     help="recompensa de estilo humano por decisión (learn/x4_style.py; 0 = apagada)")
     ap.add_argument("--style-bank", default=str(ROOT / "data" / "x4_style_bank.npz"),
                     help="ventanas humanas del discriminador (`python -m learn.x4_style --bank`)")
-    ap.add_argument("--style-lr", type=float, default=1e-4)
-    ap.add_argument("--style-gp", type=float, default=5.0, help="penalización de gradiente sobre los humanos (AMP)")
+    # 1e-3 y 0,1 en vez de los 1e-4 y 5 de AMP: con esos el discriminador casi no separaba al agente de los humanos
+    # (AUC 0,66 contra 0,79 en partidos apartados; prueba offline del 2026-10-07)
+    ap.add_argument("--style-lr", type=float, default=1e-3)
+    ap.add_argument("--style-gp", type=float, default=0.1, help="penalización de gradiente sobre los humanos (AMP)")
     ap.add_argument("--style-steps", type=int, default=8, help="pasos del discriminador por actualización")
     ap.add_argument("--style-batch", type=int, default=4096)
     ap.add_argument("--style-warmup", type=int, default=20,
@@ -553,6 +556,8 @@ class Trainer:
                                   batch=a.style_batch, seed=a.seed)
         for ar in self.arenas:
             ar.style_hist = XS.History(ar.N) if self.style is not None else None
+            if ar.style_hist is not None:
+                ar.style_hist.prime(ar.env)
         self.decisions = 0
         self.update = 0
         self.best_score = -1.0
@@ -847,15 +852,11 @@ class Trainer:
                 team_r += pb
                 stats["pass_bonus"] += float(np.abs(pb).sum())
                 if self.style is not None:
-                    # estilo humano del último segundo de cada equipo (sólo si fue entero juego abierto)
-                    arena.style_hist.push(env)
-                    win, valid = arena.style_hist.windows()
-                    rows = np.flatnonzero(valid)
+                    # estilo humano de cada equipo (sólo con los últimos 2 s en juego abierto)
+                    f, rows = arena.style_hist.observe(env, ev["kicked"])
                     stats["style_slots"] += 2 * N
                     if len(rows):
                         n_r = len(rows)
-                        f = np.concatenate([XS.features(win[rows], np.zeros(n_r, np.int64)),
-                                            XS.features(win[rows], np.ones(n_r, np.int64))])
                         r = self.style.reward(f)
                         self.style.add(f, r)
                         stats["style_r"] += float(r.sum())
@@ -882,7 +883,7 @@ class Trainer:
                 stats["matches"] += len(ends)
                 arena.new_match(ends, pfsp)
                 if arena.style_hist is not None:
-                    arena.style_hist.reset(ends)
+                    arena.style_hist.reset(ends, env)
                 if self.epv is not None:
                     phi = self.epv.phi_env(env) if len(ends) else phi_new
             obs = obs_v3.observe(env, delay=arena.delay_obs)
