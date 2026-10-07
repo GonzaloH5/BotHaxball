@@ -501,9 +501,10 @@ def parse_args(argv=None):
     ap.add_argument("--tf32", action=argparse.BooleanOptionalAction, default=True,
                     help="productos de matrices en TF32 en GPUs Ampere o más nuevas (3060, 3090): más rápidos, con "
                          "precisión relativa ~1e-3, la de uso corriente para entrenar")
-    ap.add_argument("--bf16", action=argparse.BooleanOptionalAction, default=False,
+    ap.add_argument("--bf16", action=argparse.BooleanOptionalAction, default=True,
                     help="pasadas hacia adelante del aprendizaje en bfloat16 (autocast; log_softmax y pérdidas siguen "
-                         "en fp32). En el A4000 el aprendizaje está limitado por la GPU")
+                         "en fp32). En el A4000 (2026-10-07, 1024×64): aprendizaje 1,90 → 1,29–1,39 s por "
+                         "actualización, con pérdidas, KL y entropía dentro del ruido entre dos corridas fp32")
     a = ap.parse_args(argv)
     a.delay_values = np.array([int(x.split(":")[0]) for x in a.delays.split(",")])
     w = np.array([float(x.split(":")[1]) for x in a.delays.split(",")])
