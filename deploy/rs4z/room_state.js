@@ -67,7 +67,8 @@ class RS4ZTracker {
   }
 
   update(frame) {
-    this.tick++;
+    // frame.tick: número de tick de la sala, cuando los cuadros no llegan de a uno (extensión: cada frame_skip ticks)
+    this.tick = Number.isInteger(frame.tick) ? frame.tick : this.tick + 1;
     const c = frame.ball.color;
     const team = c === undefined || c === WHITE ? -1 : colorTeam(c, this.config);
     if (team < 0) {

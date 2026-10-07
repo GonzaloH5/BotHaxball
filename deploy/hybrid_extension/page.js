@@ -93,7 +93,8 @@
       try{stadium=profile.stadium(view);}catch(e){
         serviceError=`No se pudo preparar este mapa: ${e.message}. Servicio conectado; control humano disponible.`;stop(serviceError);return;
       }
-      if(stadium.name.trim()!=='Real Soccer ONE'){
+      // los modelos X4 (Sanguchito) los valida el servicio al preparar el mapa
+      if(model?.obsVersion!=='x4-obs-v3'&&stadium.name.trim()!=='Real Soccer ONE'){
         serviceError=`Mapa «${stadium.name}» no compatible con este modelo (Real Soccer ONE). Servicio conectado; podés jugar manualmente.`;
         stop(serviceError);return;
       }

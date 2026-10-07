@@ -1,4 +1,26 @@
-# RS4 Control 0.5: instalación y aceptación
+# RS4 Control 0.6: instalación y aceptación
+
+## Modelos X4 de Sanguchito (0.6.0)
+
+El servicio acepta los modelos del RL X4 (`export/to_onnx_x4.py`, observación `x4-obs-v3`) además de los RS4 v3
+públicos de RS ONE. Elige el motor según el `.json` del modelo:
+
+- X4 (`deploy/hybrid/engine_x4.js`): la observación sale del mismo rastreador de sala que `deploy/bot.js`
+  (`deploy/rs4z/room_state.js`), con paridad exacta tick a tick en cuadros reales de Sanguchito
+  (`node deploy/test_hybrid_x4.js`). Sólo prepara mapas en los que se entrenó el modelo (hoy Sanguchito RS X4); en otro
+  estadio avisa y deja el control humano. Muestrea con la temperatura del modelo (1) y le informa a la red el retardo
+  de sala del modelo (10).
+- El equipo del saque inicial sale de la barrera que el motor les pone a los jugadores (redKO/blueKO), así que funciona
+  aunque el bot entre con el partido empezado.
+- Mientras jugás vos, tus teclas entran en la historia de decisiones del modelo: al ceder el control, el bot ve lo
+  último que hiciste.
+
+```powershell
+node deploy/hybrid_server.js --model deploy/rs4z/x4_rl_c2000.onnx
+```
+
+Para actualizar: recargar `deploy/hybrid_extension` en el gestor de extensiones y luego recargar HaxBall.
+
 
 ## Presets y preparación 0.5.0
 

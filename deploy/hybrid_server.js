@@ -2,10 +2,16 @@
 const http=require('http'),fs=require('fs'),path=require('path'),crypto=require('crypto');
 const {WebSocketServer}=require('ws'),ort=require('onnxruntime-node');
 const {Engine,validateMeta}=require('./hybrid/engine');
+const {X4Engine,validateX4Meta}=require('./hybrid/engine_x4');
+// modelos X4 (obs x4-obs-v3, Sanguchito) o los RS4 v3 públicos anteriores (RS ONE)
+const isX4=meta=>meta?.obs_version==='x4-obs-v3';
+const engineFor=(meta,session,ort)=>isX4(meta)?new X4Engine(meta,session,ort):new Engine(meta,session,ort);
+const modelInfo=c=>({name:c.name,hash:c.hash,frameSkip:c.meta.frame_skip,obsVersion:c.meta.obs_version||null,maps:c.meta.maps||null});
 const {geometryFromText}=require('./runtime');
 const {BotManager}=require('./bot_manager');
 async function loadModel(filename){
-  const meta=validateMeta(JSON.parse(fs.readFileSync(filename.replace(/\.onnx$/,'.json'),'utf8')));
+  const raw=JSON.parse(fs.readFileSync(filename.replace(/\.onnx$/,'.json'),'utf8'));
+  const meta=isX4(raw)?validateX4Meta(raw):validateMeta(raw);
   const session=await ort.InferenceSession.create(filename,{intraOpNumThreads:2,interOpNumThreads:1});
   if(!session.inputNames.includes('obs')||!session.outputNames.includes('logits')||!!meta.recurrent!==session.inputNames.includes('memory'))throw Error('ONNX/JSON contract mismatch');
   return {meta,session,hash:crypto.createHash('sha256').update(fs.readFileSync(filename)).digest('hex'),name:path.basename(filename)};
@@ -63,22 +69,23 @@ async function startServer({model,port=17841,token=crypto.randomBytes(32).toStri
       if(!authenticated){
         const supplied=Buffer.from(typeof msg.token==='string'?msg.token:'');const expected=Buffer.from(token);
         if(msg.type!=='auth'||supplied.length!==expected.length||!crypto.timingSafeEqual(supplied,expected)){socket.close(1008,'Invalid token');return;}
-        authenticated=true;clearTimeout(authTimer);send({type:'authenticated',model:{name:current.name,hash:current.hash,frameSkip:current.meta.frame_skip}});return;
+        authenticated=true;clearTimeout(authTimer);send({type:'authenticated',model:modelInfo(current)});return;
       }
       if(msg.type==='ping'){send({type:'pong'});return;}
       if(msg.type==='claim'){
         if(!Number.isInteger(msg.tabId)||msg.tabId<0)throw Error('Invalid tab owner');
         if(owner&&(owner.socket!==socket||owner.tab!==msg.tabId)){send({type:'denied',tabId:msg.tabId,message:'Otra pestaña activa'});return;}
-        if(!owner){owner={socket,tab:msg.tabId};tab=msg.tabId;engine=new Engine(current.meta,current.session,ort);startPolling();}
-        send({type:'claimed',tabId:tab,model:{name:current.name,hash:current.hash,frameSkip:current.meta.frame_skip}});return;
+        if(!owner){owner={socket,tab:msg.tabId};tab=msg.tabId;engine=engineFor(current.meta,current.session,ort);startPolling();}
+        send({type:'claimed',tabId:tab,model:modelInfo(current)});return;
       }
       if(owner?.socket!==socket||msg.tabId!==tab)throw Error('Not the active tab');
       if(msg.type==='release'){reset();return;}
       if(msg.type==='control'){engine.control(msg);return;}
       if(msg.type==='map'){
         if(engine.mode==='BOT')throw Error('Map preparation requires human control');
+        const text=JSON.stringify(msg.stadium||null);if(text.length>1<<20)throw Error('Map too large');
+        if(isX4(current.meta)){engine.map(msg.stadium);send({type:'mapReady',tabId:tab,mapHash:crypto.createHash('sha256').update(text).digest('hex')});return;}
         if(!msg.stadium||msg.stadium.name!=='Real Soccer ONE')throw Error('v1 supports RS ONE only');
-        const text=JSON.stringify(msg.stadium);if(text.length>1<<20)throw Error('Map too large');
         const key=crypto.createHash('sha256').update(text).digest('hex');
         if(!maps.has(key)){if(maps.size>=4)maps.delete(maps.keys().next().value);maps.set(key,geometry(text));}
         engine.map(msg.stadium,maps.get(key));send({type:'mapReady',tabId:tab,mapHash:key});return;
@@ -89,8 +96,8 @@ async function startServer({model,port=17841,token=crypto.randomBytes(32).toStri
         ackEngine.mode='SUSPENDIDO';ackEngine.resetPolicy();send({type:'error',message:e.message});});return;}
       if(msg.type==='reload'){
         if(engine.mode!=='HUMANO')throw Error('Reload only in HUMAN mode');
-        engine.resetPolicy();current=await loader(model);engine=new Engine(current.meta,current.session,ort);maps.clear();startPolling();
-        send({type:'reloaded',tabId:tab,model:{name:current.name,hash:current.hash,frameSkip:current.meta.frame_skip}});return;
+        engine.resetPolicy();current=await loader(model);engine=engineFor(current.meta,current.session,ort);maps.clear();startPolling();
+        send({type:'reloaded',tabId:tab,model:modelInfo(current)});return;
       }
       throw Error('Unsupported protocol message');
     }).catch(e=>{if(engine){engine.mode='SUSPENDIDO';engine.resetPolicy();}send({type:'error',message:e.message});});});
