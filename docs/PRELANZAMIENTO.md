@@ -106,9 +106,9 @@ Una sola orden en el pod (`docs/POD_RUNBOOK.md` §4). Cada paso tiene su condici
 |---|---|---|---|
 | 1. Preflight | GPU, hilos, disco, datos, referencias humanas, EPV, BC y su export a ONNX; mini-corrida con evaluación 0 y reanudación; una actualización y una evaluación de tamaño real con su tiempo y memoria | sigue | la cola se detiene sin gastar GPU (`preflight.json` dice qué falló) |
 | 2. A/B temprano del shaping | `rl_epv` (potencial con el EPV) y `rl_checkpoint` (franjas de GRF) en paralelo hasta la actualización 300, con 512 partidos y la mitad de los hilos cada uno | gana el de mayor índice de la cadena (media de sus últimas 3 evaluaciones), salvo que en la última pierda contra la BC (< 0,45) o tenga deriva; con diferencia < 0,03, el EPV | un brazo cortado o sin evaluaciones no es candidato; si ninguno es válido, EPV |
-| 3. RL principal | el ganador sigue en su carpeta hasta 3000 actualizaciones × 1024 partidos × 64 decisiones (~187M decisiones con el A/B) | certificación | corte por deriva → paso 4; se cae sin llegar a 3000 → fallo técnico (abajo) |
+| 3. RL principal | el ganador sigue en su carpeta hasta 6000 actualizaciones × 1024 partidos × 64 decisiones (~383M decisiones con el A/B; 6000 por pedido del usuario, antes 3000) | certificación | corte por deriva → paso 4; se cae sin llegar a 3000 → fallo técnico (abajo) |
 | 4. Recuperación (sólo si hubo corte) | desde `best_pase.pt` o `best.pt` del principal (o la BC), λ 0,4 y lr 1e-4; con el brazo de pases activo si el principal lo había activado | certificación | si también se corta: veredicto "revisar" y fin (no se gasta más) |
-| 5. Extensión (una sola vez) | si la corrida llegó a 3000, ningún checkpoint aprobó el gate de pases y el índice de la cadena sube en las últimas 8 evaluaciones (pendiente > 0), sigue hasta 6000 | certificación | — |
+| 5. Extensión (una sola vez) | si la corrida llegó a 6000, ningún checkpoint aprobó el gate de pases y el índice de la cadena sube en las últimas 8 evaluaciones (pendiente > 0), sigue hasta 9000 | certificación | — |
 | 6. Certificación | `learn/x4_certify.py` sobre el último `pase_aprobado_*`, `best_pase.pt` y `best.pt`, en ese orden: 64 partidos de self-play de 3 min, 64 por lado contra la BC, sondas; el que aprueba se certifica otra vez con otras semillas (`--confirm-seed`) | el primero que aprueba las dos veces se exporta a `deploy/rs4z/x4_rl.onnx`, veredicto "competitivo_en_pases" | se exporta el de mayor índice, veredicto "no_competitivo" (sirve para probar, no para competir) o "revisar" si hubo un fallo técnico |
 
 **Fallas técnicas** (no son resultados): si un entrenamiento termina con error después de sus reintentos sin llegar a su
@@ -118,9 +118,10 @@ aprobado, y 3, no aprobado) se reintenta una vez; si vuelve a caer queda en `cer
 rechazo. Las partes informativas de la certificación (sondas, liga, cadena contra la BC) no pueden cambiar el veredicto:
 si fallan quedan en `errores_informativos`.
 
-**Duración** [inferencia]: la estimación real de 3000 actualizaciones con sus evaluaciones la da el preflight
-(`actualizacion_real.horas_3000_con_evaluaciones`; si supera 24 h, la cola no arranca). La extensión o la recuperación
-pueden duplicarla, y cada certificación con su confirmación agrega del orden de media hora a una hora.
+**Duración** [inferencia]: el preflight mide una actualización y una evaluación reales y estima 3000 actualizaciones
+(`actualizacion_real.horas_3000_con_evaluaciones`; si supera 24 h, la cola no arranca). La corrida principal tiene 6000:
+el doble de esa estimación. La extensión o la recuperación la alargan, y cada certificación con su confirmación agrega
+del orden de media hora a una hora.
 
 **Dentro de la corrida** (cada 50 actualizaciones hay una evaluación; la evaluación 0 es la BC con el mismo protocolo):
 - **Corte por deriva** (dos evaluaciones seguidas con alguna de estas condiciones; deja `stopped.json` con el motivo):
@@ -147,7 +148,7 @@ pero quedan registradas para decidir la próxima):
 | 0–20 (crítico solo) | la política es la BC; el crítico aprende el valor | `explained_var` sube desde ~0; `kl_bc` = 0 | `explained_var` negativa o `nonfinite_skipped` > 0 |
 | 20–300 (~10M, A/B con 512 partidos por brazo) | menos pérdidas tontas: la BC suelta la pelota; el shaping de valor castiga cada pérdida | `retencion_tras_recibir` y `precision_pase` suben; `tiempo_con_pelota_p50` sube hacia 0,4 s; `kl_bc` 0,01–0,05 | `presion_al_portador_p50` sube (la defensa se afloja); `dist_ball_1` sube; `kickoff_frac` sube |
 | 300–1000 (~56M) | más pases que sirven: progresivos, que rompen líneas, salidas de presión; pool con rivales distintos | índice de la cadena hacia 0,7–0,9; `epv_por_intento` positivo; `vs_bc.score` > 0,5 | el índice no sube desde la evaluación 0 → brazo de pases en 1000 |
-| 1000–3000 (~187M) | λ baja hasta 0,05 (llega cerca de la actualización 2770): más libertad; combinaciones (paredes, al espacio) y aprovechar la ventaja | índice ≥ 0,93 y etapas ≥ 0,80 (gate del entrenamiento); `pase_aprobado_*`; `indice_sin_valor` cerca de `indice` | `human_w1_mean` sube (estilo artificial); `humanos_dev.nll` sube mucho (se olvida lo humano); `indice` muy por encima de `indice_sin_valor` (el valor sube por el shaping, no por el juego) |
+| 1000–6000 (~383M) | λ baja hasta 0,05 (llega cerca de la actualización 2770 y queda ahí): más libertad; combinaciones (paredes, al espacio) y aprovechar la ventaja | índice ≥ 0,93 y etapas ≥ 0,80 (gate del entrenamiento); `pase_aprobado_*`; `indice_sin_valor` cerca de `indice` | `human_w1_mean` sube (estilo artificial); `humanos_dev.nll` sube mucho (se olvida lo humano); `indice` muy por encima de `indice_sin_valor` (el valor sube por el shaping, no por el juego) |
 
 [inferencia] Las cifras de cada tramo son expectativas, no garantías: salen del diagnóstico de la BC y del A/B de CPU (§7), a
 una escala 30 veces menor. Los millones de decisiones cuentan que las primeras 300 actualizaciones son del A/B, con la
@@ -248,6 +249,21 @@ Ninguno de estos estaba a la vista con "el comando corre". Cada uno tiene test o
   ~0,57), el paso A/B que faltaba en §4, las decisiones de cada tramo y los docstrings de la certificación, de la cola y
   del trainer.
 
+**Durante la primera corrida en el pod (2026-10-06, noche; detenida en la actualización 300 del A/B)**
+- **Pelota muerta detrás de la línea de fondo.** Un lateral cerca del córner, pateado por afuera hacia el fondo, "entraba"
+  (|y| bajo 678,3) con la pelota ya detrás de la línea de fondo. El simulador lo liberaba, pero sólo vuelve a vigilar las
+  salidas cuando la pelota pisa la cancha: no cobraba nada y la pelota quedaba viva afuera hasta el final del partido,
+  con los jugadores oscilando. Lo vio el usuario en el visor.
+  - Frecuencia, en las evaluaciones: 3% del tiempo con la imitación y 8,5% en los dos brazos en la actualización 100
+    (8 casos en 72 partidos, todos con el mismo mecanismo).
+  - Sesgaba las métricas. La distancia a la pelota del brazo EPV daba 206 px, pero sin esos tramos es 128 (la imitación,
+    124–140): podía disparar un corte por deriva falso. El índice de la cadena quedaba unos 0,02 abajo (EPV 0,665 → 0,686).
+  - Arreglo (`env/rs4z/kernel.py`, `test_lateral_released_behind_the_end_line_is_an_end_line_out`): un lateral que se
+    libera con la pelota detrás del fondo se cobra como salida por el fondo en ese tick, con saque de arco o córner según
+    quién la tocó último. Es un **supuesto** sobre la sala (§6).
+  - La corrida se detuvo y quedó archivada (`runs/x4_cola_v1_bug_lateral` en el pod anterior); la cola se relanzó desde
+    cero en un pod con RTX 3090 y 24 hilos, con 6000 actualizaciones (antes 3000) y TF32 en la GPU (`--tf32`).
+
 ## 6. Riesgos que siguen
 
 Ordenados por cuánto pueden cambiar la conclusión de la corrida. Ninguno impide lanzar; cada uno dice qué mirar.
@@ -280,12 +296,14 @@ Ordenados por cuánto pueden cambiar la conclusión de la corrida. Ninguno impid
    después del arreglo de hilos de ONNX no se volvió a medir (E4 con `--trace`). La certificación usa D ∈ {8–11}; las
    evaluaciones del entrenamiento, la distribución completa.
 8. **Fidelidad que sigue supuesta.** El plazo del lateral de Sanguchito (599 ticks) no se verificó: ningún lateral grabado
-   pasó de 301 ticks. Los arranques desde estados humanos empiezan con las acciones pendientes en "quieto" durante hasta
+   pasó de 301 ticks. Tampoco está verificado qué cobra la sala cuando un lateral entra por detrás de la línea de fondo
+   (el simulador cobra saque de arco o córner, §5): en las grabaciones disponibles no pasa nunca. Se confirma en un
+   minuto en la sala, pateando un lateral cerca del córner hacia el fondo por afuera. Los arranques desde estados humanos empiezan con las acciones pendientes en "quieto" durante hasta
    14 ticks (menos del 0,1% de las decisiones).
 9. **Operación.** Un reinicio del pod mata la sesión de tmux: hay que relanzar a mano el mismo comando, y la cola sigue
    donde estaba. La imitación no se reentrena en paralelo con la cola, porque compite por la GPU y por los hilos que midió
-   el preflight. La duración total no está acotada: el preflight estima sólo 3000 actualizaciones, y la extensión o la
-   recuperación pueden duplicarla.
+   el preflight. La duración total no está acotada: el preflight estima 3000 actualizaciones, la corrida principal tiene
+   6000 y la extensión (hasta 9000) o la recuperación la alargan.
 
 ## 7. Evidencia
 

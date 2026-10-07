@@ -13,13 +13,13 @@ Pasos:
    sola tiene un IC90 de ±0,04–0,06, reports/x4/ab_cpu_reeval.json), salvo que en su última evaluación pierda contra la
    BC (< 0,45) o tenga deriva; con diferencia menor a 0,03, el EPV (no cambia la política óptima). En CPU, a una escala
    200 veces menor, los dos quedaron dentro del ruido.
-3. `principal` = el ganador, reanudado con todos los partidos hasta `--updates` (3000). El brazo de pases se decide adentro,
+3. `principal` = el ganador, reanudado con todos los partidos hasta `--updates` (6000). El brazo de pases se decide adentro,
    una sola vez, en la primera evaluación desde la actualización 1000 (`--auto-pass-arm-update`).
 4. Si `principal` se cortó por deriva (stopped.json): `recuperacion` desde su best_pase.pt / best.pt (o la BC) con
-   λ 0,4 y lr 1e-4, `--updates` (3000), con el brazo de pases ya activo si el principal lo había activado. Si también se
+   λ 0,4 y lr 1e-4, `--updates` (6000), con el brazo de pases ya activo si el principal lo había activado. Si también se
    corta, la cola termina en "revisar" sin más cómputo.
 5. Si la corrida terminó sin corte y ningún checkpoint aprobó el gate de pases pero el índice de la cadena sigue
-   subiendo (pendiente positiva en las últimas 8 evaluaciones), una sola extensión hasta `--extend-to` (6000).
+   subiendo (pendiente positiva en las últimas 8 evaluaciones), una sola extensión hasta `--extend-to` (9000).
 6. Certificación (learn/x4_certify.py) de los candidatos: los `pase_aprobado_*.pt` (el último), best_pase.pt y best.pt.
    Un candidato aprueba si pasa la certificación y una confirmación con otras semillas (`--confirm-seed`): con varios
    candidatos y una sola certificación cada uno, un agente algo por debajo del humano promedio tenía varias chances de
@@ -326,8 +326,9 @@ def main():
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--envs", type=int, default=1024)
     ap.add_argument("--rollout", type=int, default=64)
-    ap.add_argument("--updates", type=int, default=3000)
-    ap.add_argument("--extend-to", type=int, default=6000)
+    ap.add_argument("--updates", type=int, default=6000,
+                    help="actualizaciones del RL principal (6000 desde el 2026-10-06, pedido del usuario: antes 3000)")
+    ap.add_argument("--extend-to", type=int, default=9000)
     ap.add_argument("--ab-updates", type=int, default=300, help="actualizaciones del A/B temprano del shaping")
     ap.add_argument("--export-to", default=str(ROOT / "deploy" / "rs4z" / "x4_rl.onnx"))
     ap.add_argument("--confirm-seed", type=int, default=20261007,

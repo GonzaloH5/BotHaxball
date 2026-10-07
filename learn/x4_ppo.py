@@ -479,6 +479,9 @@ def parse_args(argv=None):
                     help="evaluaciones seguidas ≥ --shaping-retire para retirar el shaping")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--threads", type=int, default=4)
+    ap.add_argument("--tf32", action=argparse.BooleanOptionalAction, default=True,
+                    help="productos de matrices en TF32 en GPUs Ampere o más nuevas (3060, 3090): más rápidos, con "
+                         "precisión relativa ~1e-3, la de uso corriente para entrenar")
     a = ap.parse_args(argv)
     a.delay_values = np.array([int(x.split(":")[0]) for x in a.delays.split(",")])
     w = np.array([float(x.split(":")[1]) for x in a.delays.split(",")])
@@ -498,6 +501,9 @@ class Trainer:
         torch.manual_seed(a.seed)
         self.rng = np.random.default_rng(a.seed)
         self.dev = torch.device(a.device)
+        if self.dev.type == "cuda":
+            torch.backends.cuda.matmul.allow_tf32 = bool(a.tf32)
+            torch.backends.cudnn.allow_tf32 = bool(a.tf32)
         self.out = Path(a.out)
         self.out.mkdir(parents=True, exist_ok=True)
         ck = torch.load(a.bc, map_location="cpu")

@@ -27,6 +27,33 @@ def _act(**by_slot):
     return a
 
 
+def _lateral_into_the_corner_zone(taker):
+    """Lateral cerca del córner izquierdo de abajo, pateado por afuera hacia el fondo: la pelota baja de y = 678,3
+    detrás de la línea de fondo (|x| > 1158). Devuelve los saques que se inician en los ticks siguientes."""
+    env = _env()
+    _place(env, FAR)
+    env.start_restart(0, K.LATERAL, taker, (-1100.0, PRM["lateral_ball_y"]))
+    env.ri[0, K.RI_LAT_KICKED] = 1          # el ejecutor ya pateó
+    env.ri[0, K.RI_LAST] = taker
+    env.pos[0, 0] = (-1200.0, 682.0)
+    env.vel[0, 0] = (-1.0, -1.5)
+    starts = []
+    for _ in range(12):
+        ev = env.step(_act())
+        if ev["restart_start"][0]:
+            starts.append((int(ev["restart_start"][0]), int(env.ri[0, K.RI_TEAM])))
+    return env, starts
+
+
+def test_lateral_released_behind_the_end_line_is_an_end_line_out():
+    """Antes la pelota quedaba viva detrás del fondo hasta el final del partido (8,5% del tiempo de las evaluaciones):
+    ahora es una salida por el fondo. El rojo defiende el arco de la izquierda."""
+    _, starts = _lateral_into_the_corner_zone(taker=0)        # la tocó último el defensor → córner del azul
+    assert starts == [(K.CORNER, 1)]
+    _, starts = _lateral_into_the_corner_zone(taker=1)        # la tocó último el atacante → saque de arco del rojo
+    assert starts == [(K.GOAL_KICK, 0)]
+
+
 def test_map_adds_sanguchito_script_to_contract():
     env = _env()
     assert env.flags & C.FIX_SANGU and env.flags & C.FIX_LATERAL

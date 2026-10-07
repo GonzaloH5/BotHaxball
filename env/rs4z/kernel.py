@@ -731,6 +731,13 @@ def post_tick(goal, kicked, contact, pos, vel, group, radius, inv, kick_cancel, 
                 ev[EV_EXEC] = kind
             else:
                 ev[EV_SAFETY] = 1
+            if kind == LATERAL and abs(pos[0, 0]) > line_w + rb:
+                # [supuesto, a confirmar en la sala] lateral pateado por afuera hacia el córner que "entra" (|y| bajo el
+                # umbral) detrás de la línea de fondo: la pelota nunca pisa la cancha, así que la salida no se volvía a
+                # vigilar y quedaba viva afuera hasta el final del partido (8,5% del tiempo de las evaluaciones del
+                # 2026-10-06, con los jugadores sin saber qué hacer). Se cobra como salida por el fondo en este tick:
+                # saque de arco o córner según quién la tocó último.
+                ri[RI_ARMED] = 1
     # 3. salida en este mismo tick (sin gol): saque nuevo
     bx = pos[0, 0]
     by = pos[0, 1]

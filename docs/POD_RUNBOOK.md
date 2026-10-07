@@ -71,7 +71,8 @@ comando y sigue donde estaba (`runs/x4_cola/queue_state.json`).
   "no_competitivo" (se midió y no llegó) o "revisar" (la recuperación también se cortó, o hubo un `fallo_tecnico` o una
   certificación caída: no se llegó a medir lo planeado).
 - Duración: el preflight estima 3000 actualizaciones con sus evaluaciones (si pasan de 24 h, la cola no arranca). La
-  extensión o la recuperación pueden duplicarla.
+  corrida principal tiene 6000 (el doble de esa estimación); la extensión (hasta 9000) o la recuperación la alargan.
+- Hilos: `NUMBA_NUM_THREADS` según los núcleos del pod (6 con la 3060 y una cuota de 7 CPUs; 16 con la 3090 y 24 hilos).
 - No reentrenar la imitación (§3) mientras corre la cola: compiten por la GPU y por los hilos de numba que midió el
   preflight.
 
