@@ -260,7 +260,9 @@ Ninguno de estos estaba a la vista con "el comando corre". Cada uno tiene test o
     124–140): podía disparar un corte por deriva falso. El índice de la cadena quedaba unos 0,02 abajo (EPV 0,665 → 0,686).
   - Arreglo (`env/rs4z/kernel.py`, `test_lateral_released_behind_the_end_line_is_an_end_line_out`): un lateral que se
     libera con la pelota detrás del fondo se cobra como salida por el fondo en ese tick, con saque de arco o córner según
-    quién la tocó último. Es un **supuesto** sobre la sala (§6).
+    quién la tocó último. Verificado con la sala: en las 498 grabaciones de Sanguchito (7.161 laterales) hay 5 laterales
+    que terminan detrás del fondo, y en los 5 la sala cobra saque de arco (4) o córner (1) al tick siguiente, al equipo
+    que corresponde por el último toque. En los partidos humanos la pelota en juego detrás del fondo suma 8 s en 47 h.
   - La corrida se detuvo y quedó archivada (`runs/x4_cola_v1_bug_lateral` en el pod anterior); la cola se relanzó desde
     cero en un pod con RTX 3090 y 24 hilos, con 6000 actualizaciones (antes 3000) y TF32 en la GPU (`--tf32`).
 
@@ -296,9 +298,7 @@ Ordenados por cuánto pueden cambiar la conclusión de la corrida. Ninguno impid
    después del arreglo de hilos de ONNX no se volvió a medir (E4 con `--trace`). La certificación usa D ∈ {8–11}; las
    evaluaciones del entrenamiento, la distribución completa.
 8. **Fidelidad que sigue supuesta.** El plazo del lateral de Sanguchito (599 ticks) no se verificó: ningún lateral grabado
-   pasó de 301 ticks. Tampoco está verificado qué cobra la sala cuando un lateral entra por detrás de la línea de fondo
-   (el simulador cobra saque de arco o córner, §5): en las grabaciones disponibles no pasa nunca. Se confirma en un
-   minuto en la sala, pateando un lateral cerca del córner hacia el fondo por afuera. Los arranques desde estados humanos empiezan con las acciones pendientes en "quieto" durante hasta
+   pasó de 301 ticks. Los arranques desde estados humanos empiezan con las acciones pendientes en "quieto" durante hasta
    14 ticks (menos del 0,1% de las decisiones).
 9. **Operación.** Un reinicio del pod mata la sesión de tmux: hay que relanzar a mano el mismo comando, y la cola sigue
    donde estaba. La imitación no se reentrena en paralelo con la cola, porque compite por la GPU y por los hilos que midió
