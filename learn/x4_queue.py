@@ -7,12 +7,15 @@ curso con `--resume`. Cada proceso tiene su bucle de reintentos acotado.
 
 Pasos:
 1. preflight (learn/x4_preflight.py). Si falla, la cola se detiene: no se gasta GPU con un sistema roto.
-2. Selección temprana del shaping (A/B a escala real, ~10% del cómputo): `rl_epv` (shaping de potencial con el valor de
-   posesión) y `rl_checkpoint` (franjas de GRF) en paralelo hasta la actualización `--ab-updates` (300) con la mitad de
-   partidos y de hilos cada uno. Gana el de mayor índice de la cadena de pase (media de sus últimas 3 evaluaciones: una
-   sola tiene un IC90 de ±0,04–0,06, reports/x4/ab_cpu_reeval.json), salvo que en su última evaluación pierda contra la
-   BC (< 0,45) o tenga deriva; con diferencia menor a 0,03, el EPV (no cambia la política óptima). En CPU, a una escala
-   200 veces menor, los dos quedaron dentro del ruido.
+2. A/B temprano (a escala real, ~10% del cómputo): los brazos de `--ab-arms` en paralelo hasta la actualización
+   `--ab-updates` (300), con los partidos y los hilos repartidos. Por defecto, `rl_epv` (shaping de potencial con el valor
+   de posesión) contra `rl_checkpoint` (franjas de GRF). Gana el de mayor índice de la cadena de pase (media de sus
+   últimas 3 evaluaciones: una sola tiene un IC90 de ±0,04–0,06, reports/x4/ab_cpu_reeval.json), salvo que en su última
+   evaluación le gane a la BC por menos de `--ab-min-score` (0,45) o tenga deriva; si no supera al brazo `--ab-default`
+   (el EPV, que no cambia la política óptima) por más de `--ab-margin` (0,03), gana ese. Con `--ab-guards` quedan afuera
+   además los brazos con señales de que el agente engaña al discriminador de estilo (`docs/PROXIMA_CORRIDA.md` §4):
+   circulación inútil por encima de `--ab-max-useless`, discriminador colapsado, o jugadores mucho más quietos o lejos de
+   la pelota que en el brazo por defecto.
 3. `principal` = el ganador, reanudado con todos los partidos hasta `--updates` (6000). El brazo de pases se decide adentro,
    una sola vez, en la primera evaluación desde la actualización 1000 (`--auto-pass-arm-update`).
 4. Si `principal` se cortó por deriva (stopped.json): `recuperacion` desde su best_pase.pt / best.pt (o la BC) con
@@ -50,6 +53,18 @@ ROOT = Path(__file__).resolve().parent.parent
 BC = ROOT / "runs" / "x4_bc" / "final_sangu_rsone" / "best.pt"
 CERT_NOT_APPROVED = 3      # learn/x4_certify.py NOT_APPROVED: "no aprueba"; cualquier otro código ≠ 0 es una falla
 AB_LAST = 3                # evaluaciones finales de cada brazo del A/B que se promedian
+DEFAULT_ARMS = "epv=--shaping-kind epv;checkpoint=--shaping-kind checkpoint"
+GUARD_ROWS = 50            # actualizaciones finales del log que miran los chequeos del A/B
+
+
+def parse_arms(spec):
+    """'nombre=args;nombre=args' → {nombre: [args]} (en orden). Cada brazo corre en <root>/rl_<nombre>."""
+    arms = {}
+    for part in spec.split(";"):
+        if part.strip():
+            name, _, args = part.partition("=")
+            arms[name.strip()] = args.split()
+    return arms
 
 
 class Queue:
@@ -59,6 +74,10 @@ class Queue:
         self.root.mkdir(parents=True, exist_ok=True)
         self.state_path = self.root / "queue_state.json"
         self.state = json.loads(self.state_path.read_text()) if self.state_path.exists() else dict(done={}, log=[])
+        self.arms = parse_arms(getattr(a, "ab_arms", DEFAULT_ARMS))
+        self.default_arm = getattr(a, "ab_default", "epv")
+        if self.default_arm not in self.arms:
+            raise SystemExit(f"--ab-default {self.default_arm} no es uno de los brazos {list(self.arms)}")
 
     def note(self, msg, **kw):
         row = dict(time=time.strftime("%Y-%m-%dT%H:%M:%S"), msg=msg, **kw)
@@ -136,6 +155,19 @@ class Queue:
                     self.note(f"{n} terminó con código {code}; reintento")
                     pending.append((n, c))
 
+    def preflight_needs(self):
+        """Chequeos extra del preflight según lo que usan los entrenamientos: el banco del discriminador de estilo si
+        algún brazo lo prende y el checkpoint de --init."""
+        out = []
+        args = [str(x) for v in self.arms.values() for x in v] + self.a.rl_extra.split()
+        value = lambda key: [args[i + 1] for i, x in enumerate(args[:-1]) if x == key]
+        if any(float(c) > 0 for c in value("--style-coef")):
+            banks = value("--style-bank")
+            out += ["--style-bank", banks[-1] if banks else str(ROOT / "data" / "x4_style_bank.npz")]
+        if value("--init"):
+            out += ["--init", value("--init")[-1]]
+        return out
+
     def last_eval(self, name):
         ev = [e for e in self.evals(name) if not e.get("baseline")]
         return ev[-1] if ev else None
@@ -164,32 +196,88 @@ class Queue:
                   "se certifica lo que haya y el veredicto será 'revisar' si nada aprueba", codigo=code)
         return False
 
-    def choose_shaping(self):
+    def log_rows(self, name, n=GUARD_ROWS):
+        """Últimas n filas de <root>/<name>/log.jsonl."""
+        p = self.root / name / "log.jsonl"
+        rows = []
+        if p.exists():
+            for line in p.read_text().splitlines()[-n:]:
+                try:
+                    rows.append(json.loads(line))
+                except ValueError:
+                    continue
+        return rows
+
+    def guards(self, run, rows_default):
+        """Señales pre-registradas de que el agente engaña al discriminador de estilo (sólo con --ab-guards). Devuelve
+        los motivos (vacío si el brazo pasa). `rows_default`: log del brazo por defecto (vacío para ese mismo)."""
+        a = self.a
+        out = []
+        ev = [x for x in self.evals(run) if not x.get("baseline")][-AB_LAST:]
+        useless = [(((x.get("cadena_pase") or {}).get("metricas") or {}).get("circulacion_inutil_frac") or [None])[0]
+                   for x in ev]
+        useless = [u for u in useless if u is not None]
+        lim = getattr(a, "ab_max_useless", 0.15)
+        if useless and float(np.mean(useless)) > lim:
+            out.append(f"circulación inútil {np.mean(useless):.3f} > {lim}")
+        rows = self.log_rows(run)
+        dl = [r["style_d_loss"] for r in rows if "style_d_loss" in r]
+        if dl and not 0.1 < float(np.mean(dl)) < 1.9:
+            out.append(f"discriminador colapsado: pérdida media {np.mean(dl):.3f} (fuera de 0,1–1,9)")
+
+        def mean(rs, k):
+            v = [r[k] for r in rs if k in r]
+            return float(np.mean(v)) if v else None
+        if rows_default and rows:
+            st, st0 = mean(rows, "still_frac"), mean(rows_default, "still_frac")
+            if st is not None and st0 and st > 1.5 * st0:
+                out.append(f"quietos {st:.3f} > 1,5 × {st0:.3f} del brazo por defecto")
+            d, d0 = mean(rows, "dist_ball_1"), mean(rows_default, "dist_ball_1")
+            if d is not None and d0 and d > 1.2 * d0:
+                out.append(f"distancia a la pelota {d:.1f} > 1,2 × {d0:.1f} del brazo por defecto")
+        return out
+
+    def choose_arm(self):
         """Regla pre-registrada del A/B temprano (paso 2)."""
-        if "shaping_elegido" in self.state:
-            return self.state["shaping_elegido"]
+        if "brazo_elegido" in self.state or "shaping_elegido" in self.state:
+            return self.state.get("brazo_elegido") or self.state["shaping_elegido"]
+        a = self.a
+        min_score = getattr(a, "ab_min_score", 0.45)
+        margin = getattr(a, "ab_margin", 0.03)
+        default = self.default_arm
+        rows_default = self.log_rows(f"rl_{default}")
         rows = {}
-        for kind in ("epv", "checkpoint"):
-            e = self.last_eval(f"rl_{kind}")
-            ok = e is not None and not e.get("drift") and e["vs_bc"]["score"] >= 0.45 \
-                and not (self.root / f"rl_{kind}" / "stopped.json").exists()
+        for arm in self.arms:
+            run = f"rl_{arm}"
+            e = self.last_eval(run)
+            ok = e is not None and not e.get("drift") and e["vs_bc"]["score"] >= min_score \
+                and not (self.root / run / "stopped.json").exists()
             # media de las últimas evaluaciones con índice: una sola es demasiado ruidosa para una diferencia de 0,03
-            last = [x["cadena_pase"]["indice"] for x in self.evals(f"rl_{kind}")
+            last = [x["cadena_pase"]["indice"] for x in self.evals(run)
                     if not x.get("baseline") and (x.get("cadena_pase") or {}).get("indice") is not None][-AB_LAST:]
             idx = round(float(np.mean(last)), 4) if last else None
-            rows[kind] = dict(valido=bool(ok), indice=idx, evaluaciones=len(last),
-                              vs_bc=(e or {}).get("vs_bc", {}).get("score"))
+            row = dict(valido=bool(ok), indice=idx, evaluaciones=len(last), vs_bc=(e or {}).get("vs_bc", {}).get("score"))
+            if getattr(a, "ab_guards", False):
+                why = self.guards(run, rows_default if arm != default else [])
+                if why:
+                    row.update(valido=False, revisar=why)
+            rows[arm] = row
         valid = {k: v for k, v in rows.items() if v["valido"] and v["indice"] is not None}
+
+        def stopped(k):
+            return (self.root / f"rl_{k}" / "stopped.json").exists()
         if not valid:
-            pick = "epv" if not (self.root / "rl_epv" / "stopped.json").exists() else "checkpoint"
-        elif len(valid) == 1:
-            pick = next(iter(valid))
+            pick = default if not stopped(default) else next((k for k in self.arms if not stopped(k)), default)
         else:
-            pick = "checkpoint" if valid["checkpoint"]["indice"] > valid["epv"]["indice"] + 0.03 else "epv"
-        self.state["shaping_elegido"] = pick
+            pick = max(valid, key=lambda k: valid[k]["indice"])
+            if default in valid and pick != default and valid[pick]["indice"] <= valid[default]["indice"] + margin:
+                pick = default
+        self.state["brazo_elegido"] = pick
         self.state["ab_temprano"] = rows
-        self.note("A/B temprano del shaping", elegido=pick, brazos=rows)
+        self.note("A/B temprano", elegido=pick, brazos=rows)
         return pick
+
+    choose_shaping = choose_arm          # nombre anterior (corridas que ya pasaron el A/B)
 
     def evals(self, name):
         """Filas de <root>/<name>/eval.jsonl, una por actualización: si el trainer se cayó entre escribir una evaluación y
@@ -210,28 +298,30 @@ class Queue:
         a = self.a
         # 1. preflight
         code = self.run("preflight", ["learn.x4_preflight", "--bc", a.bc, "--device", a.device,
-                                      "--out", self.root / "preflight.json", *a.preflight_extra.split()], retries=1)
+                                      "--out", self.root / "preflight.json", *self.preflight_needs(),
+                                      *a.preflight_extra.split()], retries=1)
         if code != 0:
             self.note("preflight con FALLA: la cola se detiene (ver preflight.json)")
             return 1
-        # 2. A/B temprano del shaping, en paralelo con la mitad de los partidos cada uno
-        half = max(64, a.envs // 2)
-        self.run_parallel([(f"rl_{k}", self.rl_cmd(f"rl_{k}", ["--shaping-kind", k], envs=half, updates=a.ab_updates))
-                           for k in ("epv", "checkpoint")])
-        pick = self.choose_shaping()
+        # 2. A/B temprano, en paralelo con los partidos repartidos entre los brazos
+        share = max(64, a.envs // len(self.arms))
+        self.run_parallel([(f"rl_{k}", self.rl_cmd(f"rl_{k}", args, envs=share, updates=a.ab_updates))
+                           for k, args in self.arms.items()])
+        pick = self.choose_arm()
+        arm_args = self.arms.get(pick, ["--shaping-kind", pick])
         # 3. principal: el ganador sigue con todos los partidos (misma carpeta, --resume)
         main = f"rl_{pick}"
         finished = True
         if (self.root / main / "stopped.json").exists():
             self.note(f"el ganador {main} quedó cortado por deriva en el A/B: va a la recuperación")
         else:
-            code = self.run(main + "_full", self.rl_cmd(main, ["--shaping-kind", pick]))
+            code = self.run(main + "_full", self.rl_cmd(main, arm_args))
             finished = self.check_finished(main + "_full", main, a.updates, code)
         chosen = [main]
         if (self.root / main / "stopped.json").exists():
             # 3. recuperación pre-registrada
             init = next((p for p in (self.root / main / "best_pase.pt", self.root / main / "best.pt") if p.exists()), None)
-            extra = ["--lambda-dist", "0.4", "--lr", "1e-4", "--shaping-kind", pick] + (["--init", init] if init else [])
+            extra = ["--lambda-dist", "0.4", "--lr", "1e-4", *arm_args] + (["--init", init] if init else [])
             # si el principal ya había activado el brazo de pases, la recuperación sigue con la misma recompensa
             arm = next((e["brazo_pases_activado"] for e in self.evals(main) if e.get("brazo_pases_activado")), None)
             if arm:
@@ -258,7 +348,7 @@ class Queue:
                 self.save()
                 if slope > 0:
                     self.note("sin aprobado y con el índice subiendo: extensión", pendiente=slope)
-                    code = self.run(last + "_ext", self.rl_cmd(last, ["--shaping-kind", pick], updates=a.extend_to))
+                    code = self.run(last + "_ext", self.rl_cmd(last, arm_args, updates=a.extend_to))
                     self.check_finished(last + "_ext", last, a.extend_to, code)
         return self.certify(chosen)
 
@@ -333,7 +423,16 @@ def main():
     ap.add_argument("--export-to", default=str(ROOT / "deploy" / "rs4z" / "x4_rl.onnx"))
     ap.add_argument("--confirm-seed", type=int, default=20261007,
                     help="semilla de la certificación de confirmación (la primera usa la de learn/x4_certify.py)")
-    ap.add_argument("--rl-extra", default="", help="argumentos extra para learn.x4_ppo (sólo para pruebas en seco)")
+    ap.add_argument("--rl-extra", default="",
+                    help="argumentos para todos los entrenamientos de learn.x4_ppo (pisan los de la cola)")
+    ap.add_argument("--ab-arms", default=DEFAULT_ARMS,
+                    help="brazos del A/B: 'nombre=args;nombre=args' (cada uno en <root>/rl_<nombre>)")
+    ap.add_argument("--ab-default", default="epv", help="brazo que gana los empates y si ninguno es válido")
+    ap.add_argument("--ab-margin", type=float, default=0.03, help="índice que hay que sacarle al brazo por defecto")
+    ap.add_argument("--ab-min-score", type=float, default=0.45, help="puntaje mínimo contra la BC en la última evaluación")
+    ap.add_argument("--ab-guards", action="store_true",
+                    help="excluir brazos con señales de engaño al discriminador de estilo (docs/PROXIMA_CORRIDA.md §4)")
+    ap.add_argument("--ab-max-useless", type=float, default=0.15, help="circulación inútil máxima con --ab-guards")
     ap.add_argument("--cert-extra", default="", help="argumentos extra para learn.x4_certify (sólo para pruebas)")
     ap.add_argument("--preflight-extra", default="", help="argumentos extra para el preflight (sólo para pruebas)")
     a = ap.parse_args()

@@ -156,3 +156,80 @@ def test_recovery_keeps_the_pass_arm_of_the_main_run(tmp_path):
     rec = cmds["rl_recuperacion"]
     assert rec[rec.index("--pass-bonus") + 1] == "0.05" and rec[rec.index("--lambda-dist") + 1] == "0.4"
     assert "--init" in rec and "fallo_tecnico" not in q.state
+
+
+STYLE_ARMS = "control=--style-coef 0;estilo=--style-coef 0.002;estilo3=--style-coef 0.006"
+
+
+def _style_queue(tmp_path, **kw):
+    return _queue(tmp_path, ab_arms=STYLE_ARMS, ab_default="control", ab_margin=0.03, ab_min_score=0.6,
+                  ab_guards=True, ab_max_useless=0.15, **kw)
+
+
+def _arm(path, indices, score=0.85, log=None):
+    rows = [dict(update=0, baseline=True, vs_bc=dict(score=0.5), drift=[], cadena_pase=dict(indice=0.6))]
+    rows += [dict(update=u, vs_bc=dict(score=score), drift=[], cadena_pase=dict(indice=v))
+             for u, v in zip((500, 550, 600), indices)]
+    _evals(path, rows)
+    if log is not None:
+        (path / "log.jsonl").write_text("\n".join(json.dumps(r) for r in log), encoding="utf-8")
+
+
+def test_style_arms_need_a_margin_over_the_control(tmp_path):
+    q = _style_queue(tmp_path / "a")
+    _arm(tmp_path / "a" / "rl_control", (0.70, 0.70, 0.70))
+    _arm(tmp_path / "a" / "rl_estilo", (0.72, 0.72, 0.72))
+    _arm(tmp_path / "a" / "rl_estilo3", (0.75, 0.75, 0.75))
+    assert q.choose_arm() == "estilo3"                   # 0,75 > 0,70 + 0,03
+    q = _style_queue(tmp_path / "b")
+    _arm(tmp_path / "b" / "rl_control", (0.70, 0.70, 0.70))
+    _arm(tmp_path / "b" / "rl_estilo", (0.71, 0.71, 0.71))
+    _arm(tmp_path / "b" / "rl_estilo3", (0.72, 0.73, 0.72))
+    assert q.choose_arm() == "control"                   # el estilo no le saca 0,03 al control
+    q = _style_queue(tmp_path / "c")
+    _arm(tmp_path / "c" / "rl_control", (0.70, 0.70, 0.70))
+    _arm(tmp_path / "c" / "rl_estilo", (0.80, 0.80, 0.80), score=0.55)
+    _arm(tmp_path / "c" / "rl_estilo3", (0.71, 0.71, 0.71))
+    assert q.choose_arm() == "control"                   # el mejor índice perdió fuerza contra la BC (< 0,6)
+
+
+def test_guards_drop_arms_that_fool_the_discriminator(tmp_path):
+    base = [dict(update=u, still_frac=0.12, dist_ball_1=150.0) for u in range(1, 51)]
+    q = _style_queue(tmp_path)
+    _arm(tmp_path / "rl_control", (0.70, 0.70, 0.70), log=base)
+    collapsed = [dict(r, style_d_loss=1.97) for r in base]
+    _arm(tmp_path / "rl_estilo", (0.80, 0.80, 0.80), log=collapsed)
+    still = [dict(r, still_frac=0.25, style_d_loss=1.2) for r in base]
+    _arm(tmp_path / "rl_estilo3", (0.78, 0.78, 0.78), log=still)
+    assert q.choose_arm() == "control"
+    rows = q.state["ab_temprano"]
+    assert "discriminador colapsado" in rows["estilo"]["revisar"][0]
+    assert "quietos" in rows["estilo3"]["revisar"][0]
+
+
+def test_queue_runs_the_arms_with_their_own_args(tmp_path):
+    q = _style_queue(tmp_path, rl_extra="--init runs/x/best.pt --lambda-dist 0.05 --lambda-decay 1")
+    jobs, cmds = [], {}
+    q.run_parallel = lambda js: jobs.extend(js)
+
+    def fake_run(name, cmd, retries=5, ok_codes=(0,)):
+        cmds[name] = [str(x) for x in cmd]
+        if name.startswith("cert_"):
+            cmd[cmd.index("--out") + 1].write_text(json.dumps(dict(aprobado=False)))
+            return Q.CERT_NOT_APPROVED
+        return 0
+    q.run = fake_run
+    _arm(tmp_path / "rl_control", (0.70, 0.70, 0.70))
+    _arm(tmp_path / "rl_estilo", (0.76, 0.76, 0.76))
+    _arm(tmp_path / "rl_estilo3", (0.71, 0.71, 0.71))
+    _log(tmp_path / "rl_estilo", 3000)
+    q.main()
+    by = {n: [str(x) for x in c] for n, c in jobs}
+    assert set(by) == {"rl_control", "rl_estilo", "rl_estilo3"}
+    est = by["rl_estilo"]
+    assert est[est.index("--style-coef") + 1] == "0.002" and est[est.index("--envs") + 1] == "341"
+    assert est[est.index("--lambda-dist") + 1] == "0.05" and "--init" in est
+    main = cmds["rl_estilo_full"]
+    assert main[main.index("--style-coef") + 1] == "0.002" and main[main.index("--envs") + 1] == "1024"
+    pre = cmds["preflight"]
+    assert pre[pre.index("--style-bank") + 1].endswith("x4_style_bank.npz") and pre[pre.index("--init") + 1] == "runs/x/best.pt"

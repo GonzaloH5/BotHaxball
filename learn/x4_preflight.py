@@ -6,6 +6,8 @@ Chequeos (cada uno OK / FALLA, código de salida ≠ 0 si alguno falla):
 3. referencia humana `data/human_metrics_sanguchito.samples.npz` (sin ella best.pt nunca se guarda);
 4. checkpoint de la imitación: carga con weights_only y la dimensión de la observación coincide con obs v3; se exporta a
    ONNX y se verifica con onnxruntime (el export es el último paso de la cola);
+4c. con --init, el checkpoint de PPO de arranque; con --style-bank, el banco del discriminador de estilo y su costo en
+   una actualización del tamaño real (historia y recompensa de cada decisión, pasos del discriminador);
 5. mini-corrida del trainer en el dispositivo (StateBank, rollouts con shaping de valor, actualización, snapshot,
    evaluación 0 y periódica con la cadena de pase, reanudación),
    con throughput, RAM y memoria de GPU, y una estimación del tiempo por actualización con la configuración real.
@@ -38,6 +40,8 @@ def main():
     ap.add_argument("--scale-test", choices=("auto", "yes", "no"), default="auto",
                     help="una actualización sintética con el buffer de la corrida real (auto: sólo en cuda)")
     ap.add_argument("--out", default="")
+    ap.add_argument("--style-bank", default="", help="banco del discriminador de estilo (si algún brazo lo usa)")
+    ap.add_argument("--init", default="", help="checkpoint de PPO con que arrancan los entrenamientos (--init)")
     a = ap.parse_args()
     report, ok = {}, True
 
@@ -131,6 +135,45 @@ def main():
                            cwd=ROOT, capture_output=True, text=True)
         lines = (r.stdout if r.returncode == 0 else r.stderr).strip().splitlines()
         check("export_onnx", r.returncode == 0, lines[-1] if lines else f"código {r.returncode}")
+
+    # 4c. arranque desde otro checkpoint de PPO y discriminador de estilo, si la corrida los usa
+    if a.init:
+        try:
+            ck = torch.load(a.init, map_location="cpu")
+            SetPolicy(hidden=ck.get("hidden", 256)).load_state_dict(ck["model"])
+            check("checkpoint_init", ck.get("obs_version") == obs_v3.OBS_VERSION and "critic" in ck,
+                  f"{a.init}: actualización {ck.get('update')}, obs {ck.get('obs_version')}, crítico {'critic' in ck}")
+        except Exception as e:  # noqa: BLE001
+            check("checkpoint_init", False, f"{type(e).__name__}: {e}")
+    if a.style_bank:
+        try:
+            from env.rs4z.core import RS4ZEnv
+            from learn import x4_style as XS
+            st = XS.Style(a.style_bank, a.device)
+            # costo real por actualización: la historia y la recompensa de cada decisión con todos los partidos, y los
+            # pasos del discriminador
+            env = RS4ZEnv(a.target_envs, map="sanguchito_rs_x4", seed=0, max_delay=15)
+            hist = XS.History(env.N)
+            hist.prime(env)
+            rng = np.random.default_rng(0)
+            t0 = time.time()
+            for _ in range(a.target_rollout):
+                ev = env.step(rng.integers(0, 18, (env.N, 8)))
+                f, rows = hist.observe(env, ev["kicked"])
+                st.add(f, st.reward(f))
+            t_roll = time.time() - t0
+            fake = rng.normal(0, 1, (65536, XS.FEAT)).astype(np.float16)
+            st.agent = [fake]
+            t0 = time.time()
+            st.fit()
+            t_fit = time.time() - t0
+            check("estilo", st.human.shape[1] == XS.FEAT and len(st.human) > 100000,
+                  dict(banco=a.style_bank, rasgos=int(st.human.shape[1]), filas=int(len(st.human)),
+                       seg_rollout=round(t_roll, 2), seg_discriminador=round(t_fit, 2)))
+        except SystemExit as e:
+            check("estilo", False, str(e))
+        except Exception as e:  # noqa: BLE001
+            check("estilo", False, f"{type(e).__name__}: {e}")
     if not ok:
         return finish(report, ok, a)
 
