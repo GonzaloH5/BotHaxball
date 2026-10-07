@@ -54,8 +54,14 @@ def main():
     ref = model(torch.from_numpy(obs)).detach().numpy()
     got = sess.run(["logits"], {"obs": obs})[0]
     err = float(np.abs(ref - got).max())
-    print(f"{out} ({out.stat().st_size / 1e3:.0f} kB), diferencia máxima torch/onnx {err:.2e}")
-    if err > 1e-4:
+    # lo que usa el bot es la distribución de la acción (muestrea con temperatura 1): se compara en probabilidades. Con
+    # observaciones al azar los logits llegan a decenas y la diferencia absoluta es ruido de float32 (1,2e-4 en un
+    # checkpoint del 2026-10-07 hizo fallar el export de la cola aunque las probabilidades coincidían)
+    soft = lambda z: np.exp(z - z.max(1, keepdims=True)) / np.exp(z - z.max(1, keepdims=True)).sum(1, keepdims=True)
+    err_p = float(np.abs(soft(ref) - soft(got)).max())
+    print(f"{out} ({out.stat().st_size / 1e3:.0f} kB), diferencia máxima torch/onnx: logits {err:.2e} "
+          f"(máx |logit| {np.abs(ref).max():.1f}), probabilidades {err_p:.2e}")
+    if err_p > 1e-5 or err > 1e-5 * max(1.0, float(np.abs(ref).max())):
         raise SystemExit("FALLA: ONNX no coincide con torch")
 
 
