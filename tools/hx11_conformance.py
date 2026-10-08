@@ -41,6 +41,13 @@ def input_to_action(inp: int) -> int:
     return _DIR2MOVE[(dx, dy)] + (9 if inp & 16 else 0)
 
 
+def players_dict(p):
+    """Jugador del tick en el formato compacto [id, equipo, input, patada activa, disco] o el viejo (dict)."""
+    if isinstance(p, dict):
+        return p
+    return dict(id=p[0], team=p[1], input=p[2], kicking=bool(p[3]), disc=p[4])
+
+
 class Recording:
     """Ticks de `bridge/hx11_ticks.js` con el estado completo reconstruido (los discos quietos y las propiedades sin
     cambio no se repiten en el archivo)."""
@@ -54,6 +61,7 @@ class Recording:
             except json.JSONDecodeError:  # última línea cortada
                 continue
             if o["type"] == "tick":
+                o["players"] = [players_dict(p) for p in o["players"]]
                 ticks.append(o)
             elif o["type"] == "header":
                 self.header = o
@@ -73,7 +81,8 @@ class Recording:
                     cur_pv[int(i)] = [np.nan if v is None else v for v in pv]
             for i, ch in t["p"].items():
                 for k, v in ch.items():
-                    cur_pr[k][int(i)] = np.nan if v is None else v
+                    if k in cur_pr:
+                        cur_pr[k][int(i)] = np.nan if v is None else v
             self.pos[j] = cur_pv[:, :2]
             self.vel[j] = cur_pv[:, 2:]
             for k in PROPS:

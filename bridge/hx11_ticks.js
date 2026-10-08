@@ -5,10 +5,14 @@
 // necesita en cada tramo, no alcanza con saltear el tick en que cambian. Para que el archivo no sea enorme:
 //   * "m": discos del estadio que se movieron este tick (los quietos no se repiten): {índice: [x, y, vx, vy]}
 //   * "p": propiedades que cambiaron respecto del tick anterior: {índice: {campo: valor}} (el primer tick trae todas)
-//   * la pelota (0) y los jugadores van siempre, con su entrada (input) y si la patada está activa.
+//   * la pelota (0) y los jugadores van siempre, con su entrada (input) y si la patada está activa:
+//     "players": [[id, equipo, input, patada activa (0/1), índice del disco], ...]
+//   * los adornos atados a la pelota con joints (invMass > 1e100) no repiten su posición; sus propiedades (el color
+//     del anillo de carga) sí van.
 // Los anuncios del host van como eventos (traen nombres: la salida es para data/, no se versiona).
 //
-// Uso: node bridge/hx11_ticks.js <grabación.hbr2> --out data/hx11/ticks [--max-minutes 3] [--skip-minutes 0]
+// Uso: node bridge/hx11_ticks.js <grabación.hbr2> --out data/hx11/ticks [--max-minutes 3] [--skip-minutes 0] [--stdout]
+//   --max-minutes 0: el partido entero. --stdout: escribe en la salida estándar (para encadenar con tools.hx11_npz).
 
 const fs = require("fs");
 const path = require("path");
@@ -23,11 +27,13 @@ if (!file) {
   process.exit(1);
 }
 const outDir = opt("--out", path.join(__dirname, "..", "data", "hx11", "ticks"));
-const maxFrames = Math.round(parseFloat(opt("--max-minutes", "3")) * 3600);
+const maxMinutes = parseFloat(opt("--max-minutes", "3"));
+const maxFrames = maxMinutes > 0 ? Math.round(maxMinutes * 3600) : Infinity;
+const toStdout = argv.includes("--stdout");
 const skipFrames = Math.round(parseFloat(opt("--skip-minutes", "0")) * 3600);
 fs.mkdirSync(outDir, { recursive: true });
 const base = path.join(outDir, path.basename(file).replace(/\.hbr2?$/, "").replace(/[^\w.-]+/g, "_"));
-const fd = fs.openSync(base + ".jsonl", "w");
+const fd = toStdout ? 1 : fs.openSync(base + ".jsonl", "w");
 const write = (o) => fs.writeSync(fd, JSON.stringify(o) + "\n");
 const r4 = (v) => (v == null || Number.isNaN(v) ? null : Math.round(v * 1e4) / 1e4);
 
@@ -40,11 +46,11 @@ const frame = () => reader.getCurrentFrameNo();
 // último estado conocido por disco: [x, y, vx, vy] y propiedades
 const lastPos = [];
 const lastProps = [];
-const PROPS = ["radius", "invMass", "bCoef", "damping", "cMask", "cGroup", "gx", "gy"];
+const PROPS = ["radius", "invMass", "bCoef", "damping", "cMask", "cGroup", "gx", "gy", "color"];
 
 function propsOf(d) {
   return { radius: d.radius, invMass: d.invMass, bCoef: d.bCoef, damping: d.damping, cMask: d.cMask,
-           cGroup: d.cGroup, gx: r4(d.gravity ? d.gravity.x : 0), gy: r4(d.gravity ? d.gravity.y : 0) };
+           cGroup: d.cGroup, gx: r4(d.gravity ? d.gravity.x : 0), gy: r4(d.gravity ? d.gravity.y : 0), color: d.color };
 }
 
 function saveStadium(st) {
@@ -66,7 +72,7 @@ function tick() {
     if (!p.team || p.team.id === 0 || !p.disc) continue;
     const di = discs.indexOf(p.disc);
     playerDisc.add(di);
-    players.push({ id: p.id, team: p.team.id, input: p.input, kicking: p.isKicking, disc: di });
+    players.push([p.id, p.team.id, p.input, p.isKicking ? 1 : 0, di]);
   }
   const moved = {};
   const props = {};
@@ -75,7 +81,7 @@ function tick() {
     const d = discs[i];
     const pv = [r4(d.pos.x), r4(d.pos.y), r4(d.speed.x), r4(d.speed.y)];
     if (i === 0 || playerDisc.has(i)) out[i] = pv;
-    else {
+    else if (!(d.invMass > 1e100)) {
       const lp = lastPos[i];
       if (!lp || lp[0] !== pv[0] || lp[1] !== pv[1] || lp[2] !== pv[2] || lp[3] !== pv[3]) moved[i] = pv;
     }
@@ -100,8 +106,12 @@ function finish(why) {
   if (finished) return;
   finished = true;
   try { reader.setSpeed(0); } catch (_) {}
-  fs.closeSync(fd);
-  console.log(`${path.basename(file)}: ${nTicks} ticks (${why}) -> ${base}.jsonl`);
+  if (!toStdout) {
+    fs.closeSync(fd);
+    console.log(`${path.basename(file)}: ${nTicks} ticks (${why}) -> ${base}.jsonl`);
+  } else {
+    write({ type: "end", ticks: nTicks, why });
+  }
   process.exit(0);
 }
 

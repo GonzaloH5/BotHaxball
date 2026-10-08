@@ -255,6 +255,18 @@ Validación:
 
 **Versiones del script:** el banco abarca de enero a octubre de 2026. Se compara cada regla por fecha; si cambió, hay un contrato por versión.
 
+**Avance del 2026-10-07** (31 partidos de la versión actual; [reporte](../reports/hx11/s2_script.md)):
+- **Falta:** a los **≈ 113 ticks (1,9 s)** de un rival pegado al poseedor, con la pelota a ≤ 25 px de él. Es lo que anuncia la sala, no los 6 s. Predice 38 de 50 faltas con 5 disparos falsos.
+- **Offside:** la regla del fútbol en la patada del pase, cobrada cuando el adelantado toca la pelota. Los desvíos de un rival no anulan. Exentos el lateral, el córner y el saque de arco. Explica el 87% de los cobros con 91% de precisión.
+- **Powershot:** empieza a los 90 ticks de contacto. Niveles 2,43, 3,21 y 4,0 de masa inversa a 1,9 s, 5 s y 7,5 s de contacto. Comba en y = −0,0171 × velocidad vertical del jugador.
+- **Pelota parada:**
+  - lateral con masa fija de 1,8;
+  - barra que hace oscilar la masa (0,76–4,29 en córner y tiro libre, 0,77–4,81 en saque de arco, período de unos 150 ticks);
+  - penal con 2,7 fija;
+  - jugadores sin masa hasta la patada;
+  - barreras de radio 373 o 750 contra el rival.
+- **Pendiente:** tiempos de la pelota parada, comba de los saques, penal y saque inicial, gravedad y bCoef de los jugadores, modos por partido, y las faltas y offsides no explicados.
+
 ### S3. Contrato HX11-1 y kernel `env/hx11`
 - Cada regla queda con sus parámetros, su fuente (N eventos, archivo) y su estado: verificada, aproximada o supuesta.
 - El kernel es numba y parametrizado, para poder barrer variantes de las reglas no resueltas.
