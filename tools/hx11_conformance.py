@@ -242,6 +242,263 @@ def bench(n_envs=256, steps=600):
     return res
 
 
+# ============================================================================ S4: árbitro en sombra
+SHADOW_TOL = dict(PLACE=4, FOUL=12, OFFSIDE=4)   # ticks de tolerancia para emparejar una decisión con la de la sala
+
+
+def room_decisions(m):
+    """Decisiones de la sala leídas de la grabación: [(tick, tipo, equipo 0/1, kind, x, y)] con tipo PLACE (colocación
+    para un saque), FOUL u OFFSIDE (primera colocación de una doble colocación: congela la pelota)."""
+    from env.hx11 import contract as HC
+    from tools.hx11_script import piece_kind, possession
+
+    kinds = dict(lateral=HC.LATERAL, corner=HC.CORNER, saque_arco=HC.GOAL_KICK, tiro_libre=HC.FREE_KICK,
+                 penal=HC.PENALTY)
+    who, _ = possession(m)
+
+    def taker_after(t0):
+        return next((m.team(ki, kc) - 1 for ki, kc in m.kicks if ki > t0), None)
+
+    pl, out, n = m.placements, [], 0
+    while n < len(pl):
+        i, x, y = pl[n]
+        kind = piece_kind(x, y)
+        nxt = pl[n + 1] if n + 1 < len(pl) else None
+        double = (nxt is not None and 0 < nxt[0] - i <= 30 and kind in ("tiro_libre", "penal")
+                  and (abs(nxt[1] - x) + abs(nxt[2] - y) < 1e-3 or piece_kind(nxt[1], nxt[2]) == "penal"))
+        if double:
+            i2, x2, y2 = nxt
+            taker = taker_after(i2)
+            poss = m.team(i, who[i]) - 1 if who[i] >= 0 else None
+            k2 = kinds[piece_kind(x2, y2)]
+            out.append((i, "FOUL" if taker == poss else "OFFSIDE", taker, k2, x, y))
+            out.append((i2, "PLACE", taker, k2, x2, y2))
+            n += 2
+        else:
+            out.append((i, "PLACE", taker_after(i), kinds[kind], x, y))
+            n += 1
+    return out
+
+
+def shadow(path):
+    """Árbitro del simulador (env/hx11) sobre los estados grabados de un partido, tick a tick.
+
+    En cada tick se cargan posiciones y velocidades de la pelota y de los jugadores, las patadas y los goles de la
+    grabación, y se corre sólo el árbitro. Cada decisión suya (colocación, falta, offside) se empareja con una de la sala
+    del mismo tipo y equipo a <= SHADOW_TOL ticks; si no la hay, es un falso positivo y se deshace. Si la sala decide
+    algo que el árbitro no decidió en ese margen, se fuerza la decisión de la sala (así cada regla se mide sin
+    arrastrar errores). Se comparan además, por tick, la masa de la pelota, la barrera, el disco del punto y los
+    jugadores sin masa."""
+    from env.hx11 import contract as HC
+    from env.hx11 import kernel as K
+    from env.hx11.core import HX11Env
+    from tools.hx11_script import Match, offside_on
+
+    m = Match(path)
+    z = m.z
+    env = HX11Env(1)
+    fp, P, nr = env.fp, env.P, env.n_red
+    pos, vel, mask, group, radius, inv, grav = (env.pos[0], env.vel[0], env.mask[0], env.group[0], env.radius[0],
+                                               env.inv[0], env.grav[0])
+    ri, rf, fs, fl = env.ri[0], env.rf[0], env.fs[0], env.fl[0]
+    hold_cdf = HC.fixed_hold_cdf(env.hold_ticks)   # duración típica del valor fijo (sin sorteo) para comparar
+    on = offside_on(m)
+    room = room_decisions(m)
+    matched = [False] * len(room)
+    by_tick = collections.defaultdict(list)
+    for n, r in enumerate(room):
+        by_tick[r[0]].append(n)
+    goals = {m.at(e["frame"]): (1 if e["team"] == 1 else -1) for e in m.events if e["name"] == "goal"}
+    di = list(z["disc_ids"])
+    d1, d2 = di.index(1), di.index(2)
+    team_rec, ppos, pvel = z["pl_team"], z["pl_pos"], z["pl_vel"]
+    bpos, bvel, binv = z["ball_pos"], z["ball_vel"], z["ball_invMass"]
+    slot_of = {}                       # columna de la grabación -> lugar en el entorno
+    free = {1: list(range(nr)), 2: list(range(nr, P))}
+    kicked = np.zeros(P, np.bool_)
+    kvel = np.zeros((P, 2))
+    res = collections.defaultdict(list)
+    cnt = collections.Counter()
+    pending = []                       # decisiones de la sala sin emparejar todavía
+    suppress = {}                      # tipo -> tick hasta el que un falso positivo repetido no se vuelve a contar
+    last_kick_kind, last_kick_charged = -1, False   # origen de la comba vigente
+
+    def decision_of_event(e, i):
+        if e in (K.EV_PLACE, K.EV_TIMEOUT):
+            return ("PLACE", int(ri[K.RI_TEAM]), int(ri[K.RI_KIND]), float(rf[K.RF_SPOT_X]), float(rf[K.RF_SPOT_Y]))
+        if e == K.EV_FOUL:
+            return ("FOUL", int(ri[K.RI_TEAM]), int(ri[K.RI_KIND]), float(rf[K.RF_SPOT_X]), float(rf[K.RF_SPOT_Y]))
+        if e == K.EV_OFFSIDE:
+            return ("OFFSIDE", int(ri[K.RI_TEAM]), int(ri[K.RI_KIND]), float(rf[K.RF_SPOT_X]), float(rf[K.RF_SPOT_Y]))
+        return None
+
+    for i in range(m.T):
+        # ---- plantel: cada jugador conserva su lugar mientras está en la cancha
+        cols_now = {int(c): int(team_rec[i, c]) for c in np.where(team_rec[i] > 0)[0]}
+        for c in list(slot_of):
+            if cols_now.get(c) is None or (slot_of[c] < nr) != (cols_now[c] == 1):
+                s = slot_of.pop(c)
+                free[1 if s < nr else 2].append(s)
+        for c, t in cols_now.items():
+            if c not in slot_of and free[t]:
+                slot_of[c] = free[t].pop(0)
+        # ---- estado grabado
+        pos[0] = bpos[i]
+        vel[0] = bvel[i]
+        for s in range(P):
+            pos[fp + s] = (3000.0 if s < nr else -3000.0, 0.0)   # lugares vacíos: lejos, detrás de su arco rival
+            vel[fp + s] = 0.0
+        for c, s in slot_of.items():
+            pos[fp + s] = ppos[i, c]
+            vel[fp + s] = pvel[i, c]
+        kicked[:] = False
+        for c in m.kick_at.get(i, []):
+            if c in slot_of:
+                kicked[slot_of[c]] = True
+                kvel[slot_of[c]] = pvel[max(0, i - 1), c]
+        ri[K.RI_OFFSIDE_ON] = int(on[i])
+        if z["state"][i] == 0:
+            if ri[K.RI_MODE] != K.KICKOFF:
+                ri[K.RI_MODE] = K.KICKOFF
+                ri[K.RI_TICKS] = 0
+                ri[K.RI_LAST] = -1
+                ri[K.RI_OFF_MASK] = 0
+                ri[K.RI_PS_T] = -1
+                ri[K.RI_PS_CONTACT] = 0
+            ri[K.RI_KO] = 1
+        else:
+            ri[K.RI_KO] = 0
+        snap = (ri.copy(), rf.copy(), fs.copy(), fl.copy(), inv.copy(), radius.copy(), mask.copy(), group.copy(),
+                grav.copy())
+        K.referee(pos, vel, mask, group, radius, inv, grav, ri, rf, fs, fl, kicked, kvel, goals.get(i, 0), fp, P, nr,
+                  env.home, env.spawn, env.bar, env.hold, hold_cdf, env.ramp)
+        dec = decision_of_event(int(ri[K.RI_EVENT]), i)
+        if dec is not None:
+            typ, team, kind, x, y = dec
+            tol = SHADOW_TOL[typ]
+            same = [n for j in range(i - tol, i + tol + 1) for n in by_tick.get(j, [])
+                    if not matched[n] and room[n][1] == typ]
+            exact = [n for n in same if room[n][2] in (team, None) and (typ != "PLACE" or room[n][3] == kind)]
+            if exact:
+                n = min(exact, key=lambda n: abs(room[n][0] - i))
+                matched[n] = True
+                j = room[n][0]
+                res[f"{typ}:{HC.KIND_NAMES[kind]}:desfase"].append(i - j)
+                res[f"{typ}:{HC.KIND_NAMES[kind]}:error_punto"].append(float(np.hypot(x - room[n][4], y - room[n][5])))
+                if typ == "PLACE":
+                    ri[K.RI_TICKS] = i - j      # el reloj del saque, alineado con la sala (fase de la barra)
+                cnt[f"{typ}:aciertos"] += 1
+            elif same:
+                # misma decisión con otro equipo o tipo de saque: un desacuerdo; se impone la de la sala
+                n = min(same, key=lambda n: abs(room[n][0] - i))
+                matched[n] = True
+                j, _, rteam, rkind, rx, ry = room[n]
+                cnt[f"{typ}:desacuerdos"] += 1
+                res[f"{typ}:desacuerdos_ejemplos"].append((m.name, int(m.frame[j]), HC.KIND_NAMES[kind], team,
+                                                           HC.KIND_NAMES[rkind], rteam))
+                if rteam is not None:
+                    if typ == "PLACE":
+                        K._place(pos, vel, inv, mask, group, radius, grav, ri, rf, rkind, rteam, rx, ry, fp, P, nr,
+                                 env.home, env.hold, hold_cdf)
+                    else:
+                        K._freeze(pos, vel, grav, radius, ri, rf, rkind, rteam, rx, ry)
+                    ri[K.RI_TICKS] = i - j
+            else:
+                # falso positivo: se deshace, se vuelve a juego abierto y no se cuenta de nuevo por 2 s
+                ri[:], rf[:], fs[:], fl[:], inv[:], radius[:], mask[:], group[:], grav[:] = snap
+                if ri[K.RI_MODE] in (K.OUT_PENDING, K.FREEZE):
+                    ri[K.RI_MODE] = K.OPEN
+                    ri[K.RI_TICKS] = 0
+                if i >= suppress.get(typ, -1):
+                    cnt[f"{typ}:falsos"] += 1
+                    res[f"{typ}:falsos_ejemplos"].append((m.name, int(m.frame[i]), HC.KIND_NAMES[kind], team))
+                suppress[typ] = i + 120
+        # ---- decisiones de la sala que el árbitro no tomó a tiempo: se fuerzan
+        for n in by_tick.get(i, []):
+            pending.append(n)
+        for n in list(pending):
+            j, typ, team, kind, x, y = room[n]
+            if matched[n]:
+                pending.remove(n)
+                continue
+            if i >= j + SHADOW_TOL[typ] and team is not None:
+                pending.remove(n)
+                matched[n] = True
+                cnt[f"{typ}:no_vistos"] += 1
+                res[f"{typ}:no_vistos_ejemplos"].append((m.name, int(m.frame[j]), HC.KIND_NAMES[kind], team))
+                if typ == "PLACE":
+                    K._place(pos, vel, inv, mask, group, radius, grav, ri, rf, kind, team, x, y, fp, P, nr, env.home,
+                             env.hold, hold_cdf)
+                else:
+                    K._freeze(pos, vel, grav, radius, ri, rf, kind, team, x, y)
+                ri[K.RI_TICKS] = i - j
+        # ---- comba: gravedad de la pelota que deja el árbitro contra la de la sala (vale para el tick siguiente)
+        rg = (float(z["ball_gx"][i]) if not np.isnan(z["ball_gx"][i]) else 0.0,
+              float(z["ball_gy"][i]) if not np.isnan(z["ball_gy"][i]) else 0.0)
+        if rg != (0.0, 0.0) or grav[0] != 0.0 or grav[1] != 0.0:
+            src = "carga" if last_kick_charged else HC.KIND_NAMES.get(last_kick_kind, "juego")
+            res[f"comba:{src}"].append(float(np.hypot(grav[0] - rg[0], grav[1] - rg[1])))
+            res[f"comba:{src}:sala"].append(float(np.hypot(*rg)))
+        if int(ri[K.RI_EVENT]) == K.EV_PIECE_KICK:
+            last_kick_kind, last_kick_charged = int(ri[K.RI_AFTER_KIND]), False
+        elif kicked.any():
+            last_kick_kind, last_kick_charged = -1, bool(snap[4][0] > HC.BASE_BALL_INV + 1e-3)
+        # ---- masa de la pelota y discos, por tick
+        mode = int(ri[K.RI_MODE])
+        if z["state"][i] == 1 and not np.isnan(binv[i]):
+            if mode == K.PIECE:
+                res[f"masa:{HC.KIND_NAMES[int(ri[K.RI_KIND])]}"].append(abs(float(inv[0]) - float(binv[i])))
+            elif mode == K.OPEN:
+                key = "masa:carga" if binv[i] > HC.BASE_BALL_INV + 1e-3 or inv[0] > HC.BASE_BALL_INV + 1e-3 else "masa:juego"
+                res[key].append(abs(float(inv[0]) - float(binv[i])))
+        if mode == K.PIECE:
+            kname = HC.KIND_NAMES[int(ri[K.RI_KIND])]
+            rec_r = float(z["disc_radius"][i, d1])
+            cnt[f"barrera:{kname}:ticks"] += 1
+            cnt[f"barrera:{kname}:igual"] += int(abs(rec_r - float(radius[1])) < 0.5
+                                                 and (rec_r < 0.5 or int(z["disc_cMask"][i, d1]) == int(mask[1])))
+            # presencia del disco del punto (en reposo está a ~9999 px): el punto del árbitro puede diferir unos px
+            rec_spot = bool(np.hypot(*(z["disc_pos"][i, d2] - (rf[K.RF_SPOT_X], rf[K.RF_SPOT_Y]))) < 50.0)
+            cnt[f"punto:{kname}:ticks"] += 1
+            cnt[f"punto:{kname}:igual"] += int(rec_spot == (radius[2] > 0))
+            ghosts_rec = [bool(z["pl_invMass"][i, c] > 1e5) for c in slot_of]
+            ghosts_sim = [bool(inv[fp + s] > 1e5) for s in slot_of.values()]
+            cnt[f"sin_masa:{kname}:jugadores"] += len(ghosts_rec)
+            cnt[f"sin_masa:{kname}:igual"] += sum(a == b for a, b in zip(ghosts_rec, ghosts_sim))
+    cnt["sala:decisiones"] = len(room)
+    for n, r in enumerate(room):
+        if not matched[n]:
+            cnt[f"{r[1]}:sin_cerrar"] += 1
+    del m
+    return res, cnt
+
+
+def arbitro(paths):
+    res, cnt = collections.defaultdict(list), collections.Counter()
+    for p in paths:
+        r, c = shadow(p)
+        for k, v in r.items():
+            res[k] += v
+        cnt.update(c)
+    out = dict(conteos=dict(cnt), resumen={})
+    for typ in ("PLACE", "FOUL", "OFFSIDE"):
+        a, f, nv, d = cnt[f"{typ}:aciertos"], cnt[f"{typ}:falsos"], cnt[f"{typ}:no_vistos"], cnt[f"{typ}:desacuerdos"]
+        out["resumen"][typ] = dict(aciertos=a, desacuerdos=d, falsos=f, no_vistos=nv,
+                                   recall=round(a / max(1, a + nv + d), 3), precision=round(a / max(1, a + f + d), 3))
+    for k, v in sorted(res.items()):
+        if k.endswith("_ejemplos"):
+            out["resumen"][k] = v[:40]
+            continue
+        v = np.array(v, dtype=float)
+        out["resumen"][k] = dict(n=len(v), p50=round(float(np.median(v)), 4), p90=round(float(np.percentile(v, 90)), 4),
+                                 max=round(float(v.max()), 4), cero=round(float(np.mean(np.abs(v) < 1e-3)), 3))
+    for k in list(cnt):
+        if k.endswith(":ticks") or k.endswith(":jugadores"):
+            base = k.rsplit(":", 1)[0]
+            out["resumen"][f"{base}:acuerdo"] = round(cnt[f"{base}:igual"] / max(1, cnt[k]), 4)
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -252,7 +509,18 @@ def main():
     b = sub.add_parser("bench")
     b.add_argument("--envs", type=int, default=256)
     b.add_argument("--steps", type=int, default=600)
+    s = sub.add_parser("arbitro")
+    s.add_argument("matches", nargs="+", help="partidos de tools.hx11_npz (data/hx11/npz/*.npz)")
+    s.add_argument("--out", default=None)
     a = ap.parse_args()
+    if a.cmd == "arbitro":
+        res = arbitro(a.matches)
+        if a.out:
+            Path(a.out).write_text(json.dumps(res, indent=1, ensure_ascii=False), encoding="utf-8")
+        for k, v in res["resumen"].items():
+            if not k.endswith("_ejemplos"):
+                print(k, v)
+        return
     if a.cmd == "fisica":
         recs = [Recording(p) for p in a.recordings]
         res = {al: dict(open_play=physics(recs, al), kickoff=physics(recs, al, states=(0,)))

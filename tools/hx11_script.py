@@ -585,8 +585,10 @@ def tables(paths, ramp_len=440):
                 rows.append(np.roll(t[:BAR_PERIOD], ph))
             ref = np.median(np.vstack(rows), axis=0)
         resid = [float(np.max(np.abs(np.roll(t[:BAR_PERIOD], ph) - ref))) for t, ph in zip(body, phases)]
+        hc = collections.Counter(min(h, 15) for h in holds)
         out["bar"][kind] = dict(n=len(trs), hold_value=v0, hold_ticks=hold,
                                 hold_ticks_p10_p90=[float(np.percentile(holds, 10)), float(np.percentile(holds, 90))],
+                                hold_dist={int(h): round(c / len(holds), 4) for h, c in sorted(hc.items())},
                                 wave=[round(float(x), 5) for x in ref], phases=phases,
                                 residual_p90=float(np.percentile(resid, 90)))
     L = max(len(t) for t in ramps)

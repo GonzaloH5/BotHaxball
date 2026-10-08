@@ -50,6 +50,7 @@ class HX11Env:
         self.fl = np.full((n_envs, self.P), -1, np.int64)
         t = C.load_tables()
         self.bar, self.hold, self.hold_ticks, self.ramp = t["bar"], t["hold"], t["hold_ticks"], t["ramp"]
+        self.hold_cdf = t["hold_cdf"]
         self.match_ticks = match_ticks
         self.modes = (int(offside), int(fouls), int(powershot))
         self.rng = np.random.default_rng(seed)
@@ -106,7 +107,7 @@ class HX11Env:
                     st.v_pos, st.v_bcoef, st.v_group, st.v_mask,
                     st.s_p0, st.s_p1, st.s_curved, st.s_center, st.s_radius, st.s_t0, st.s_t1, st.s_bias,
                     st.s_bcoef, st.s_group, st.s_mask, st.p_normal, st.p_dist, st.p_bcoef, st.p_group, st.p_mask,
-                    st.g_p0, st.g_p1, st.g_team, self.home, self.spawn, self.bar, self.hold, self.hold_ticks,
+                    st.g_p0, st.g_p1, st.g_team, self.home, self.spawn, self.bar, self.hold, self.hold_cdf,
                     self.ramp, events)
         return events
 

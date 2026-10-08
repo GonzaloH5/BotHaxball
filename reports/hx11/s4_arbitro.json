@@ -1,0 +1,1171 @@
+{
+ "conteos": {
+  "PLACE:aciertos": 1490,
+  "barrera:lateral:ticks": 166567,
+  "barrera:lateral:igual": 165568,
+  "punto:lateral:ticks": 166567,
+  "punto:lateral:igual": 165437,
+  "sin_masa:lateral:jugadores": 3660714,
+  "sin_masa:lateral:igual": 3660714,
+  "barrera:corner:ticks": 93376,
+  "barrera:corner:igual": 93285,
+  "punto:corner:ticks": 93376,
+  "punto:corner:igual": 92998,
+  "sin_masa:corner:jugadores": 2053106,
+  "sin_masa:corner:igual": 2045370,
+  "OFFSIDE:aciertos": 129,
+  "barrera:tiro_libre:ticks": 47844,
+  "barrera:tiro_libre:igual": 47825,
+  "punto:tiro_libre:ticks": 47844,
+  "punto:tiro_libre:igual": 47293,
+  "sin_masa:tiro_libre:jugadores": 1051313,
+  "sin_masa:tiro_libre:igual": 1044129,
+  "barrera:saque_arco:ticks": 52507,
+  "barrera:saque_arco:igual": 52250,
+  "punto:saque_arco:ticks": 52507,
+  "punto:saque_arco:igual": 52218,
+  "sin_masa:saque_arco:jugadores": 1154132,
+  "sin_masa:saque_arco:igual": 1149272,
+  "sala:decisiones": 1746,
+  "PLACE:no_vistos": 49,
+  "PLACE:falsos": 53,
+  "FOUL:aciertos": 35,
+  "PLACE:desacuerdos": 20,
+  "OFFSIDE:falsos": 14,
+  "OFFSIDE:no_vistos": 9,
+  "FOUL:no_vistos": 14,
+  "barrera:penal:ticks": 454,
+  "barrera:penal:igual": 454,
+  "punto:penal:ticks": 454,
+  "punto:penal:igual": 454,
+  "sin_masa:penal:jugadores": 9534,
+  "sin_masa:penal:igual": 9471,
+  "FOUL:falsos": 1
+ },
+ "resumen": {
+  "PLACE": {
+   "aciertos": 1490,
+   "desacuerdos": 20,
+   "falsos": 53,
+   "no_vistos": 49,
+   "recall": 0.956,
+   "precision": 0.953
+  },
+  "FOUL": {
+   "aciertos": 35,
+   "desacuerdos": 0,
+   "falsos": 1,
+   "no_vistos": 14,
+   "recall": 0.714,
+   "precision": 0.972
+  },
+  "OFFSIDE": {
+   "aciertos": 129,
+   "desacuerdos": 0,
+   "falsos": 14,
+   "no_vistos": 9,
+   "recall": 0.935,
+   "precision": 0.902
+  },
+  "FOUL:falsos_ejemplos": [
+   [
+    "HaxEleven-9-30-2026-1h22m",
+    39655,
+    "tiro_libre",
+    0
+   ]
+  ],
+  "FOUL:no_vistos_ejemplos": [
+   [
+    "HaxEleven-10-3-2026-1h11m",
+    7777,
+    "tiro_libre",
+    0
+   ],
+   [
+    "HaxEleven-10-3-2026-1h11m",
+    68621,
+    "tiro_libre",
+    0
+   ],
+   [
+    "HaxEleven-10-3-2026-1h37m",
+    61316,
+    "tiro_libre",
+    0
+   ],
+   [
+    "HaxEleven-10-3-2026-2h38m",
+    18687,
+    "tiro_libre",
+    0
+   ],
+   [
+    "HaxEleven-10-3-2026-2h38m",
+    25735,
+    "tiro_libre",
+    0
+   ],
+   [
+    "HaxEleven-10-4-2026-12h18m",
+    44229,
+    "tiro_libre",
+    1
+   ],
+   [
+    "HaxEleven-10-4-2026-7h16m",
+    32308,
+    "tiro_libre",
+    1
+   ],
+   [
+    "HaxEleven-10-5-2026-1h00m",
+    28989,
+    "tiro_libre",
+    1
+   ],
+   [
+    "HaxEleven-9-27-2026-2h58m",
+    7902,
+    "tiro_libre",
+    1
+   ],
+   [
+    "HaxEleven-9-27-2026-2h58m",
+    16999,
+    "tiro_libre",
+    1
+   ],
+   [
+    "HaxEleven-9-28-2026-12h29m",
+    26012,
+    "tiro_libre",
+    0
+   ],
+   [
+    "HaxEleven-9-28-2026-12h47m",
+    2664,
+    "tiro_libre",
+    1
+   ],
+   [
+    "HaxEleven-9-28-2026-1h22m",
+    46074,
+    "tiro_libre",
+    1
+   ],
+   [
+    "HaxEleven-9-30-2026-1h22m",
+    41491,
+    "tiro_libre",
+    0
+   ]
+  ],
+  "FOUL:tiro_libre:desfase": {
+   "n": 35,
+   "p50": 0.0,
+   "p90": 1.0,
+   "max": 1.0,
+   "cero": 0.514
+  },
+  "FOUL:tiro_libre:error_punto": {
+   "n": 35,
+   "p50": 0.0001,
+   "p90": 2.8414,
+   "max": 652.904,
+   "cero": 0.543
+  },
+  "OFFSIDE:falsos_ejemplos": [
+   [
+    "HaxEleven-10-1-2026-11h39m",
+    39913,
+    "tiro_libre",
+    0
+   ],
+   [
+    "HaxEleven-10-3-2026-1h11m",
+    68619,
+    "tiro_libre",
+    0
+   ],
+   [
+    "HaxEleven-10-4-2026-12h18m",
+    66101,
+    "tiro_libre",
+    0
+   ],
+   [
+    "HaxEleven-10-4-2026-7h16m",
+    32183,
+    "tiro_libre",
+    0
+   ],
+   [
+    "HaxEleven-10-4-2026-7h16m",
+    41919,
+    "tiro_libre",
+    1
+   ],
+   [
+    "HaxEleven-10-4-2026-7h37m",
+    63438,
+    "tiro_libre",
+    1
+   ],
+   [
+    "HaxEleven-10-5-2026-1h00m",
+    10791,
+    "tiro_libre",
+    0
+   ],
+   [
+    "HaxEleven-10-5-2026-1h00m",
+    63801,
+    "tiro_libre",
+    1
+   ],
+   [
+    "HaxEleven-9-27-2026-12h13m",
+    46640,
+    "tiro_libre",
+    1
+   ],
+   [
+    "HaxEleven-9-27-2026-12h27m",
+    29765,
+    "tiro_libre",
+    0
+   ],
+   [
+    "HaxEleven-9-27-2026-2h58m",
+    17000,
+    "tiro_libre",
+    1
+   ],
+   [
+    "HaxEleven-9-27-2026-3h22m",
+    19867,
+    "tiro_libre",
+    1
+   ],
+   [
+    "HaxEleven-9-28-2026-12h29m",
+    26011,
+    "tiro_libre",
+    0
+   ],
+   [
+    "HaxEleven-9-30-2026-1h00m",
+    23459,
+    "tiro_libre",
+    0
+   ]
+  ],
+  "OFFSIDE:no_vistos_ejemplos": [
+   [
+    "HaxEleven-10-3-2026-12h49m",
+    11796,
+    "tiro_libre",
+    0
+   ],
+   [
+    "HaxEleven-10-3-2026-12h49m",
+    58337,
+    "tiro_libre",
+    1
+   ],
+   [
+    "HaxEleven-10-3-2026-2h00m",
+    40171,
+    "tiro_libre",
+    0
+   ],
+   [
+    "HaxEleven-10-3-2026-2h38m",
+    9951,
+    "tiro_libre",
+    0
+   ],
+   [
+    "HaxEleven-10-4-2026-12h18m",
+    62221,
+    "tiro_libre",
+    0
+   ],
+   [
+    "HaxEleven-10-4-2026-7h37m",
+    51436,
+    "tiro_libre",
+    0
+   ],
+   [
+    "HaxEleven-9-27-2026-2h58m",
+    54484,
+    "tiro_libre",
+    1
+   ],
+   [
+    "HaxEleven-9-27-2026-3h22m",
+    23249,
+    "tiro_libre",
+    1
+   ],
+   [
+    "HaxEleven-9-27-2026-3h22m",
+    31015,
+    "tiro_libre",
+    1
+   ]
+  ],
+  "OFFSIDE:tiro_libre:desfase": {
+   "n": 129,
+   "p50": 0.0,
+   "p90": 0.0,
+   "max": 0.0,
+   "cero": 0.605
+  },
+  "OFFSIDE:tiro_libre:error_punto": {
+   "n": 129,
+   "p50": 0.0001,
+   "p90": 2.5863,
+   "max": 87.4023,
+   "cero": 0.651
+  },
+  "PLACE:corner:desfase": {
+   "n": 286,
+   "p50": 0.0,
+   "p90": 1.0,
+   "max": 2.0,
+   "cero": 0.437
+  },
+  "PLACE:corner:error_punto": {
+   "n": 286,
+   "p50": 0.0,
+   "p90": 0.0,
+   "max": 0.0,
+   "cero": 1.0
+  },
+  "PLACE:desacuerdos_ejemplos": [
+   [
+    "HaxEleven-10-1-2026-11h39m",
+    28294,
+    "lateral",
+    0,
+    "lateral",
+    1
+   ],
+   [
+    "HaxEleven-10-1-2026-11h54m",
+    18282,
+    "saque_arco",
+    0,
+    "corner",
+    1
+   ],
+   [
+    "HaxEleven-10-3-2026-12h49m",
+    27803,
+    "lateral",
+    0,
+    "lateral",
+    1
+   ],
+   [
+    "HaxEleven-10-3-2026-1h11m",
+    46236,
+    "lateral",
+    1,
+    "lateral",
+    0
+   ],
+   [
+    "HaxEleven-10-3-2026-2h00m",
+    65460,
+    "lateral",
+    1,
+    "lateral",
+    0
+   ],
+   [
+    "HaxEleven-10-3-2026-2h00m",
+    71505,
+    "lateral",
+    0,
+    "lateral",
+    1
+   ],
+   [
+    "HaxEleven-10-3-2026-2h38m",
+    60071,
+    "lateral",
+    0,
+    "lateral",
+    1
+   ],
+   [
+    "HaxEleven-10-4-2026-11h49m",
+    11772,
+    "corner",
+    1,
+    "saque_arco",
+    0
+   ],
+   [
+    "HaxEleven-10-4-2026-7h37m",
+    62300,
+    "lateral",
+    0,
+    "lateral",
+    1
+   ],
+   [
+    "HaxEleven-10-5-2026-12h09m",
+    23276,
+    "lateral",
+    1,
+    "lateral",
+    0
+   ],
+   [
+    "HaxEleven-10-5-2026-12h39m",
+    32175,
+    "lateral",
+    1,
+    "lateral",
+    0
+   ],
+   [
+    "HaxEleven-10-5-2026-12h39m",
+    69454,
+    "tiro_libre",
+    1,
+    "penal",
+    1
+   ],
+   [
+    "HaxEleven-10-5-2026-1h00m",
+    4035,
+    "lateral",
+    1,
+    "lateral",
+    0
+   ],
+   [
+    "HaxEleven-9-27-2026-12h27m",
+    1551,
+    "lateral",
+    0,
+    "lateral",
+    1
+   ],
+   [
+    "HaxEleven-9-27-2026-3h22m",
+    12806,
+    "lateral",
+    0,
+    "lateral",
+    1
+   ],
+   [
+    "HaxEleven-9-28-2026-1h22m",
+    10770,
+    "saque_arco",
+    0,
+    "corner",
+    1
+   ],
+   [
+    "HaxEleven-9-28-2026-1h22m",
+    112393,
+    "lateral",
+    0,
+    "lateral",
+    1
+   ],
+   [
+    "HaxEleven-9-30-2026-12h39m",
+    39033,
+    "lateral",
+    0,
+    "lateral",
+    1
+   ],
+   [
+    "HaxEleven-9-30-2026-1h00m",
+    15716,
+    "lateral",
+    1,
+    "lateral",
+    0
+   ],
+   [
+    "HaxEleven-9-30-2026-2h05m",
+    40586,
+    "lateral",
+    0,
+    "lateral",
+    1
+   ]
+  ],
+  "PLACE:falsos_ejemplos": [
+   [
+    "HaxEleven-10-1-2026-11h39m",
+    7729,
+    "corner",
+    0
+   ],
+   [
+    "HaxEleven-10-1-2026-11h39m",
+    27440,
+    "corner",
+    0
+   ],
+   [
+    "HaxEleven-10-1-2026-11h39m",
+    42547,
+    "saque_arco",
+    0
+   ],
+   [
+    "HaxEleven-10-3-2026-12h49m",
+    31442,
+    "lateral",
+    1
+   ],
+   [
+    "HaxEleven-10-3-2026-2h00m",
+    4953,
+    "saque_arco",
+    1
+   ],
+   [
+    "HaxEleven-10-3-2026-2h00m",
+    59969,
+    "corner",
+    0
+   ],
+   [
+    "HaxEleven-10-3-2026-2h00m",
+    60498,
+    "saque_arco",
+    1
+   ],
+   [
+    "HaxEleven-10-3-2026-2h19m",
+    26455,
+    "saque_arco",
+    1
+   ],
+   [
+    "HaxEleven-10-3-2026-2h38m",
+    52168,
+    "corner",
+    1
+   ],
+   [
+    "HaxEleven-10-4-2026-11h49m",
+    30169,
+    "lateral",
+    0
+   ],
+   [
+    "HaxEleven-10-4-2026-11h49m",
+    34759,
+    "lateral",
+    0
+   ],
+   [
+    "HaxEleven-10-4-2026-12h18m",
+    3082,
+    "corner",
+    1
+   ],
+   [
+    "HaxEleven-10-4-2026-12h18m",
+    13686,
+    "lateral",
+    0
+   ],
+   [
+    "HaxEleven-10-4-2026-12h18m",
+    15478,
+    "lateral",
+    0
+   ],
+   [
+    "HaxEleven-10-4-2026-12h18m",
+    19013,
+    "lateral",
+    0
+   ],
+   [
+    "HaxEleven-10-4-2026-12h18m",
+    64055,
+    "saque_arco",
+    1
+   ],
+   [
+    "HaxEleven-10-4-2026-7h16m",
+    20610,
+    "lateral",
+    0
+   ],
+   [
+    "HaxEleven-10-4-2026-7h37m",
+    40021,
+    "corner",
+    1
+   ],
+   [
+    "HaxEleven-10-5-2026-12h09m",
+    7022,
+    "corner",
+    1
+   ],
+   [
+    "HaxEleven-10-5-2026-1h00m",
+    7230,
+    "saque_arco",
+    0
+   ],
+   [
+    "HaxEleven-10-5-2026-1h00m",
+    20261,
+    "corner",
+    1
+   ],
+   [
+    "HaxEleven-9-27-2026-12h13m",
+    12833,
+    "lateral",
+    1
+   ],
+   [
+    "HaxEleven-9-27-2026-12h13m",
+    35345,
+    "corner",
+    0
+   ],
+   [
+    "HaxEleven-9-27-2026-12h13m",
+    37106,
+    "lateral",
+    0
+   ],
+   [
+    "HaxEleven-9-27-2026-12h13m",
+    43289,
+    "corner",
+    1
+   ],
+   [
+    "HaxEleven-9-27-2026-12h27m",
+    43951,
+    "corner",
+    1
+   ],
+   [
+    "HaxEleven-9-27-2026-2h58m",
+    31077,
+    "lateral",
+    0
+   ],
+   [
+    "HaxEleven-9-27-2026-2h58m",
+    35744,
+    "lateral",
+    0
+   ],
+   [
+    "HaxEleven-9-27-2026-2h58m",
+    40278,
+    "lateral",
+    0
+   ],
+   [
+    "HaxEleven-9-27-2026-3h22m",
+    8659,
+    "saque_arco",
+    1
+   ],
+   [
+    "HaxEleven-9-28-2026-12h14m",
+    42152,
+    "corner",
+    0
+   ],
+   [
+    "HaxEleven-9-28-2026-12h29m",
+    45109,
+    "lateral",
+    0
+   ],
+   [
+    "HaxEleven-9-28-2026-12h29m",
+    46691,
+    "lateral",
+    0
+   ],
+   [
+    "HaxEleven-9-28-2026-1h22m",
+    3293,
+    "lateral",
+    1
+   ],
+   [
+    "HaxEleven-9-28-2026-1h22m",
+    15037,
+    "lateral",
+    1
+   ],
+   [
+    "HaxEleven-9-28-2026-1h22m",
+    22219,
+    "lateral",
+    1
+   ],
+   [
+    "HaxEleven-9-28-2026-1h22m",
+    25588,
+    "saque_arco",
+    0
+   ],
+   [
+    "HaxEleven-9-28-2026-1h22m",
+    52034,
+    "saque_arco",
+    0
+   ],
+   [
+    "HaxEleven-9-28-2026-1h22m",
+    71594,
+    "lateral",
+    1
+   ],
+   [
+    "HaxEleven-9-28-2026-1h22m",
+    75134,
+    "lateral",
+    1
+   ]
+  ],
+  "PLACE:lateral:desfase": {
+   "n": 847,
+   "p50": 1.0,
+   "p90": 1.0,
+   "max": 4.0,
+   "cero": 0.457
+  },
+  "PLACE:lateral:error_punto": {
+   "n": 847,
+   "p50": 0.0,
+   "p90": 0.0001,
+   "max": 481.0817,
+   "cero": 0.999
+  },
+  "PLACE:no_vistos_ejemplos": [
+   [
+    "HaxEleven-10-1-2026-11h24m",
+    44585,
+    "lateral",
+    0
+   ],
+   [
+    "HaxEleven-10-1-2026-11h24m",
+    44585,
+    "lateral",
+    0
+   ],
+   [
+    "HaxEleven-10-1-2026-11h39m",
+    7735,
+    "corner",
+    0
+   ],
+   [
+    "HaxEleven-10-1-2026-11h39m",
+    27445,
+    "corner",
+    0
+   ],
+   [
+    "HaxEleven-10-3-2026-12h49m",
+    4615,
+    "lateral",
+    0
+   ],
+   [
+    "HaxEleven-10-3-2026-1h11m",
+    44406,
+    "lateral",
+    0
+   ],
+   [
+    "HaxEleven-10-3-2026-1h11m",
+    46628,
+    "lateral",
+    0
+   ],
+   [
+    "HaxEleven-10-3-2026-1h11m",
+    46975,
+    "lateral",
+    1
+   ],
+   [
+    "HaxEleven-10-3-2026-1h37m",
+    19782,
+    "lateral",
+    1
+   ],
+   [
+    "HaxEleven-10-3-2026-2h00m",
+    7559,
+    "lateral",
+    1
+   ],
+   [
+    "HaxEleven-10-3-2026-2h00m",
+    29489,
+    "lateral",
+    0
+   ],
+   [
+    "HaxEleven-10-3-2026-2h00m",
+    59976,
+    "corner",
+    0
+   ],
+   [
+    "HaxEleven-10-3-2026-2h00m",
+    60505,
+    "saque_arco",
+    1
+   ],
+   [
+    "HaxEleven-10-3-2026-2h00m",
+    61321,
+    "lateral",
+    1
+   ],
+   [
+    "HaxEleven-10-3-2026-2h00m",
+    65595,
+    "lateral",
+    0
+   ],
+   [
+    "HaxEleven-10-3-2026-2h19m",
+    26460,
+    "saque_arco",
+    1
+   ],
+   [
+    "HaxEleven-10-3-2026-2h38m",
+    52174,
+    "corner",
+    1
+   ],
+   [
+    "HaxEleven-10-4-2026-11h49m",
+    26169,
+    "lateral",
+    1
+   ],
+   [
+    "HaxEleven-10-4-2026-11h49m",
+    69185,
+    "lateral",
+    1
+   ],
+   [
+    "HaxEleven-10-4-2026-12h18m",
+    22970,
+    "lateral",
+    0
+   ],
+   [
+    "HaxEleven-10-4-2026-12h18m",
+    64065,
+    "saque_arco",
+    1
+   ],
+   [
+    "HaxEleven-10-4-2026-7h37m",
+    40027,
+    "corner",
+    1
+   ],
+   [
+    "HaxEleven-10-4-2026-7h37m",
+    43012,
+    "lateral",
+    1
+   ],
+   [
+    "HaxEleven-10-4-2026-7h37m",
+    43219,
+    "lateral",
+    0
+   ],
+   [
+    "HaxEleven-10-4-2026-7h37m",
+    46039,
+    "lateral",
+    0
+   ],
+   [
+    "HaxEleven-10-4-2026-7h56m",
+    7372,
+    "lateral",
+    1
+   ],
+   [
+    "HaxEleven-10-5-2026-12h39m",
+    45497,
+    "lateral",
+    1
+   ],
+   [
+    "HaxEleven-10-5-2026-1h00m",
+    20268,
+    "corner",
+    1
+   ],
+   [
+    "HaxEleven-9-27-2026-12h13m",
+    35353,
+    "corner",
+    0
+   ],
+   [
+    "HaxEleven-9-27-2026-12h13m",
+    36777,
+    "lateral",
+    1
+   ],
+   [
+    "HaxEleven-9-27-2026-12h27m",
+    5708,
+    "lateral",
+    1
+   ],
+   [
+    "HaxEleven-9-27-2026-12h27m",
+    20263,
+    "lateral",
+    1
+   ],
+   [
+    "HaxEleven-9-27-2026-12h27m",
+    35887,
+    "lateral",
+    0
+   ],
+   [
+    "HaxEleven-9-27-2026-12h27m",
+    39073,
+    "lateral",
+    0
+   ],
+   [
+    "HaxEleven-9-27-2026-3h22m",
+    8667,
+    "saque_arco",
+    1
+   ],
+   [
+    "HaxEleven-9-27-2026-3h22m",
+    13047,
+    "lateral",
+    0
+   ],
+   [
+    "HaxEleven-9-27-2026-3h22m",
+    16630,
+    "lateral",
+    1
+   ],
+   [
+    "HaxEleven-9-28-2026-12h29m",
+    25509,
+    "lateral",
+    1
+   ],
+   [
+    "HaxEleven-9-28-2026-1h22m",
+    18978,
+    "lateral",
+    1
+   ],
+   [
+    "HaxEleven-9-28-2026-1h22m",
+    105569,
+    "saque_arco",
+    1
+   ]
+  ],
+  "PLACE:saque_arco:desfase": {
+   "n": 171,
+   "p50": 0.0,
+   "p90": 1.0,
+   "max": 2.0,
+   "cero": 0.386
+  },
+  "PLACE:saque_arco:error_punto": {
+   "n": 171,
+   "p50": 0.0,
+   "p90": 0.0,
+   "max": 0.0,
+   "cero": 1.0
+  },
+  "PLACE:tiro_libre:desfase": {
+   "n": 186,
+   "p50": -1.0,
+   "p90": 0.0,
+   "max": 2.0,
+   "cero": 0.382
+  },
+  "PLACE:tiro_libre:error_punto": {
+   "n": 186,
+   "p50": 0.0,
+   "p90": 2.6354,
+   "max": 87.4023,
+   "cero": 0.677
+  },
+  "comba:carga": {
+   "n": 51661,
+   "p50": 0.0008,
+   "p90": 0.003,
+   "max": 0.0475,
+   "cero": 0.552
+  },
+  "comba:carga:sala": {
+   "n": 51661,
+   "p50": 0.0074,
+   "p90": 0.0263,
+   "max": 0.0475,
+   "cero": 0.123
+  },
+  "comba:corner": {
+   "n": 18259,
+   "p50": 0.0035,
+   "p90": 0.012,
+   "max": 0.0482,
+   "cero": 0.198
+  },
+  "comba:corner:sala": {
+   "n": 18259,
+   "p50": 0.0152,
+   "p90": 0.038,
+   "max": 0.0846,
+   "cero": 0.007
+  },
+  "comba:juego": {
+   "n": 3196,
+   "p50": 0.0038,
+   "p90": 0.0185,
+   "max": 0.0516,
+   "cero": 0.181
+  },
+  "comba:juego:sala": {
+   "n": 3196,
+   "p50": 0.0038,
+   "p90": 0.0185,
+   "max": 0.0516,
+   "cero": 0.181
+  },
+  "comba:saque_arco": {
+   "n": 13816,
+   "p50": 0.0017,
+   "p90": 0.0058,
+   "max": 0.0574,
+   "cero": 0.348
+  },
+  "comba:saque_arco:sala": {
+   "n": 13816,
+   "p50": 0.0105,
+   "p90": 0.0279,
+   "max": 0.0671,
+   "cero": 0.069
+  },
+  "comba:tiro_libre": {
+   "n": 13246,
+   "p50": 0.0012,
+   "p90": 0.0053,
+   "max": 0.0332,
+   "cero": 0.454
+  },
+  "comba:tiro_libre:sala": {
+   "n": 13246,
+   "p50": 0.0074,
+   "p90": 0.0208,
+   "max": 0.0479,
+   "cero": 0.119
+  },
+  "masa:carga": {
+   "n": 94008,
+   "p50": 0.0,
+   "p90": 0.1388,
+   "max": 3.1491,
+   "cero": 0.708
+  },
+  "masa:corner": {
+   "n": 93376,
+   "p50": 0.0252,
+   "p90": 0.2025,
+   "max": 3.0053,
+   "cero": 0.156
+  },
+  "masa:juego": {
+   "n": 1217144,
+   "p50": 0.0,
+   "p90": 0.0,
+   "max": 0.7241,
+   "cero": 1.0
+  },
+  "masa:lateral": {
+   "n": 166567,
+   "p50": 0.0,
+   "p90": 0.0,
+   "max": 0.15,
+   "cero": 0.997
+  },
+  "masa:penal": {
+   "n": 454,
+   "p50": 0.0,
+   "p90": 0.0,
+   "max": 0.27,
+   "cero": 0.993
+  },
+  "masa:saque_arco": {
+   "n": 52507,
+   "p50": 0.0427,
+   "p90": 0.188,
+   "max": 2.7995,
+   "cero": 0.153
+  },
+  "masa:tiro_libre": {
+   "n": 47844,
+   "p50": 0.0582,
+   "p90": 0.1306,
+   "max": 2.15,
+   "cero": 0.146
+  },
+  "barrera:lateral:acuerdo": 0.994,
+  "punto:lateral:acuerdo": 0.9932,
+  "sin_masa:lateral:acuerdo": 1.0,
+  "barrera:corner:acuerdo": 0.999,
+  "punto:corner:acuerdo": 0.996,
+  "sin_masa:corner:acuerdo": 0.9962,
+  "barrera:tiro_libre:acuerdo": 0.9996,
+  "punto:tiro_libre:acuerdo": 0.9885,
+  "sin_masa:tiro_libre:acuerdo": 0.9932,
+  "barrera:saque_arco:acuerdo": 0.9951,
+  "punto:saque_arco:acuerdo": 0.9945,
+  "sin_masa:saque_arco:acuerdo": 0.9958,
+  "barrera:penal:acuerdo": 1.0,
+  "punto:penal:acuerdo": 1.0,
+  "sin_masa:penal:acuerdo": 0.9934
+ }
+}

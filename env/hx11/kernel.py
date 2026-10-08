@@ -59,7 +59,8 @@ RI_PREV_IN_Y = 26    # la pelota estaba dentro de |y| <= 1200 el tick anterior
 RI_DONE = 27         # partido terminado
 RI_LEN = 28          # duración del partido en ticks de reloj
 RI_EVENT = 29        # evento del tick (para el entorno y las pruebas; EV_*)
-RI_SIZE = 30
+RI_HOLD = 30         # ticks del valor fijo de la barra en este saque (sorteado)
+RI_SIZE = 31
 # eventos del tick
 EV_NONE, EV_GOAL_RED, EV_GOAL_BLUE, EV_OUT, EV_PLACE, EV_PIECE_KICK, EV_FOUL, EV_OFFSIDE, EV_KICKOFF, EV_TIMEOUT = range(10)
 # ---------------------------------------------------------------------------- estado real
@@ -186,7 +187,7 @@ def _discs_off(pos, radius, mask, home):
 
 
 @njit(cache=True)
-def _place(pos, vel, inv, mask, group, radius, grav, ri, rf, kind, team, x, y, fp, P, n_red, home, hold):
+def _place(pos, vel, inv, mask, group, radius, grav, ri, rf, kind, team, x, y, fp, P, n_red, home, hold, hold_cdf):
     """Colocación de la pelota parada: pelota fija en el punto, barreras, jugadores sin masa, rivales fantasma."""
     pos[0, 0] = x
     pos[0, 1] = y
@@ -195,6 +196,11 @@ def _place(pos, vel, inv, mask, group, radius, grav, ri, rf, kind, team, x, y, f
     grav[0] = 0.0
     grav[1] = 0.0
     inv[0] = hold[kind]
+    u = np.random.random()
+    h = 0
+    while h < hold_cdf.shape[1] - 1 and hold_cdf[kind, h] < u:
+        h += 1
+    ri[RI_HOLD] = h
     ri[RI_MODE] = PIECE
     ri[RI_KIND] = kind
     ri[RI_TEAM] = team
@@ -239,15 +245,21 @@ def _barrier_on(pos, radius, mask, ri, rf):
     if kind == C.CORNER:
         r = 750.0
     radius[1] = r
-    mask[1] = _TEAM_FLAG[1 - ri[RI_TEAM]]
+    # en el penal la barrera deja afuera del área a los compañeros del que patea; en los demás, al rival
+    mask[1] = _TEAM_FLAG[ri[RI_TEAM]] if kind == C.PENALTY else _TEAM_FLAG[1 - ri[RI_TEAM]]
     ri[RI_BARRIER_ON] = 1
 
 
 @njit(cache=True)
-def _freeze(pos, vel, grav, ri, rf, kind, team, x, y):
-    """Primera colocación de falta u offside: la pelota queda quieta donde está (conserva su masa)."""
+def _freeze(pos, vel, grav, radius, ri, rf, kind, team, x, y):
+    """Primera colocación de falta u offside: la pelota queda quieta en el punto (conserva su masa) y el disco del punto
+    ya se pone [S4: aparece 1 tick después del congelamiento y dura hasta 120 después del tiro libre]."""
     pos[0, 0] = x
     pos[0, 1] = y
+    pos[2, 0] = x
+    pos[2, 1] = y
+    radius[2] = 17.5
+    ri[RI_SPOT_ON] = 1
     vel[0, 0] = 0.0
     vel[0, 1] = 0.0
     grav[0] = 0.0
@@ -299,7 +311,7 @@ def _in_box(x, y, attack_team):
 # ============================================================================ árbitro
 @njit(cache=True)
 def referee(pos, vel, mask, group, radius, inv, grav, ri, rf, fs, fl, kicked, kvel, goal, fp, P, n_red,
-            home, spawn, bar, hold, hold_ticks, ramp):
+            home, spawn, bar, hold, hold_cdf, ramp):
     """Script de la sala al final del tick. Devuelve 1 si el partido terminó."""
     ri[RI_EVENT] = EV_NONE
     mode = ri[RI_MODE]
@@ -388,34 +400,37 @@ def referee(pos, vel, mask, group, radius, inv, grav, ri, rf, fs, fl, kicked, kv
             _restore_players(inv, group, fp, P, n_red)
             ri[RI_GHOSTS] = 0
             ri[RI_GK_GHOST] = 0
-        if ri[RI_BARRIER_ON] == 1:
-            off = 1
-            if ak == C.LATERAL:
-                off = 3
-            if t >= off:
+        # el lateral termina cuando la pelota vuelve a |y| < 1210: ahí se van la barrera y la masa de 1,8 [S4: |y| al
+        # quitarse p10 1195, p90 1208 en 224 laterales]; en los demás saques, al tick siguiente de la patada
+        if ak == C.LATERAL:
+            done = abs(pos[0, 1]) < C.LATERAL_OUT_Y or t >= C.BAD_LATERAL_TICKS
+        else:
+            done = t >= 1
+        if done:
+            if ri[RI_BARRIER_ON] == 1:
                 pos[1, 0] = home[0, 0]
                 pos[1, 1] = home[0, 1]
                 radius[1] = 0.0
                 ri[RI_BARRIER_ON] = 0
-        rb = 1
-        if ak == C.LATERAL:
-            rb = 5
-        if t == rb and ri[RI_PS_T] < 0:
-            inv[0] = C.BASE_BALL_INV
-        if t >= 5:
-            ri[RI_AFTER_T] = -1
+            if ri[RI_PS_T] < 0:
+                inv[0] = C.BASE_BALL_INV
+            if t >= 1:
+                ri[RI_AFTER_T] = -1
     # ------------------------------------------------------------- discos con tiempo fijo (punto y barrera del arco)
     if ri[RI_SPOT_ON] != 0 and (mode == PIECE or ri[RI_AFTER_T] >= 0):
         spot_ticks = 120
         if ri[RI_KIND] == C.LATERAL or ri[RI_AFTER_KIND] == C.LATERAL and mode != PIECE:
             spot_ticks = 30
+        if ri[RI_KIND] == C.PENALTY and mode == PIECE:
+            spot_ticks = C.PENALTY_DISC_TICKS
         if mode != PIECE or ri[RI_TICKS] >= spot_ticks:
             pos[2, 0] = home[1, 0]
             pos[2, 1] = home[1, 1]
             radius[2] = 0.0
             ri[RI_SPOT_ON] = 0
-    if mode == PIECE and ri[RI_KIND] == C.GOAL_KICK and ri[RI_BARRIER_ON] != 0 \
-            and ri[RI_TICKS] >= C.GOAL_KICK_BARRIER_TICKS:
+    if mode == PIECE and ri[RI_BARRIER_ON] == 1 and (
+            ri[RI_KIND] == C.GOAL_KICK and ri[RI_TICKS] >= C.GOAL_KICK_BARRIER_TICKS
+            or ri[RI_KIND] == C.PENALTY and ri[RI_TICKS] >= C.PENALTY_DISC_TICKS):
         pos[1, 0] = home[0, 0]
         pos[1, 1] = home[0, 1]
         radius[1] = 0.0
@@ -424,15 +439,15 @@ def referee(pos, vel, mask, group, radius, inv, grav, ri, rf, fs, fl, kicked, kv
     if mode == PIECE:
         kind = ri[RI_KIND]
         team = ri[RI_TEAM]
-        if ri[RI_TICKS] == 1 and ri[RI_BARRIER_ON] == 0:
+        if ri[RI_TICKS] >= 1 and ri[RI_BARRIER_ON] == 0:
             _barrier_on(pos, radius, mask, ri, rf)
         # masa de la pelota: barra (valor fijo y onda de 150 ticks) o fija
         if kind == C.CORNER or kind == C.FREE_KICK or kind == C.GOAL_KICK:
             t = ri[RI_TICKS]
-            if t < hold_ticks[kind]:
+            if t < ri[RI_HOLD]:
                 inv[0] = hold[kind]
             else:
-                inv[0] = bar[kind, (t - hold_ticks[kind]) % C.BAR_PERIOD]
+                inv[0] = bar[kind, (t - ri[RI_HOLD]) % C.BAR_PERIOD]
         if kicker >= 0 and _team_of(kicker, n_red) == team:
             ri[RI_MODE] = OPEN
             ri[RI_TICKS] = 0
@@ -461,7 +476,7 @@ def referee(pos, vel, mask, group, radius, inv, grav, ri, rf, fs, fl, kicked, kv
         elif ri[RI_TICKS] >= C.PIECE_TIMEOUT:
             # [supuesto] se entrega al rival en el mismo punto
             _place(pos, vel, inv, mask, group, radius, grav, ri, rf, kind, 1 - team, rf[RF_SPOT_X], rf[RF_SPOT_Y],
-                   fp, P, n_red, home, hold)
+                   fp, P, n_red, home, hold, hold_cdf)
             ri[RI_EVENT] = EV_TIMEOUT
             return 0
         else:
@@ -476,19 +491,21 @@ def referee(pos, vel, mask, group, radius, inv, grav, ri, rf, fs, fl, kicked, kv
                 x = C.PENALTY_X if x > 0 else -C.PENALTY_X
                 y = 0.0
             _place(pos, vel, inv, mask, group, radius, grav, ri, rf, kind, ri[RI_TEAM], x, y, fp, P, n_red, home,
-                   hold)
+                   hold, hold_cdf)
         return 0
     # ------------------------------------------------------------- salida pendiente
     if mode == OUT_PENDING:
         delay = C.LATERAL_DELAY if ri[RI_KIND] == C.LATERAL else C.END_LINE_DELAY
         if ri[RI_TICKS] >= delay:
             _place(pos, vel, inv, mask, group, radius, grav, ri, rf, ri[RI_KIND], ri[RI_TEAM], rf[RF_SPOT_X],
-                   rf[RF_SPOT_Y], fp, P, n_red, home, hold)
+                   rf[RF_SPOT_Y], fp, P, n_red, home, hold, hold_cdf)
         return 0
     # ================================================================ juego abierto
     # ------------------------------------------------------------- offside: cobro al tocar un marcado
     if ri[RI_OFFSIDE_ON] != 0 and toucher >= 0 and (ri[RI_OFF_MASK] >> toucher) & 1:
-        _freeze(pos, vel, grav, ri, rf, C.FREE_KICK, 1 - _team_of(toucher, n_red), pos[0, 0], pos[0, 1])
+        att = _team_of(toucher, n_red)
+        dx = C.OFFSIDE_SPOT_DX if att == 0 else -C.OFFSIDE_SPOT_DX
+        _freeze(pos, vel, grav, radius, ri, rf, C.FREE_KICK, 1 - att, pos[fp + toucher, 0] + dx, pos[fp + toucher, 1])
         ri[RI_EVENT] = EV_OFFSIDE
         for q in range(P):
             fs[q] = -1
@@ -511,7 +528,8 @@ def referee(pos, vel, mask, group, radius, inv, grav, ri, rf, fs, fl, kicked, kv
     poss = ri[RI_LAST]
     # ------------------------------------------------------------- comba vigente
     if ri[RI_CURVE] > 0:
-        if toucher >= 0 and kicker < 0:
+        # cualquier toque (también una patada) corta la comba vigente; la patada cargada pone la suya más abajo [S4]
+        if toucher >= 0:
             ri[RI_CURVE] = 0
         else:
             ri[RI_CURVE] -= 1
@@ -568,7 +586,12 @@ def referee(pos, vel, mask, group, radius, inv, grav, ri, rf, fs, fl, kicked, kv
                     fl[r] = now
                     if now - fs[r] >= C.FOUL_TICKS:
                         kind = C.PENALTY if _in_box(pos[0, 0], pos[0, 1], tp) else C.FREE_KICK
-                        _freeze(pos, vel, grav, ri, rf, kind, tp, pos[0, 0], pos[0, 1])
+                        x = pos[fp + poss, 0]
+                        y = pos[fp + poss, 1]
+                        if kind == C.PENALTY:
+                            x = C.PENALTY_X if tp == 0 else -C.PENALTY_X
+                            y = 0.0
+                        _freeze(pos, vel, grav, radius, ri, rf, kind, tp, x, y)
                         ri[RI_EVENT] = EV_FOUL
                         for q in range(P):
                             fs[q] = -1
@@ -599,7 +622,7 @@ def referee(pos, vel, mask, group, radius, inv, grav, ri, rf, fs, fl, kicked, kv
             return 0
         else:
             return 0
-    out_side = abs(by) > C.LINE_H + C.OUT_MARGIN
+    out_side = abs(by) > C.LATERAL_OUT_Y
     out_end = abs(bx) > C.LINE_W + C.OUT_MARGIN and abs(by) > C.GOAL_HALF_H
     if poss >= 0 and (out_side or out_end):
         last_team = _team_of(poss, n_red)
@@ -615,7 +638,8 @@ def referee(pos, vel, mask, group, radius, inv, grav, ri, rf, fs, fl, kicked, kv
             fl[q] = -1
         if out_side and abs(bx) <= C.LINE_W:
             ri[RI_KIND] = C.LATERAL
-            rf[RF_SPOT_X] = rf[RF_CROSS_X]
+            rf[RF_CROSS_X] = bx
+            rf[RF_SPOT_X] = bx
             rf[RF_SPOT_Y] = C.LATERAL_Y if by > 0 else -C.LATERAL_Y
         else:
             # arco de x > 0 lo defiende el azul (1)
@@ -648,7 +672,7 @@ def step_envs(pos, vel, mask, group, radius, inv, grav, kick_cancel, ri, rf, fs,
               v_pos, v_bcoef, v_group, v_mask,
               s_p0, s_p1, s_curved, s_center, s_radius, s_t0, s_t1, s_bias, s_bcoef, s_group, s_mask,
               p_normal, p_dist, p_bcoef, p_group, p_mask, g_p0, g_p1, g_team,
-              home, spawn, bar, hold, hold_ticks, ramp, events):
+              home, spawn, bar, hold, hold_cdf, ramp, events):
     """Avanza `frames` ticks cada partido con las mismas acciones. events[n, f] = evento de cada tick."""
     N = pos.shape[0]
     P = actions.shape[1]
@@ -666,5 +690,5 @@ def step_envs(pos, vel, mask, group, radius, inv, grav, kick_cancel, ri, rf, fs,
                                 s_mask, p_normal, p_dist, p_bcoef, p_group, p_mask, g_p0, g_p1, g_team, ri[n],
                                 kicked, kvel)
             referee(pos[n], vel[n], mask[n], group[n], radius[n], inv[n], grav[n], ri[n], rf[n], fs[n], fl[n],
-                    kicked, kvel, goal, fp, P, n_red, home, spawn, bar, hold, hold_ticks, ramp)
+                    kicked, kvel, goal, fp, P, n_red, home, spawn, bar, hold, hold_cdf, ramp)
             events[n, f] = ri[n, RI_EVENT]

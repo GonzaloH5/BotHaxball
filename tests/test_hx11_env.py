@@ -65,6 +65,7 @@ def test_lateral(env):
     assert ev.index(K.EV_PLACE) - ev.index(K.EV_OUT) == C.LATERAL_DELAY
     assert env.ri[0, K.RI_KIND] == C.LATERAL and env.ri[0, K.RI_TEAM] == 1  # saca el azul
     assert env.pos[0, 0, 1] == C.LATERAL_Y and abs(env.pos[0, 0, 0] - env.rf[0, K.RF_CROSS_X]) < 1e-9
+    assert 100.0 < env.pos[0, 0, 0] < 106.0     # x de la pelota al pasar |y| > 1210 (avanza 0,5 por tick)
     assert env.inv[0, 0] == C.LATERAL_INV
     assert env.radius[0, 1] == 373.0 and env.mask[0, 1] == RED  # barrera contra el rojo
 
@@ -97,6 +98,8 @@ def test_foul(env, where, kind):
     assert ev.index(K.EV_FOUL) == C.FOUL_TICKS
     assert ev.index(K.EV_PLACE) - ev.index(K.EV_FOUL) == C.FREEZE_TICKS
     assert env.ri[0, K.RI_KIND] == kind and env.ri[0, K.RI_TEAM] == 0
+    if kind == C.FREE_KICK:
+        assert tuple(env.pos[0, 0]) == where       # en la posición del que recibió la falta
     if kind == C.PENALTY:
         assert tuple(env.pos[0, 0]) == (C.PENALTY_X, 0.0) and env.inv[0, 0] == C.PENALTY_INV
 
@@ -117,6 +120,7 @@ def test_offside_called_when_marked_player_touches(env):
     env.vel[0, 0] = 0.0
     ev = run(env, 1)
     assert ev == [K.EV_OFFSIDE] and env.ri[0, K.RI_TEAM] == 1
+    assert tuple(env.pos[0, 0]) == (1015.0, 300.0)  # el adelantado + 15 px hacia el arco rival
     ev = run(env, C.FREEZE_TICKS)
     assert env.ri[0, K.RI_MODE] == K.PIECE and env.ri[0, K.RI_KIND] == C.FREE_KICK
 

@@ -294,6 +294,18 @@ Validación:
 
 Los umbrales son propuestas, a fijar por el usuario antes de medir.
 
+**Hecho el 2026-10-08** (árbitro en sombra sobre 31 partidos; [reporte](../reports/hx11/s4_arbitro.md)):
+
+| Decisión | Recall | Precisión |
+|---|---|---|
+| Colocaciones | 95,6% | 95,3% |
+| Faltas | 71% | 97% |
+| Offsides | 93,5% | 90% |
+
+- **Exacto o casi:** puntos de córner, saque de arco y lateral; masa de la pelota en juego, lateral y penal; barreras, disco del punto y jugadores sin masa (≥ 98,9% de los ticks).
+- **Correcciones** a 11 reglas del árbitro, con su evidencia en el reporte.
+- **No se cumplen** los criterios propuestos para faltas y offside: queda la decisión de aceptar o afinar.
+
 ### S5. Pruebas con bots cliente en la sala real, solo para lo que las grabaciones no resuelvan
 - La sala donde va a jugar el bot solo admite clientes, y hay permiso. Alcanza: no hace falta alojar el script.
 - Un admin o un técnico arranca el partido.
