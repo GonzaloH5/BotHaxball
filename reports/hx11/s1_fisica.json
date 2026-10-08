@@ -1,0 +1,412 @@
+{
+ "stadium": "haxeleven_x11",
+ "recordings": [
+  "HaxEleven-10-3-2026-12h49m.jsonl",
+  "HaxEleven-10-4-2026-11h49m.jsonl",
+  "HaxEleven-10-4-2026-12h18m.jsonl",
+  "HaxEleven-10-4-2026-7h37m.jsonl",
+  "HaxEleven-10-4-2026-7h56m.jsonl",
+  "HaxEleven-10-5-2026-12h09m.jsonl",
+  "HaxEleven-10-5-2026-12h39m.jsonl",
+  "HaxEleven-10-5-2026-1h00m.jsonl"
+ ],
+ "results": {
+  "t": {
+   "open_play": {
+    "1": {
+     "n": 74523,
+     "reasons": {
+      "estado": 6847,
+      "gol/plantel": 12,
+      "colocación del script": 494
+     },
+     "ball": {
+      "p50": 1.6077746776921858e-13,
+      "p90": 0.00010000000003174137,
+      "max": 0.00019185314436968127
+     },
+     "players": {
+      "p50": 0.00014142135620180986,
+      "p90": 0.00014142135630229575,
+      "max": 0.0007349874133989545
+     },
+     "transitions_with_prop_change": 14440
+    },
+    "10": {
+     "n": 24117,
+     "reasons": {
+      "estado": 2283,
+      "gol/plantel": 39,
+      "colocación del script": 831
+     },
+     "ball": {
+      "p50": 0.0003210444657385544,
+      "p90": 0.0005626189219337016,
+      "max": 0.04994396489281424
+     },
+     "players": {
+      "p50": 0.0005338734839253604,
+      "p90": 0.0005947536960238997,
+      "max": 0.10000879451968134
+     }
+    },
+    "30": {
+     "n": 6827,
+     "reasons": {
+      "estado": 686,
+      "gol/plantel": 36,
+      "colocación del script": 617
+     },
+     "ball": {
+      "p50": 0.0009677158122285189,
+      "p90": 0.0025970390839090913,
+      "max": 0.8935747033598701
+     },
+     "players": {
+      "p50": 0.0011104568211998036,
+      "p90": 0.0012455741468479016,
+      "max": 1.8083107632367936
+     }
+    },
+    "60": {
+     "n": 3173,
+     "reasons": {
+      "estado": 344,
+      "gol/plantel": 33,
+      "colocación del script": 523
+     },
+     "ball": {
+      "p50": 0.0021478293039225347,
+      "p90": 0.014002151699311167,
+      "max": 2.9688632121043343
+     },
+     "players": {
+      "p50": 0.001492110181868259,
+      "p90": 0.0030398785737978536,
+      "max": 1.5536831729627971
+     }
+    },
+    "worst_1tick": [
+     {
+      "err": 0.0007,
+      "file": "HaxEleven-10-4-2026-7h56m.jsonl",
+      "frame": 22161,
+      "ball": 0.0,
+      "players": 0.0007,
+      "prop_change": false
+     },
+     {
+      "err": 0.0006,
+      "file": "HaxEleven-10-4-2026-7h37m.jsonl",
+      "frame": 31964,
+      "ball": 0.0,
+      "players": 0.0006,
+      "prop_change": false
+     },
+     {
+      "err": 0.0004,
+      "file": "HaxEleven-10-3-2026-12h49m.jsonl",
+      "frame": 10795,
+      "ball": 0.0,
+      "players": 0.0004,
+      "prop_change": false
+     },
+     {
+      "err": 0.0004,
+      "file": "HaxEleven-10-3-2026-12h49m.jsonl",
+      "frame": 8862,
+      "ball": 0.0,
+      "players": 0.0004,
+      "prop_change": false
+     },
+     {
+      "err": 0.0003,
+      "file": "HaxEleven-10-5-2026-12h09m.jsonl",
+      "frame": 2776,
+      "ball": 0.0,
+      "players": 0.0003,
+      "prop_change": false
+     },
+     {
+      "err": 0.0003,
+      "file": "HaxEleven-10-3-2026-12h49m.jsonl",
+      "frame": 9848,
+      "ball": 0.0,
+      "players": 0.0003,
+      "prop_change": false
+     },
+     {
+      "err": 0.0002,
+      "file": "HaxEleven-10-5-2026-1h00m.jsonl",
+      "frame": 15497,
+      "ball": 0.0,
+      "players": 0.0002,
+      "prop_change": false
+     },
+     {
+      "err": 0.0002,
+      "file": "HaxEleven-10-5-2026-12h39m.jsonl",
+      "frame": 7156,
+      "ball": 0.0,
+      "players": 0.0002,
+      "prop_change": false
+     },
+     {
+      "err": 0.0002,
+      "file": "HaxEleven-10-5-2026-1h00m.jsonl",
+      "frame": 23162,
+      "ball": 0.0,
+      "players": 0.0002,
+      "prop_change": false
+     },
+     {
+      "err": 0.0002,
+      "file": "HaxEleven-10-5-2026-12h39m.jsonl",
+      "frame": 7171,
+      "ball": 0.0,
+      "players": 0.0002,
+      "prop_change": false
+     },
+     {
+      "err": 0.0002,
+      "file": "HaxEleven-10-4-2026-11h49m.jsonl",
+      "frame": 10284,
+      "ball": 0.0,
+      "players": 0.0002,
+      "prop_change": false
+     },
+     {
+      "err": 0.0002,
+      "file": "HaxEleven-10-5-2026-1h00m.jsonl",
+      "frame": 18861,
+      "ball": 0.0002,
+      "players": 0.0001,
+      "prop_change": false
+     },
+     {
+      "err": 0.0002,
+      "file": "HaxEleven-10-3-2026-12h49m.jsonl",
+      "frame": 4035,
+      "ball": 0.0,
+      "players": 0.0002,
+      "prop_change": false
+     },
+     {
+      "err": 0.0002,
+      "file": "HaxEleven-10-5-2026-12h09m.jsonl",
+      "frame": 5599,
+      "ball": 0.0,
+      "players": 0.0002,
+      "prop_change": false
+     },
+     {
+      "err": 0.0002,
+      "file": "HaxEleven-10-5-2026-1h00m.jsonl",
+      "frame": 18257,
+      "ball": 0.0002,
+      "players": 0.0001,
+      "prop_change": false
+     }
+    ]
+   },
+   "kickoff": {
+    "1": {
+     "n": 6388,
+     "reasons": {
+      "frames": 6,
+      "estado": 75479,
+      "colocación del script": 1,
+      "gol/plantel": 2
+     },
+     "ball": {
+      "p50": 0.0,
+      "p90": 0.0,
+      "max": 6.361462184556317e-05
+     },
+     "players": {
+      "p50": 0.00011119203282393033,
+      "p90": 0.00014142135628219857,
+      "max": 0.00017408777021305196
+     },
+     "transitions_with_prop_change": 109
+    },
+    "10": {
+     "n": 2116,
+     "reasons": {
+      "frames": 11,
+      "estado": 25137,
+      "gol/plantel": 6
+     },
+     "ball": {
+      "p50": 0.0,
+      "p90": 0.0,
+      "max": 0.00038953540674371476
+     },
+     "players": {
+      "p50": 0.000514692064871025,
+      "p90": 0.0005861330657269508,
+      "max": 0.0006772199982816947
+     }
+    },
+    "30": {
+     "n": 625,
+     "reasons": {
+      "frames": 10,
+      "estado": 7525,
+      "gol/plantel": 6
+     },
+     "ball": {
+      "p50": 0.0,
+      "p90": 0.0,
+      "max": 0.0023239973175681384
+     },
+     "players": {
+      "p50": 0.0010657750726986077,
+      "p90": 0.0011963968793029273,
+      "max": 0.0021169254965315598
+     }
+    },
+    "60": {
+     "n": 306,
+     "reasons": {
+      "frames": 10,
+      "estado": 3751,
+      "gol/plantel": 6
+     },
+     "ball": {
+      "p50": 0.0,
+      "p90": 0.0,
+      "max": 0.014711223859385725
+     },
+     "players": {
+      "p50": 0.0013958645021716245,
+      "p90": 0.0017715963322647334,
+      "max": 0.12867784331083978
+     }
+    },
+    "worst_1tick": [
+     {
+      "err": 0.0002,
+      "file": "HaxEleven-10-3-2026-12h49m.jsonl",
+      "frame": 491,
+      "ball": 0.0,
+      "players": 0.0002,
+      "prop_change": false
+     },
+     {
+      "err": 0.0002,
+      "file": "HaxEleven-10-4-2026-12h18m.jsonl",
+      "frame": 39049,
+      "ball": 0.0,
+      "players": 0.0002,
+      "prop_change": false
+     },
+     {
+      "err": 0.0002,
+      "file": "HaxEleven-10-4-2026-12h18m.jsonl",
+      "frame": 30228,
+      "ball": 0.0,
+      "players": 0.0002,
+      "prop_change": false
+     },
+     {
+      "err": 0.0002,
+      "file": "HaxEleven-10-3-2026-12h49m.jsonl",
+      "frame": 464,
+      "ball": 0.0,
+      "players": 0.0002,
+      "prop_change": false
+     },
+     {
+      "err": 0.0002,
+      "file": "HaxEleven-10-3-2026-12h49m.jsonl",
+      "frame": 535,
+      "ball": 0.0,
+      "players": 0.0002,
+      "prop_change": false
+     },
+     {
+      "err": 0.0002,
+      "file": "HaxEleven-10-5-2026-12h09m.jsonl",
+      "frame": 892,
+      "ball": 0.0,
+      "players": 0.0002,
+      "prop_change": false
+     },
+     {
+      "err": 0.0002,
+      "file": "HaxEleven-10-5-2026-12h39m.jsonl",
+      "frame": 1810,
+      "ball": 0.0,
+      "players": 0.0002,
+      "prop_change": false
+     },
+     {
+      "err": 0.0002,
+      "file": "HaxEleven-10-4-2026-12h18m.jsonl",
+      "frame": 38258,
+      "ball": 0.0,
+      "players": 0.0002,
+      "prop_change": false
+     },
+     {
+      "err": 0.0002,
+      "file": "HaxEleven-10-4-2026-12h18m.jsonl",
+      "frame": 38260,
+      "ball": 0.0,
+      "players": 0.0002,
+      "prop_change": false
+     },
+     {
+      "err": 0.0002,
+      "file": "HaxEleven-10-3-2026-12h49m.jsonl",
+      "frame": 547,
+      "ball": 0.0,
+      "players": 0.0002,
+      "prop_change": false
+     },
+     {
+      "err": 0.0002,
+      "file": "HaxEleven-10-3-2026-12h49m.jsonl",
+      "frame": 304,
+      "ball": 0.0,
+      "players": 0.0002,
+      "prop_change": false
+     },
+     {
+      "err": 0.0002,
+      "file": "HaxEleven-10-4-2026-11h49m.jsonl",
+      "frame": 315,
+      "ball": 0.0,
+      "players": 0.0002,
+      "prop_change": false
+     },
+     {
+      "err": 0.0002,
+      "file": "HaxEleven-10-4-2026-12h18m.jsonl",
+      "frame": 38480,
+      "ball": 0.0,
+      "players": 0.0002,
+      "prop_change": false
+     },
+     {
+      "err": 0.0002,
+      "file": "HaxEleven-10-4-2026-12h18m.jsonl",
+      "frame": 38604,
+      "ball": 0.0,
+      "players": 0.0002,
+      "prop_change": false
+     },
+     {
+      "err": 0.0002,
+      "file": "HaxEleven-10-4-2026-12h18m.jsonl",
+      "frame": 30593,
+      "ball": 0.0,
+      "players": 0.0002,
+      "prop_change": false
+     }
+    ]
+   }
+  }
+ }
+}

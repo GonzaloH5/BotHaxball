@@ -1,6 +1,7 @@
 """Importa un estadio real (exportado por bridge/record.js o replay_to_jsonl.js) al catálogo stadiums/.
 
-python -m tools.import_stadium <origen.hbs> <nombre> [--field W H] [--source "texto"]
+python -m tools.import_stadium <origen.hbs> <nombre> [--field W H] [--source "texto"] [--keep-discs i ...]
+    [--ignore-discs i ...]
 
 --field fija las medidas de la cancha (semiancho, semialto) cuando bg no las describe bien
 (mapas con script: el fondo dibujado es más grande que la cancha). Se guardan en la clave "haxballrl".
@@ -20,11 +21,19 @@ def main():
     ap.add_argument("name")
     ap.add_argument("--field", nargs=2, type=float, default=None)
     ap.add_argument("--source", default=None)
+    ap.add_argument("--keep-discs", nargs="+", type=int, default=None,
+                    help="discos (índice sin la pelota) que el script mete en juego y el sim debe conservar")
+    ap.add_argument("--ignore-discs", nargs="+", type=int, default=None,
+                    help="discos (índice sin la pelota) que el sim debe descartar")
     a = ap.parse_args()
     d = json.loads(Path(a.src).read_text(encoding="utf-8"))
     meta = d.setdefault("haxballrl", {})
     if a.field:
         meta["field_half_w"], meta["field_half_h"] = a.field
+    if a.keep_discs:
+        meta["keep_discs"] = a.keep_discs
+    if a.ignore_discs:
+        meta["ignore_discs"] = a.ignore_discs
     meta["source"] = a.source or Path(a.src).name
     out = STADIUM_DIR / f"{a.name}.hbs"
     out.write_text(json.dumps(d), encoding="utf-8")

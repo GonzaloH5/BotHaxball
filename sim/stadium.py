@@ -242,6 +242,9 @@ def load_stadium(name_or_path: str = "classic", solid_net: bool = False) -> Stad
     # discos del script que no existen en el juego (se usan para ubicar jugadores y no se ven ni chocan):
     # "haxballrl": {"ignore_discs": [índices en discs, sin contar la pelota]}
     ignore = set(data.get("haxballrl", {}).get("ignore_discs", []))
+    # y al revés, discos que arrancan fuera de la cancha y el script mete en juego (barreras de HaxEleven):
+    # "haxballrl": {"keep_discs": [...]} los conserva aunque parezcan inalcanzables
+    keep = set(data.get("haxballrl", {}).get("keep_discs", []))
 
     def reachable(d) -> bool:
         if _flags(d.get("cMask"), ALL) & BALL:
@@ -252,10 +255,10 @@ def load_stadium(name_or_path: str = "classic", solid_net: bool = False) -> Stad
         return all(float(q @ n) > dist - rd for n, dist in player_planes)
 
     kept = [(i, d) for i, d in enumerate(discs)
-            if _flags(d.get("cGroup"), ALL) != 0 and _flags(d.get("cMask"), ALL) != 0
-            and d.get("radius", DEFAULT_DISC["radius"]) > 0
-            and d.get("invMass", DEFAULT_DISC["invMass"]) < 1e100
-            and reachable(d) and i not in ignore]
+            if i in keep or (_flags(d.get("cGroup"), ALL) != 0 and _flags(d.get("cMask"), ALL) != 0
+                             and d.get("radius", DEFAULT_DISC["radius"]) > 0
+                             and d.get("invMass", DEFAULT_DISC["invMass"]) < 1e100
+                             and reachable(d) and i not in ignore)]
     d_src = np.array([i for i, _ in kept], dtype=np.int64)
     discs = [d for _, d in kept]
 

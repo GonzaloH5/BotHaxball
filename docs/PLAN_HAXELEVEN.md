@@ -36,7 +36,7 @@ Consecuencias:
 | Tiempo con la pelota | ~1/8 | ~1/22: casi todo el valor está en ubicarse sin la pelota **[inferencia]** |
 | Riesgo principal | el pase no emerge | que el bot aprenda a coordinar consigo mismo o con la BC, y no con humanos (Carroll 2019, 1910.05789) |
 | Mecánicas | patada, X | además: powershot con carga porcentual y curva, faltas por contacto sostenido, offside, barra de fuerza en la pelota parada; no hay slide |
-| Costo del simulador | 9 jugadores y pelota | 23 discos móviles: unas 7 veces más pares de colisión por tick **[inferencia, a medir]** |
+| Costo del simulador | 9 jugadores y pelota | 23 discos móviles: medido en S1, 2,7 veces más lento por partido que 4v4 y el mismo costo por jugador |
 
 ### Consecuencias de diseño
 
@@ -145,6 +145,15 @@ Es infraestructura verificada contra el juego real (`README.md`):
 - **Rendimiento:** medir ticks/s del motor con 22 jugadores.
   - Si no alcanza, optimizar las colisiones, por ejemplo descartando pares lejanos con una grilla.
   - Siempre con la prueba de equivalencia exacta contra el motor actual.
+
+**Hecho el 2026-10-07 con el estadio actual, [1800, 1200]** ([reporte](../reports/hx11/s1_fisica.md)):
+- **Estadio:** `stadiums/haxeleven_x11.hbs`.
+- **Física de juego abierto exacta en 8 grabaciones:**
+  - 1 tick: 74.523 transiciones con error máximo de 0,001 px, que es el redondeo;
+  - 60 ticks: p90 de 0,014 px la pelota y 0,003 px los jugadores.
+- **Cómo:** el simulador aplica tick a tick las propiedades que deja el script (el 19% de las transiciones), con el mismo orden de discos que el juego.
+- **Barra de fuerza:** es un disco que rebota entre otros dos (discos 28–30); se modela en S3.
+- **Velocidad:** el motor con 22 jugadores cuesta lo mismo por jugador que 4v4 (9,1 M ticks de jugador/s en esta PC). No hace falta optimizarlo.
 
 ### S2. Arqueología del script
 
