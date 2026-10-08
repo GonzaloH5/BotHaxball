@@ -115,10 +115,23 @@ Es infraestructura verificada contra el juego real (`README.md`):
   - duración, goles y pausas;
   - nombres y avatares: ¿declaran número o puesto?;
   - chat de los humanos: ¿declaran puestos (sirve para las etiquetas de D2) o hay mensajes del árbitro? Hay que verificar si la grabación guarda los anuncios del script.
-- Agrupar por partido: dos archivos del mismo cruce a unos 15 min, ¿son los dos tiempos?
+- Agrupar en sesiones los partidos seguidos de los mismos jugadores.
 - Splits por partido y por bloque de fechas, sin fuga entre tiempos del mismo partido.
 - Reservar grupos enteros para medir la generalización: cada técnico tiene su estilo.
 - Salida: `reports/hx11/inventario.json`.
+
+**Hecho el 2026-10-07** ([reporte](../reports/hx11/inventario.md)):
+- **Archivos:** 711 únicos. Cada uno es un partido entero de unos 12,7 min, no un tiempo.
+- **Datos útiles:** 142 h de 11v11 exacto en mapas x11.
+- **Mapa:** tres versiones en el tiempo:
+  - [1875, 1064], de junio a agosto;
+  - tamaño aleatorio, en agosto;
+  - [1800, 1200], la actual.
+- **Anuncios:** quedan grabados y anuncian el % del powershot, la potencia de la barra y el arquero (`!gk`). Las faltas y los offsides no se anuncian.
+- **La sala anuncia:**
+  - offside desde mitad de cancha;
+  - falta a los **2 s**, que no coincide con los 6 s que describió el usuario;
+  - modos que se pueden apagar: faltas, offside, powershot y gambeta.
 
 ### S1. Estadio y física base
 - Exportar el estadio desde la grabación, como se hizo con Sanguchito, e importarlo con `tools.import_stadium` como `stadiums/haxeleven_x11.hbs`.

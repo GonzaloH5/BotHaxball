@@ -1,0 +1,1546 @@
+{
+ "version": "hx11-inventario-1",
+ "rules": [
+  "Lee los metadatos de `bridge/hx11_meta.js` y arma:",
+  "",
+  "* Duplicados exactos (mismo SHA-256; se conserva el primero por nombre) y del mismo partido grabado por dos",
+  "  personas (misma secuencia de goles no vacía y ≥ 8 nombres de jugadores en común).",
+  "* Minutos jugados por estadio y por plantel: 11v11 exacto, ambos equipos con ≥ 10 y con ≥ 9.",
+  "* Catálogo de estadios (exportados una vez por hash a `data/hx11/stadiums`).",
+  "* Actividad del script de la sala: `setDiscProperties` por disco y campo (jugadores agrupados), por minuto jugado.",
+  "* Anuncios del host como plantillas (nombres → <J>, IDs de Discord → <ID>, números → #); el chat que la sala",
+  "  reenvía como anuncio (\"[x] nombre: texto\") se cuenta aparte y no se copia. Valores de los anuncios con",
+  "  porcentaje (powershot utilizado, potencia de córner, tiro libre, saque de arco...).",
+  "* Sesiones y particiones, como en `tools.x4_index`: sesión = grabaciones con ≥ 50% de jugadores en común y",
+  "  ≤ 45 min entre una y la siguiente (con cualquiera de las lecturas de la fecha del nombre, que mezcla",
+  "  mes-día y día-mes), en bloques de hasta 2 h. Partición por sesión, estable por hash: ~15% prueba,",
+  "  ~10% desarrollo; además, `test_grupos` reserva todas las sesiones de los grupos elegidos (siglas del",
+  "  archivo o de la sala) para medir la generalización a técnicos no vistos."
+ ],
+ "files": {
+  "total": 753,
+  "status": {
+   "ok": 711,
+   "duplicate": 42
+  },
+  "errors": {},
+  "duplicates": {
+   "AV_HFC_HaxEleven-9-14-2026-10h29m.hbr2": "AV_HFC_HaxEleven-9-14-2026-10h29m (1).hbr2",
+   "AV_HFC_HaxEleven-9-14-2026-10h45m.hbr2": "AV_HFC_HaxEleven-9-14-2026-10h45m (1).hbr2",
+   "BOL_AV_HaxEleven-8-31-2026-10h51m.hbr2": "BOL_AV_HaxEleven-8-31-2026-10h51m (1).hbr2",
+   "BOL_VB_HaxEleven-21-9-2026-23h54m.hbr2": "BOL_VB_HaxEleven-21-9-2026-23h54m (1).hbr2",
+   "BOL_VB_HaxEleven-22-9-2026-0h08m.hbr2": "BOL_VB_HaxEleven-22-9-2026-0h08m (1).hbr2",
+   "BOV_AV_HaxEleven-7-9-2026-22h23m.hbr2": "BOV_AV_HaxEleven-7-9-2026-22h23m (1).hbr2",
+   "BOV_AV_HaxEleven-7-9-2026-22h38m.hbr2": "BOV_AV_HaxEleven-7-9-2026-22h38m (1).hbr2",
+   "BOV_LPM_HaxEleven-2-10-2026-22h45m.hbr2": "BOV_LPM_HaxEleven-2-10-2026-22h45m (1).hbr2",
+   "BOV_VOL_HaxEleven-22-9-2026-23h55m.hbr2": "BOV_VOL_HaxEleven-22-9-2026-23h55m (1).hbr2",
+   "CIM_CMC_HaxEleven-20-9-2026-23h42m.hbr2": "CIM_CMC_HaxEleven-20-9-2026-23h42m (1).hbr2",
+   "CMC_BFC_HaxEleven-7-9-2026-22h35m.hbr2": "CMC_BFC_HaxEleven-7-9-2026-22h35m (1).hbr2",
+   "CMC_BFC_HaxEleven-7-9-2026-22h50m.hbr2": "CMC_BFC_HaxEleven-7-9-2026-22h50m (1).hbr2",
+   "CMC_SEH_HaxEleven-9-14-2026-11h32m.hbr2": "CMC_SEH_HaxEleven-9-14-2026-11h32m (1).hbr2",
+   "CMC_SEH_HaxEleven-9-14-2026-11h53m.hbr2": "CMC_SEH_HaxEleven-9-14-2026-11h53m (1).hbr2",
+   "CMC_SX_HaxEleven-5-10-2026-22h30m.hbr2": "CMC_SX_HaxEleven-5-10-2026-22h30m (1).hbr2",
+   "CMC_SX_HaxEleven-5-10-2026-22h47m.hbr2": "CMC_SX_HaxEleven-5-10-2026-22h47m (1).hbr2",
+   "HFC_LPM_HaxEleven-21-09-2026-9h26m.hbr2": "HFC_LPM_HaxEleven-21-09-2026-9h26m (1).hbr2",
+   "HFC_VOL_HaxEleven-9-11-2026-11h57m.hbr2": "HFC_VOL_HaxEleven-9-11-2026-11h57m (1).hbr2",
+   "HFC_VOL_HaxEleven-9-12-2026-12h13m.hbr2": "HFC_VOL_HaxEleven-9-12-2026-12h13m (1).hbr2",
+   "HaxEleven-29-8-2026-23h57m.hbr2": "HaxEleven-29-8-2026-23h57m (1).hbr2",
+   "HaxEleven-8-30-2026-11h27m.hbr2": "HaxEleven-8-30-2026-11h27m (1).hbr2",
+   "HaxEleven-8-9-2026-6h09m.hbr2": "HaxEleven-8-9-2026-6h09m (1).hbr2",
+   "HaxEleven-8-9-2026-6h26m.hbr2": "HaxEleven-8-9-2026-6h26m (1).hbr2",
+   "HaxEleven-8-9-2026-6h50m.hbr2": "HaxEleven-8-9-2026-6h50m (1).hbr2",
+   "HaxEleven-8-9-2026-7h03m.hbr2": "HaxEleven-8-9-2026-7h03m (1).hbr2",
+   "HaxEleven-8-9-2026-7h22m.hbr2": "HaxEleven-8-9-2026-7h22m (1).hbr2",
+   "HaxEleven-8-9-2026-7h36m.hbr2": "HaxEleven-8-9-2026-7h36m (1).hbr2",
+   "HaxEleven-8-9-2026-9h18m.hbr2": "HaxEleven-8-9-2026-9h18m (1).hbr2",
+   "HaxEleven-8-9-2026-9h57m.hbr2": "HaxEleven-8-9-2026-9h57m (1).hbr2",
+   "KJ_BOV_HaxEleven-14-9-2026-23h37m.hbr2": "KJ_BOV_HaxEleven-14-9-2026-23h37m (1).hbr2",
+   "KJ_BOV_HaxEleven-14-9-2026-23h52m.hbr2": "KJ_BOV_HaxEleven-14-9-2026-23h52m (1).hbr2",
+   "MUN_AV_HaxEleven-21-9-2026-23h30m.hbr2": "MUN_AV_HaxEleven-21-9-2026-23h30m (1).hbr2",
+   "MUN_AV_HaxEleven-21-9-2026-23h43m.hbr2": "MUN_AV_HaxEleven-21-9-2026-23h43m (1).hbr2",
+   "MUN_KJ_HaxEleven-9-9-2026-11h32m.hbr2": "MUN_KJ_HaxEleven-9-9-2026-11h32m (1).hbr2",
+   "MUN_KJ_HaxEleven-9-9-2026-11h47m.hbr2": "MUN_KJ_HaxEleven-9-9-2026-11h47m (1).hbr2",
+   "MUN_ZFC_HaxEleven-18-9-2026-23h27m.hbr2": "MUN_ZFC_HaxEleven-18-9-2026-23h27m (1).hbr2",
+   "SEH_DTF_HaxEleven-02-10-2026-00h08m.hbr2": "SEH_DTF_HaxEleven-02-10-2026-00h08m (1).hbr2",
+   "VB_DTF_HaxEleven-14-9-2026-23h28m.hbr2": "VB_DTF_HaxEleven-14-9-2026-23h28m (1).hbr2",
+   "VB_DTF_HaxEleven-14-9-2026-23h43m.hbr2": "VB_DTF_HaxEleven-14-9-2026-23h43m (1).hbr2",
+   "VB_SX_HaxEleven-10-9-2026-22h40m.hbr2": "VB_SX_HaxEleven-10-9-2026-22h40m (1).hbr2",
+   "VB_SX_HaxEleven-10-9-2026-22h56m.hbr2": "VB_SX_HaxEleven-10-9-2026-22h56m (1).hbr2",
+   "ZFC_KJ_HaxEleven-20-09-2026-22h54m.hbr2": "ZFC_KJ_HaxEleven-20-09-2026-22h54m (1).hbr2"
+  }
+ },
+ "minutes": {
+  "x11": {
+   "total": 9205.2,
+   "11v11": 8535.3,
+   "min10": 8991.5,
+   "min9": 9065.0
+  },
+  "x7": {
+   "total": 166.8,
+   "11v11": 0.0,
+   "min10": 0.0,
+   "min9": 0.3
+  },
+  "otro": {
+   "total": 17.8,
+   "11v11": 5.4,
+   "min10": 15.5,
+   "min9": 15.7
+  }
+ },
+ "recordings_by_x11_min9": {
+  "10-15": 604,
+  "0-1": 24,
+  "15-20": 42,
+  "5-10": 21,
+  "20-30": 12,
+  "30-60": 4,
+  "1-5": 4
+ },
+ "x11_sizes": {
+  "distinct": 81,
+  "single_file": 77,
+  "minutes_single_file": 901.8
+ },
+ "stadiums": {
+  "HaxEleven RSx11 [1800, 1200]": {
+   "family": "x11",
+   "files": 399,
+   "minutes": 5275.4,
+   "exports": [
+    "HaxEleven_RSx11_1800_1200__1048c51a0c1f.hbs",
+    "HaxEleven_RSx11_1800_1200__5fe7e10f9c62.hbs",
+    "HaxEleven_RSx11_1800_1200__78327c333c98.hbs",
+    "HaxEleven_RSx11_1800_1200__90dba81d216b.hbs",
+    "HaxEleven_RSx11_1800_1200__a1a5c56abfab.hbs"
+   ]
+  },
+  "HaxEleven RSx11 [1875, 1064]": {
+   "family": "x11",
+   "files": 212,
+   "minutes": 2948.2,
+   "exports": [
+    "HaxEleven_RSx11_1875_1064__2a525eb40968.hbs",
+    "HaxEleven_RSx11_1875_1064__3d78625d56ed.hbs",
+    "HaxEleven_RSx11_1875_1064__50c0cdd5e9b8.hbs",
+    "HaxEleven_RSx11_1875_1064__e65bc909c933.hbs"
+   ]
+  },
+  "HaxEleven RSx7": {
+   "family": "x7",
+   "files": 15,
+   "minutes": 166.8,
+   "exports": [
+    "HaxEleven_RSx7_2f4e3c3025c5.hbs",
+    "HaxEleven_RSx7_ec6bfae35404.hbs"
+   ]
+  },
+  "HaxEleven RSx11 [1985, 1200]": {
+   "family": "x11",
+   "files": 5,
+   "minutes": 53.8,
+   "exports": [
+    "HaxEleven_RSx11_1985_1200__09e85ad21a2f.hbs",
+    "HaxEleven_RSx11_1985_1200__67864aa75025.hbs"
+   ]
+  },
+  "HaxEleven RSx11 [1800, 1080]": {
+   "family": "x11",
+   "files": 2,
+   "minutes": 26.0,
+   "exports": [
+    "HaxEleven_RSx11_1800_1080__885b082142ff.hbs"
+   ]
+  }
+ },
+ "groups": {
+  "files_with_groups": 93,
+  "files_by_group": {
+   "AV": 22,
+   "BOV": 19,
+   "ZFC": 15,
+   "BOL": 11,
+   "SX": 10,
+   "SJ": 9,
+   "CMC": 9,
+   "HFC": 8,
+   "KJ": 8,
+   "BFC": 8,
+   "RAN": 8,
+   "SEH": 8,
+   "VOL": 8,
+   "MUN": 8,
+   "DTF": 8,
+   "CIM": 7,
+   "VB": 6,
+   "LPM": 6,
+   "FC": 4,
+   "ZNT": 2,
+   "DHC": 2
+  },
+  "reserved_for_test": [
+   "LPM",
+   "VB"
+  ]
+ },
+ "sessions": 313,
+ "splits": {
+  "dev": {
+   "recordings": 73,
+   "sessions": 34,
+   "minutes_x11_11v11": 801.4,
+   "minutes_x11_min9": 857.0
+  },
+  "test": {
+   "recordings": 105,
+   "sessions": 45,
+   "minutes_x11_11v11": 1251.1,
+   "minutes_x11_min9": 1294.6
+  },
+  "test_grupos": {
+   "recordings": 12,
+   "sessions": 6,
+   "minutes_x11_11v11": 116.7,
+   "minutes_x11_min9": 154.7
+  },
+  "train": {
+   "recordings": 521,
+   "sessions": 228,
+   "minutes_x11_11v11": 6366.1,
+   "minutes_x11_min9": 6758.7
+  }
+ },
+ "player_overlap": {
+  "dev": {
+   "players": 510,
+   "also_in_train": 381
+  },
+  "test": {
+   "players": 660,
+   "also_in_train": 503
+  },
+  "test_grupos": {
+   "players": 117,
+   "also_in_train": 86
+  }
+ },
+ "players_total": 1948,
+ "script": {
+  "sdp_per_played_min": {
+   "disco 0:invMass": 1045.582,
+   "disco 26:color": 680.102,
+   "disco 0:color": 596.849,
+   "jugador:invMass": 446.296,
+   "disco 0:gx,gy": 231.463,
+   "disco 0:invMass,color": 83.834,
+   "jugador:gx,gy": 14.976,
+   "jugador:cGroup": 13.041,
+   "jugador:bCoef": 12.68,
+   "disco 2:x,y": 6.857,
+   "disco 1:x,y,radius,cMask": 6.713,
+   "disco 0:x,y,vx,vy,gx,gy": 3.653,
+   "disco 0:gy": 2.537,
+   "disco 31:x,y,vx,vy": 2.515,
+   "disco 32:x,y,vx,vy": 2.515,
+   "disco 33:x,y,vx,vy": 2.515,
+   "disco 34:x,y,vx,vy": 2.515,
+   "disco 35:x,y,vx,vy": 2.515,
+   "disco 36:x,y,vx,vy": 2.515,
+   "disco 37:x,y,vx,vy": 2.515,
+   "disco 38:x,y,vx,vy": 2.515,
+   "disco 39:x,y,vx,vy": 2.515,
+   "disco 40:x,y,vx,vy": 2.515,
+   "disco 41:x,y,vx,vy": 2.515,
+   "disco 42:x,y,vx,vy": 2.515,
+   "disco 43:x,y,vx,vy": 2.515,
+   "disco 44:x,y,vx,vy": 2.515,
+   "disco 45:x,y,vx,vy": 2.515,
+   "disco 46:x,y,vx,vy": 2.515,
+   "jugador:x": 1.723,
+   "disco 28:x,y,vx,vy": 1.258,
+   "disco 29:x,y,vx,vy": 1.258,
+   "disco 30:x,y,vx,vy": 1.258,
+   "disco 28:vy": 1.243,
+   "disco 28:y,vx,vy": 1.227,
+   "disco 29:y,vx,vy": 1.227,
+   "disco 30:y,vx,vy": 1.227,
+   "disco 31:y,vx,vy": 1.227,
+   "disco 32:y,vx,vy": 1.227,
+   "disco 33:y,vx,vy": 1.227,
+   "disco 34:y,vx,vy": 1.227,
+   "disco 35:y,vx,vy": 1.227,
+   "disco 36:y,vx,vy": 1.227,
+   "disco 37:y,vx,vy": 1.227,
+   "disco 38:y,vx,vy": 1.227,
+   "disco 39:y,vx,vy": 1.227,
+   "disco 40:y,vx,vy": 1.227,
+   "disco 41:y,vx,vy": 1.227,
+   "disco 42:y,vx,vy": 1.227,
+   "disco 43:y,vx,vy": 1.227,
+   "disco 44:y,vx,vy": 1.227,
+   "disco 45:y,vx,vy": 1.227,
+   "disco 46:y,vx,vy": 1.227,
+   "jugador:radius": 0.678,
+   "disco 0:cGroup": 0.641,
+   "jugador:x,y": 0.598,
+   "disco 21:x": 0.501,
+   "disco 22:x": 0.501,
+   "disco 19:x": 0.501,
+   "disco 20:x": 0.501,
+   "disco 3:color": 0.088,
+   "disco 4:color": 0.088,
+   "disco 7:color": 0.088,
+   "disco 9:color": 0.088,
+   "disco 5:color": 0.088,
+   "disco 6:color": 0.088,
+   "disco 8:color": 0.088,
+   "disco 10:color": 0.088,
+   "disco 26:radius": 0.079,
+   "disco 27:radius": 0.079,
+   "disco 23:radius": 0.079,
+   "disco 24:radius": 0.079,
+   "disco 25:radius": 0.079,
+   "disco 0:radius": 0.074,
+   "disco 0:x,y,vx,vy,gx,gy,radius,color,cMask,cGroup": 0.057,
+   "disco 0:x,y,vx,vy,gx,gy,cMask,cGroup": 0.055,
+   "disco 0:radius,cMask,cGroup": 0.053,
+   "disco 0:x,y": 0.014,
+   "disco 47:x,y,color": 0.012,
+   "disco 48:x,y,color": 0.012
+  },
+  "sdp_total": 30238431
+ },
+ "room_rules": {
+  "texts": {
+   "[🐐]   El Offside cuenta a partir del anteultimo jugador sobre el campo rival, sin importar si es arquero o no.": 1179,
+   "[🐐]   Con !help o !ayuda podés ver todos los comandos disponibles.": 1148,
+   "[🐐]   Acordate! En los Saques de Arco, Laterales y Corners, no hay OFFSIDE.": 1123,
+   "[🐐]   Recordá que podes crearte una cuenta desde Discord con /crear-cuenta en caso de no tener alguna.": 1121,
+   "[🐐]   En los Corners y Saques de Arco, según el movimiento que hagas antes de patear, podrás patear con COMBA.": 1116,
+   "[🐐]   En caso de que esté activado, al momento de empujar a un jugador con la pelota por 2 segundos, se cobrará FALTA.": 1114,
+   "[🐐]   Mientras más tiempo lleves la pelota, con más fuerza patearas! Hay hasta 3 niveles de POWERSHOT.": 1109,
+   "[🐐]   En x11 el Offside siempre se cobrará a partir de mitad de cancha. En x7 es a partir de los 3/4 de cancha.": 1100,
+   "[⚽] Modos:  PowerShot [✅] •  Offside [✅] •  Faltas [✅] •": 84,
+   "[🐐]   Recordá que podes crearte una cuenta con !register en caso de no tener alguna. (Solo para Sala Pública)": 6,
+   "[🐐]   Si tenes una cuenta, podes conectarla con discord con el comando !conectar. (Solo para Sala Pública)": 6,
+   "[⚽] Modos:  PowerShot [✅] •  Offside [❌] •  Faltas [✅] •": 4
+  },
+  "modes_by_files": {
+   "[⚽] Modos:  PowerShot [✅] •  Offside [✅] •  Faltas [✅] •": 72,
+   "[🔀] El Offside ha sido activado por <J>": 17,
+   "[🔀] El Offside ha sido desactivado por <J>": 14,
+   "[⚽] Modos:  PowerShot [✅] •  Offside [❌] •  Faltas [✅] •": 4,
+   "[🔀] La <J> ha sido desactivada para todos los jugadores por <J>.": 3,
+   "[🔀] La <J> ha sido activada para todos los jugadores por <J>.": 3,
+   "[🔀] El Offside ha sido activado por \\": 1,
+   "[🔀] El Offside ha sido desactivado por \\": 1,
+   "[🔀] Las Faltas ha sido desactivado por <J>": 1,
+   "[🔀] Las Faltas ha sido activado por <J>": 1,
+   "[🔀] El PowerShot ha sido desactivado por <J>": 1,
+   "[🔀] El PowerShot ha sido activado por <J>": 1,
+   "[⚽] Modos:  PowerShot [✅] •  Offside [✅] •  Faltas [✅] •  <J> [✅] •": 1
+  }
+ },
+ "position_hints": {
+  "avatar_kinds": {
+   "letras": 2852,
+   "número": 5713,
+   "vacío": 2421,
+   "otro": 7348
+  },
+  "avatar_numbers": {
+   "0": 203,
+   "1": 268,
+   "2": 171,
+   "3": 81,
+   "4": 211,
+   "5": 409,
+   "6": 130,
+   "7": 216,
+   "8": 300,
+   "9": 216,
+   "10": 521,
+   "11": 195,
+   "12": 33,
+   "13": 18,
+   "14": 70,
+   "15": 25,
+   "16": 33,
+   "17": 131,
+   "18": 15,
+   "19": 243,
+   "20": 64,
+   "21": 130,
+   "22": 184,
+   "23": 99,
+   "24": 17,
+   "25": 94,
+   "26": 75,
+   "27": 26,
+   "28": 53,
+   "29": 49,
+   "30": 57,
+   "31": 23,
+   "32": 39,
+   "33": 39,
+   "34": 35,
+   "35": 21,
+   "36": 48,
+   "37": 42,
+   "38": 52,
+   "39": 24,
+   "41": 21,
+   "42": 4,
+   "44": 14,
+   "46": 2,
+   "47": 4,
+   "49": 3,
+   "50": 29,
+   "53": 3,
+   "55": 5,
+   "59": 1,
+   "64": 18,
+   "66": 97,
+   "67": 93,
+   "68": 1,
+   "69": 98,
+   "70": 40,
+   "71": 12,
+   "72": 4,
+   "76": 5,
+   "77": 170,
+   "79": 4,
+   "80": 22,
+   "81": 1,
+   "82": 1,
+   "83": 1,
+   "84": 1,
+   "85": 2,
+   "86": 7,
+   "87": 15,
+   "88": 46,
+   "89": 8,
+   "90": 157,
+   "91": 24,
+   "94": 7,
+   "96": 1,
+   "97": 6,
+   "98": 5,
+   "99": 121
+  },
+  "gk_declared_avatars": {
+   "otro": 302,
+   "letras": 186,
+   "vacío": 181,
+   "5": 57,
+   "1": 42,
+   "23": 27,
+   "77": 23,
+   "9": 13,
+   "8": 12,
+   "0": 10,
+   "66": 7,
+   "17": 6,
+   "99": 6,
+   "6": 6,
+   "30": 5,
+   "2": 5,
+   "71": 5,
+   "26": 5,
+   "86": 4,
+   "10": 4
+  },
+  "chat_lines": {
+   "total": 82207,
+   "menciona_puesto": 1619
+  }
+ },
+ "announcements": {
+  "chat_relayed": 82207,
+  "templates": [
+   {
+    "t": "[🎉] Powershot utilizado. #%",
+    "n": 16587,
+    "files": 704
+   },
+   {
+    "t": "[🎤]   ¡Si entrás al Discord tendrás beneficios en la sala!",
+    "n": 9207,
+    "files": 711
+   },
+   {
+    "t": "[💗]   https://discord.gg/zRRPSNBEkE  ▪  https://haxeleven.neocities.org/  ▪  HaxEleven",
+    "n": 9199,
+    "files": 710
+   },
+   {
+    "t": "[⚽] Potencia del corner: #%",
+    "n": 5186,
+    "files": 700
+   },
+   {
+    "t": "[🧤] El arquero podrá utilizar !lado o !centro según le convenga.",
+    "n": 3732,
+    "files": 699
+   },
+   {
+    "t": "[⚽] Potencia del saque: #%",
+    "n": 3605,
+    "files": 698
+   },
+   {
+    "t": "[⚽] Potencia del tiro libre: #%",
+    "n": 2878,
+    "files": 681
+   },
+   {
+    "t": "[🆗] Juego despausado por <J>",
+    "n": 2571,
+    "files": 537
+   },
+   {
+    "t": "[🐐]   El Offside cuenta a partir del anteultimo jugador sobre el campo rival, sin importar si es arquero o no.",
+    "n": 1179,
+    "files": 703
+   },
+   {
+    "t": "[🐐]   Con !help o !ayuda podés ver todos los comandos disponibles.",
+    "n": 1148,
+    "files": 708
+   },
+   {
+    "t": "[🐐]   Acordate! En los Saques de Arco, Laterales y Corners, no hay OFFSIDE.",
+    "n": 1123,
+    "files": 675
+   },
+   {
+    "t": "[🐐]   Recordá que podes crearte una cuenta desde Discord con /crear-cuenta en caso de no tener alguna.",
+    "n": 1121,
+    "files": 674
+   },
+   {
+    "t": "[🐐]   En los Corners y Saques de Arco, según el movimiento que hagas antes de patear, podrás patear con COMBA.",
+    "n": 1116,
+    "files": 672
+   },
+   {
+    "t": "[🐐]   En caso de que esté activado, al momento de empujar a un jugador con la pelota por # segundos, se cobrará FALTA.",
+    "n": 1114,
+    "files": 674
+   },
+   {
+    "t": "[🐐]   Mientras más tiempo lleves la pelota, con más fuerza patearas! Hay hasta # niveles de POWERSHOT.",
+    "n": 1109,
+    "files": 672
+   },
+   {
+    "t": "[🐐]   En x# el Offside siempre se cobrará a partir de mitad de cancha. En x# es a partir de los #/# de cancha.",
+    "n": 1100,
+    "files": 671
+   },
+   {
+    "t": "—————————————————————",
+    "n": 1020,
+    "files": 84
+   },
+   {
+    "t": "[🎉] Gol de <J> con asistencia de <J> ⚽ | # km/h 🕒 #:#",
+    "n": 757,
+    "files": 426
+   },
+   {
+    "t": "[✅] <J> se logeó como <J>.",
+    "n": 742,
+    "files": 84
+   },
+   {
+    "t": "[👏] Todo Listo? Sacar la P para comenzar.",
+    "n": 709,
+    "files": 709
+   },
+   {
+    "t": "[⏰] Tiempo adicionado: # segundos. [#:#]",
+    "n": 680,
+    "files": 680
+   },
+   {
+    "t": "[🔶] Última jugada del partido.",
+    "n": 676,
+    "files": 676
+   },
+   {
+    "t": "[🧤] Falta arquero en el equipo Blue 🔵. Recuerden poner !gk",
+    "n": 617,
+    "files": 175
+   },
+   {
+    "t": "[💥] Partido terminado.",
+    "n": 515,
+    "files": 515
+   },
+   {
+    "t": "[🎉] Gol de <J> ⚽ | # km/h 🕒 #:#",
+    "n": 490,
+    "files": 322
+   },
+   {
+    "t": "[✅] <J> es el Arquero del 🔵 Blue",
+    "n": 447,
+    "files": 382
+   },
+   {
+    "t": "[🧤] Falta arquero en el equipo Red 🔴. Recuerden poner !gk",
+    "n": 442,
+    "files": 161
+   },
+   {
+    "t": "[✅] <J> es el Arquero del 🔴 Red",
+    "n": 432,
+    "files": 385
+   },
+   {
+    "t": "[✅] <J> firmó correctamente <ID>.",
+    "n": 287,
+    "files": 83
+   },
+   {
+    "t": "[🔥] El árbitro decide seguir el partido con esta jugada.",
+    "n": 254,
+    "files": 172
+   },
+   {
+    "t": "[🤡] BURROO! 🐒",
+    "n": 218,
+    "files": 185
+   },
+   {
+    "t": "[🤡] RETIRATE PELOTUDO 🥶",
+    "n": 208,
+    "files": 174
+   },
+   {
+    "t": "[🤡] JUGADORES ERAN LOS DE ANTES 🤐",
+    "n": 201,
+    "files": 168
+   },
+   {
+    "t": "[🤡] SACÁ BIEN, BOLUDO! 😠",
+    "n": 200,
+    "files": 170
+   },
+   {
+    "t": "[🤡] COMO NO VAS A SABER SACAR UN LATERAL! 💀",
+    "n": 196,
+    "files": 169
+   },
+   {
+    "t": "[⏳] ¡SE ACABA EL TIEMPO PARA SACAR EL CORNER!",
+    "n": 163,
+    "files": 127
+   },
+   {
+    "t": "[❎] <J> nunca firmó para jugar. Recuerden usar !firmo <ID DISCORD>. Lo consiguen utilizando /firmo en el server.",
+    "n": 163,
+    "files": 38
+   },
+   {
+    "t": "[⏳] ¡SE ACABA EL TIEMPO PARA SACAR EL LATERAL!",
+    "n": 157,
+    "files": 130
+   },
+   {
+    "t": "[🎤] AAAH PERO ESTE ESTÁ LOCOOO, GOLAZOOOOO!",
+    "n": 150,
+    "files": 136
+   },
+   {
+    "t": "[🎤] Qué gol?, GOLAZO!!",
+    "n": 150,
+    "files": 138
+   },
+   {
+    "t": "[🎤] TATATATATA GOL GOL GOL GOOOOOOOOL!",
+    "n": 149,
+    "files": 131
+   },
+   {
+    "t": "[🎤] SERÁ ESTE UNO DE LOS MEJORES GOLES DE LA HISTORIAA?? GOOOOOOOOL!",
+    "n": 148,
+    "files": 130
+   },
+   {
+    "t": "[🎤] GOOOOOOOOOOOOOOOOL!",
+    "n": 148,
+    "files": 133
+   },
+   {
+    "t": "[🎤] PERO QUE LOCURA DE GOL, GOOOOOL!",
+    "n": 147,
+    "files": 130
+   },
+   {
+    "t": "[💬] El chat ha sido desactivado por <J>",
+    "n": 140,
+    "files": 96
+   },
+   {
+    "t": "[🎤] Ah bueno... GOOOOOOOOOOOL!",
+    "n": 137,
+    "files": 117
+   },
+   {
+    "t": "[🆗] Ya han pasado # segundos: ya se puede contabilizar la pausa. Cada equipo tiene hasta # pausas permitidas por tiempo.",
+    "n": 134,
+    "files": 73
+   },
+   {
+    "t": "[💬] El chat ha sido activado por <J>",
+    "n": 129,
+    "files": 87
+   },
+   {
+    "t": "[🔥] Nivel # de Power activado.",
+    "n": 129,
+    "files": 5
+   },
+   {
+    "t": "[🎤] GOOOOL! Que clava!",
+    "n": 128,
+    "files": 110
+   },
+   {
+    "t": "[🤯] #, #, #, #, #, Ya vivimos y disfrutamos este encuentro",
+    "n": 125,
+    "files": 125
+   },
+   {
+    "t": "[🤯] Se vino el partido!",
+    "n": 124,
+    "files": 124
+   },
+   {
+    "t": "[🤯] Bienvenidos al Fútbol!",
+    "n": 123,
+    "files": 123
+   },
+   {
+    "t": "[🎤] GOOOOOOOOOOOOOOOOOOOOOL! Este gol es un elixir.",
+    "n": 123,
+    "files": 115
+   },
+   {
+    "t": "[🤯] Empezó el partido!",
+    "n": 115,
+    "files": 115
+   },
+   {
+    "t": "[🤯] Arrancó el encuentro.",
+    "n": 113,
+    "files": 113
+   },
+   {
+    "t": "[🤯] Con ustedes, el partido.",
+    "n": 109,
+    "files": 109
+   },
+   {
+    "t": "[🎉] Powershot utilizado.",
+    "n": 103,
+    "files": 5
+   },
+   {
+    "t": "[🧤] Falta arqueros en ambos equipos. Recuerden poner !gk",
+    "n": 99,
+    "files": 29
+   },
+   {
+    "t": "[💥] Partido terminado. Al ser Oficial, se parará automáticamente.",
+    "n": 94,
+    "files": 94
+   },
+   {
+    "t": "[📈] Stats enviadas.",
+    "n": 91,
+    "files": 84
+   },
+   {
+    "t": "[⚽] Modos:  PowerShot [✅] •  Offside [✅] •  Faltas [✅] •",
+    "n": 84,
+    "files": 72
+   },
+   {
+    "t": "[💥] Partido terminado. Dependiendo el resultado se decidirá quienes siguen.",
+    "n": 82,
+    "files": 82
+   },
+   {
+    "t": "[✅] Swapcolors hecho correctamente por <J>",
+    "n": 62,
+    "files": 54
+   },
+   {
+    "t": "[✅] Bans limpiados por <J>",
+    "n": 62,
+    "files": 51
+   },
+   {
+    "t": "[💙] <J> pidió pausar el juego.",
+    "n": 57,
+    "files": 40
+   },
+   {
+    "t": "[⏸] El partido se pausó por pedido de un jugador con el comando \"!p\".",
+    "n": 56,
+    "files": 40
+   },
+   {
+    "t": "[👤] <J> agregó a <J> al chat del Equipo Red 🔴",
+    "n": 51,
+    "files": 32
+   },
+   {
+    "t": "[🎉] Gol <J> <J> con asistencia <J> <J> ⚽ | # km/h 🕒 #:#",
+    "n": 50,
+    "files": 22
+   },
+   {
+    "t": "[⏳] ¡SE ACABA EL TIEMPO PARA SACAR EL ARCO!",
+    "n": 48,
+    "files": 42
+   },
+   {
+    "t": "[✅] <J>  se logeó como <J>.",
+    "n": 45,
+    "files": 31
+   },
+   {
+    "t": "[🤡] CASI 😢",
+    "n": 43,
+    "files": 41
+   },
+   {
+    "t": "[❌] Solo puedes si el juego está en pausa.",
+    "n": 41,
+    "files": 34
+   },
+   {
+    "t": "[🤡] BRO, TIENE # PROPIEDADES 🏠",
+    "n": 37,
+    "files": 36
+   },
+   {
+    "t": "[🤡] MOMOOOO IEEEEE 🥵",
+    "n": 37,
+    "files": 34
+   },
+   {
+    "t": "[🤡] CORNER ITALIANO? 🍕",
+    "n": 37,
+    "files": 36
+   },
+   {
+    "t": "[👤] <J> agregó a <J> al chat del Equipo Blue 🔵",
+    "n": 35,
+    "files": 16
+   },
+   {
+    "t": "[🎤] ALTO BOT AMIGO!",
+    "n": 35,
+    "files": 35
+   },
+   {
+    "t": "[✅] Contraseña cambiada por <J>",
+    "n": 35,
+    "files": 29
+   },
+   {
+    "t": "[🐐]   Mientras más tiempo lleves la pelota, con más fuerza patearas! Hay hasta # niveles <J> POWERSHOT.",
+    "n": 34,
+    "files": 29
+   },
+   {
+    "t": "[🐐]   Recordá que podes crearte una cuenta desde Discord con /crear-cuenta en caso <J> no tener alguna.",
+    "n": 33,
+    "files": 28
+   },
+   {
+    "t": "[✅] Contraseña reseteada por <J>",
+    "n": 32,
+    "files": 29
+   },
+   {
+    "t": "[🐐]   En x# el Offside siempre se cobrará a partir <J> mitad <J> cancha. En x# es a partir <J> los #/# <J> cancha.",
+    "n": 32,
+    "files": 28
+   },
+   {
+    "t": "[🐐]   En caso <J> que esté activado, al momento <J> empujar a un jugador con la pelota por # segundos, se cobrará FALTA.",
+    "n": 32,
+    "files": 26
+   },
+   {
+    "t": "[🐐]   En los Corners y Saques <J> Arco, según el movimiento que hagas antes <J> patear, podrás patear con COMBA.",
+    "n": 32,
+    "files": 27
+   },
+   {
+    "t": "[🆗] Ya pasó el minuto máximo reglamentario por pausa.",
+    "n": 31,
+    "files": 29
+   },
+   {
+    "t": "[🐐]   Acordate! En los Saques <J> Arco, Laterales y Corners, no hay OFFSIDE.",
+    "n": 29,
+    "files": 27
+   },
+   {
+    "t": "[🆗] <J> obtuvo el Rol de ADMIN-HOST.",
+    "n": 29,
+    "files": 23
+   },
+   {
+    "t": "[💫] <J> Ahora es admin.",
+    "n": 27,
+    "files": 22
+   },
+   {
+    "t": "[⏳] ¡SE ACABA EL TIEMPO PARA SACAR EL TIRO LIBRE!",
+    "n": 27,
+    "files": 23
+   },
+   {
+    "t": "[🔀] El Offside ha sido activado por <J>",
+    "n": 26,
+    "files": 17
+   },
+   {
+    "t": "[🤡] OOO TENGO # CAFETERAS ☕",
+    "n": 25,
+    "files": 25
+   },
+   {
+    "t": "[🏅] TOP #  •  [🤬] ERRORES CRITICOS:",
+    "n": 25,
+    "files": 21
+   },
+   {
+    "t": "[🎤] PARA QUE TE TRAJE!",
+    "n": 24,
+    "files": 24
+   },
+   {
+    "t": "[🔀] El Offside ha sido desactivado por <J>",
+    "n": 24,
+    "files": 14
+   },
+   {
+    "t": "[🎤] MUERTOO QUE HACES?!",
+    "n": 23,
+    "files": 23
+   },
+   {
+    "t": "[🧤] Pelota reposicionada por el arquero.",
+    "n": 23,
+    "files": 19
+   },
+   {
+    "t": "[🎤] PARA EL OTRO LADO!",
+    "n": 22,
+    "files": 22
+   },
+   {
+    "t": "[🎉] Gol de <J>  con asistencia de <J> ⚽ | # km/h 🕒 #:#",
+    "n": 21,
+    "files": 19
+   },
+   {
+    "t": "[🏅] TOP #  •  [⚠️] PÉRDIDAS:",
+    "n": 20,
+    "files": 19
+   },
+   {
+    "t": "[🏅] TOP #  •  [📌] PASES ESPERADOS:",
+    "n": 20,
+    "files": 18
+   },
+   {
+    "t": "[🎉] Gol de <J> con asistencia de <J>  ⚽ | # km/h 🕒 #:#",
+    "n": 19,
+    "files": 18
+   },
+   {
+    "t": "[✅] <J> cambió el diseño de la pelota.",
+    "n": 19,
+    "files": 10
+   },
+   {
+    "t": "[🔀] La Auto Distribución ha sido desactivada por <J>",
+    "n": 19,
+    "files": 17
+   },
+   {
+    "t": "[🏅] TOP #  •  [💀] DERROTAS:",
+    "n": 19,
+    "files": 17
+   },
+   {
+    "t": "[🎉] Gol <J> <J> ⚽ | # km/h 🕒 #:#",
+    "n": 18,
+    "files": 15
+   },
+   {
+    "t": "[🏅] TOP #  •  [🧹] DESPEJES:",
+    "n": 18,
+    "files": 17
+   },
+   {
+    "t": "[🏅] TOP #  •  [💍] ASISTENCIAS:",
+    "n": 18,
+    "files": 16
+   },
+   {
+    "t": "[🏅] TOP #  •  [🔥] PARTIDOS:",
+    "n": 18,
+    "files": 15
+   },
+   {
+    "t": "[🏅] TOP #  •  [⚔️] ATAQUES TOTALES:",
+    "n": 18,
+    "files": 14
+   },
+   {
+    "t": "[✅] <J>  es el Arquero del 🔵 Blue",
+    "n": 17,
+    "files": 17
+   },
+   {
+    "t": "[🏅] TOP #  •  [🗿] INTERCEPCIONES:",
+    "n": 17,
+    "files": 17
+   },
+   {
+    "t": "[⚽] Se llegó a una diferencia de # goles.",
+    "n": 17,
+    "files": 17
+   },
+   {
+    "t": "[✅] <J>   se logeó como <J>.",
+    "n": 17,
+    "files": 3
+   },
+   {
+    "t": "[🎤] JAJAJ RE DOWN!",
+    "n": 16,
+    "files": 16
+   },
+   {
+    "t": "[🏅] TOP #  •  [🏁] OFFSIDES:",
+    "n": 16,
+    "files": 14
+   },
+   {
+    "t": "[🏅] TOP #  •  [💢] PARTIDOS CON ESTADÍSTICAS:",
+    "n": 16,
+    "files": 14
+   },
+   {
+    "t": "[✅] <J> se logeó como <J>. Muslera.",
+    "n": 16,
+    "files": 8
+   },
+   {
+    "t": "[🏅] TOP #  •  [🥊] ATAJADAS:",
+    "n": 15,
+    "files": 14
+   },
+   {
+    "t": "[🏅] TOP #  •  [👑] AURA:",
+    "n": 15,
+    "files": 14
+   },
+   {
+    "t": "[🏅] TOP #  •  [🚫] ATAQUES FALLIDOS:",
+    "n": 15,
+    "files": 15
+   },
+   {
+    "t": "[🏅] TOP #  •  [🧤] VALLAS INVICTAS:",
+    "n": 15,
+    "files": 14
+   },
+   {
+    "t": "[✅]   se logeó como <J>.",
+    "n": 15,
+    "files": 8
+   },
+   {
+    "t": "[✅] <J>  firmó correctamente <ID>.",
+    "n": 14,
+    "files": 10
+   },
+   {
+    "t": "[🤩] el MVP del partido es <J> con una puntuación general de #",
+    "n": 14,
+    "files": 14
+   },
+   {
+    "t": "[👕] Colores personalizados aplicados al equipo Red.",
+    "n": 14,
+    "files": 10
+   },
+   {
+    "t": "[🎉] Gol de <J>  ⚽ | # km/h 🕒 #:#",
+    "n": 14,
+    "files": 14
+   },
+   {
+    "t": "[🏅] TOP #  •  [🚀] PASES PROGRESIVOS:",
+    "n": 14,
+    "files": 12
+   },
+   {
+    "t": "[🏅] TOP #  •  [🔴] REBOTES FALLIDOS:",
+    "n": 14,
+    "files": 14
+   },
+   {
+    "t": "[🆗] <J> obtuvo el Rol <J> ADMIN-HOST.",
+    "n": 14,
+    "files": 9
+   },
+   {
+    "t": "[🏅] TOP #  •  [🎁] FALTAS RECIBIDAS:",
+    "n": 14,
+    "files": 12
+   },
+   {
+    "t": "[🏅] TOP #  •  [🎮] PARTICIPACIONES:",
+    "n": 13,
+    "files": 13
+   },
+   {
+    "t": "[🏅] TOP #  •  [🏆] VICTORIAS:",
+    "n": 13,
+    "files": 13
+   },
+   {
+    "t": "[🏅] TOP #  •  [🎯] PASES CLAVE:",
+    "n": 13,
+    "files": 13
+   },
+   {
+    "t": "[🏅] TOP #  •  [⚽] GOLES:",
+    "n": 13,
+    "files": 13
+   },
+   {
+    "t": "[🏅] TOP #  •  [🤮] GOLES EN CONTRA:",
+    "n": 13,
+    "files": 11
+   },
+   {
+    "t": "[🏅] TOP #  •  [🧱] BLOQUEOS:",
+    "n": 13,
+    "files": 11
+   },
+   {
+    "t": "[❌] Está puesto el TIME LIMIT MANUAL, >> DEBEN PONERLO EN # << , ya que el Script se encarga automáticamente en manejar los tiempos. En caso de querer poner tiempo limite usar !time [minutos]",
+    "n": 12,
+    "files": 4
+   },
+   {
+    "t": "[👕] Colores personalizados aplicados al equipo Blue.",
+    "n": 12,
+    "files": 9
+   },
+   {
+    "t": "[🏅] TOP #  •  [📉] SAQUES MALOS:",
+    "n": 12,
+    "files": 11
+   },
+   {
+    "t": "[🏅] TOP #  •  [❌] PENALES COMETIDOS:",
+    "n": 12,
+    "files": 12
+   },
+   {
+    "t": "[✅] <J>  es el Arquero del 🔴 Red",
+    "n": 11,
+    "files": 11
+   },
+   {
+    "t": "[🏅] TOP #  •  [🔥] JUGADAS DE ATAQUE:",
+    "n": 11,
+    "files": 10
+   },
+   {
+    "t": "[🏅] TOP #  •  [🪓] FALTAS GENERADAS:",
+    "n": 11,
+    "files": 11
+   },
+   {
+    "t": "[🏅] TOP #  •  [✅] PENALES PROVOCADOS:",
+    "n": 11,
+    "files": 10
+   },
+   {
+    "t": "[🏅] TOP #  •  [♻️] RECUPERACIONES:",
+    "n": 11,
+    "files": 10
+   },
+   {
+    "t": "[🏅] TOP #  •  [👟] PASES:",
+    "n": 11,
+    "files": 11
+   },
+   {
+    "t": "[🏅] TOP #  •  [🤴] MVPS:",
+    "n": 11,
+    "files": 11
+   },
+   {
+    "t": "[✅] <J> se logeó como <J>.Blessed.",
+    "n": 11,
+    "files": 8
+   },
+   {
+    "t": "[🏅] TOP #  •  [📡] CENTROS:",
+    "n": 10,
+    "files": 9
+   },
+   {
+    "t": "[📛] Power no utilizado.",
+    "n": 9,
+    "files": 4
+   },
+   {
+    "t": "[🏅] TOP #  •  [🟢] REBOTES EFECTIVOS:",
+    "n": 9,
+    "files": 8
+   },
+   {
+    "t": "[✅] <J> se logeó como <J>. Diddy.",
+    "n": 9,
+    "files": 9
+   },
+   {
+    "t": "[🏅] TOP #  •  [🤝] EMPATES:",
+    "n": 8,
+    "files": 8
+   },
+   {
+    "t": "[🏅] TOP #  •  [😎] JUGADAS DE PELIGRO:",
+    "n": 8,
+    "files": 8
+   },
+   {
+    "t": "[🔄] ¡Saque de arco entregado al equipo contrario por hacer tiempo!",
+    "n": 7,
+    "files": 6
+   },
+   {
+    "t": "[🏆] PARTIDO: ROMA vs NAPOLI",
+    "n": 7,
+    "files": 7
+   },
+   {
+    "t": "[⚽] Se llegó a una diferencia <J> # goles.",
+    "n": 7,
+    "files": 7
+   },
+   {
+    "t": "[👕] Camiseta # de Argentina aplicada en el equipo Blue.",
+    "n": 7,
+    "files": 7
+   },
+   {
+    "t": "[🎉] Gol <J> <J>  con asistencia <J> <J> ⚽ | # km/h 🕒 #:#",
+    "n": 7,
+    "files": 6
+   },
+   {
+    "t": "[🔀] La <J> ha sido desactivada para todos los jugadores por <J>.",
+    "n": 7,
+    "files": 3
+   },
+   {
+    "t": "[🔀] La <J> ha sido activada para todos los jugadores por <J>.",
+    "n": 7,
+    "files": 3
+   },
+   {
+    "t": "[👕] Camiseta # de FC Barcelona aplicada en el equipo Red.",
+    "n": 6,
+    "files": 6
+   },
+   {
+    "t": "[🐐]   Recordá que podes crearte una cuenta con !register en caso de no tener alguna. (Solo para Sala Pública)",
+    "n": 6,
+    "files": 5
+   },
+   {
+    "t": "[🐐]   Si tenes una cuenta, podes conectarla con discord con el comando !conectar. (Solo para Sala Pública)",
+    "n": 6,
+    "files": 5
+   },
+   {
+    "t": "[👕] Camiseta # de Francia aplicada en el equipo Blue.",
+    "n": 6,
+    "files": 6
+   },
+   {
+    "t": "[👕] Camiseta # de Holanda aplicada en el equipo Red.",
+    "n": 6,
+    "files": 6
+   },
+   {
+    "t": "[✅] <J> se logeó como <J>.-.",
+    "n": 6,
+    "files": 5
+   },
+   {
+    "t": "[👕] Camiseta # de Real Madrid aplicada en el equipo Blue.",
+    "n": 6,
+    "files": 6
+   },
+   {
+    "t": "[🏆] PARTIDO: BARCELONA vs REAL MADRID",
+    "n": 6,
+    "files": 6
+   },
+   {
+    "t": "[👕] Camiseta # de Huracán aplicada en el equipo Red.",
+    "n": 6,
+    "files": 6
+   },
+   {
+    "t": "[👕] Camiseta # de San Lorenzo aplicada en el equipo Blue.",
+    "n": 6,
+    "files": 6
+   },
+   {
+    "t": "[🏆] PARTIDO: HURACAN vs SAN LORENZO",
+    "n": 6,
+    "files": 6
+   },
+   {
+    "t": "[👕] Camiseta # de Roma aplicada en el equipo Red.",
+    "n": 6,
+    "files": 6
+   },
+   {
+    "t": "[🤔] <J> ingresó a la sala con VPN.",
+    "n": 5,
+    "files": 4
+   },
+   {
+    "t": "[🔄] ¡Lateral entregado al equipo contrario por hacer tiempo!",
+    "n": 5,
+    "files": 3
+   },
+   {
+    "t": "[💛] https://discord.gg/zRRPSNBEkE",
+    "n": 5,
+    "files": 5
+   },
+   {
+    "t": "[👤] <J> agregó a <J>  al chat del Equipo Red 🔴",
+    "n": 5,
+    "files": 4
+   },
+   {
+    "t": "[👕] Camiseta # de Arsenal aplicada en el equipo Red.",
+    "n": 5,
+    "files": 5
+   },
+   {
+    "t": "[🏆] PARTIDO: NEWELLS vs ROSARIO CENTRAL",
+    "n": 5,
+    "files": 5
+   },
+   {
+    "t": "[🏆] PARTIDO: LANUS vs BANFIELD",
+    "n": 5,
+    "files": 5
+   },
+   {
+    "t": "[✅] <J> se logeó como <J>..",
+    "n": 5,
+    "files": 4
+   },
+   {
+    "t": "[👕] Camiseta # de Napoli aplicada en el equipo Blue.",
+    "n": 5,
+    "files": 5
+   },
+   {
+    "t": "[⚽] Modos:  PowerShot [✅] •  Offside [❌] •  Faltas [✅] •",
+    "n": 4,
+    "files": 4
+   },
+   {
+    "t": "[🔄] ¡Corner entregado al equipo contrario por hacer tiempo!",
+    "n": 4,
+    "files": 3
+   },
+   {
+    "t": "[✅] <J>   es el Arquero del 🔵 Blue",
+    "n": 4,
+    "files": 4
+   },
+   {
+    "t": "[👕] Camiseta # de Chelsea aplicada en el equipo Blue.",
+    "n": 4,
+    "files": 4
+   },
+   {
+    "t": "[👕] Camiseta # <J> Roma aplicada en el equipo Red.",
+    "n": 4,
+    "files": 4
+   },
+   {
+    "t": "[🏆] PARTIDO: HOLANDA vs ARGENTINA",
+    "n": 4,
+    "files": 4
+   },
+   {
+    "t": "[🏆] PARTIDO: ARSENAL vs TOTTENHAM",
+    "n": 4,
+    "files": 4
+   },
+   {
+    "t": "[👕] Camiseta # de Milan aplicada en el equipo Red.",
+    "n": 4,
+    "files": 4
+   },
+   {
+    "t": "[🎉] Gol <J> <J> con asistencia <J> <J>  ⚽ | # km/h 🕒 #:#",
+    "n": 4,
+    "files": 4
+   },
+   {
+    "t": "[👕] Camiseta # de Brasil aplicada en el equipo Red.",
+    "n": 4,
+    "files": 4
+   },
+   {
+    "t": "[👕] Camiseta # de Argentina aplicada en el equipo Red.",
+    "n": 4,
+    "files": 4
+   },
+   {
+    "t": "[👕] Camiseta # de Juventus aplicada en el equipo Blue.",
+    "n": 4,
+    "files": 4
+   },
+   {
+    "t": "[👕] Camiseta # de Bayern Munich aplicada en el equipo Red.",
+    "n": 3,
+    "files": 3
+   },
+   {
+    "t": "[👕] Camiseta # de Dortmund aplicada en el equipo Blue.",
+    "n": 3,
+    "files": 3
+   },
+   {
+    "t": "[👕] Camiseta # de Manchester United aplicada en el equipo Blue.",
+    "n": 3,
+    "files": 3
+   },
+   {
+    "t": "[👕] Camiseta # de Italia aplicada en el equipo Red.",
+    "n": 3,
+    "files": 3
+   },
+   {
+    "t": "[🏆] PARTIDO: ITALIA vs FRANCIA",
+    "n": 3,
+    "files": 3
+   }
+  ],
+  "percent_values": {
+   "Powershot utilizado.": {
+    "n": 16602,
+    "min": 1.0,
+    "p10": 12.0,
+    "p50": 33.0,
+    "p90": 49.0,
+    "max": 100.0,
+    "hist": {
+     "0-10": 1454,
+     "10-20": 967,
+     "20-30": 1047,
+     "30-40": 11399,
+     "40-50": 81,
+     "50-60": 69,
+     "60-70": 972,
+     "70-80": 17,
+     "80-90": 16,
+     "90-100": 580
+    }
+   },
+   "Potencia del corner": {
+    "n": 5186,
+    "min": 0.0,
+    "p10": 86.0,
+    "p50": 96.0,
+    "p90": 99.0,
+    "max": 100.0,
+    "hist": {
+     "0-10": 56,
+     "10-20": 67,
+     "20-30": 41,
+     "30-40": 17,
+     "40-50": 21,
+     "50-60": 9,
+     "60-70": 35,
+     "70-80": 38,
+     "80-90": 870,
+     "90-100": 4032
+    }
+   },
+   "Potencia del saque": {
+    "n": 3605,
+    "min": 0.0,
+    "p10": 68.0,
+    "p50": 93.0,
+    "p90": 99.0,
+    "max": 100.0,
+    "hist": {
+     "0-10": 100,
+     "10-20": 89,
+     "20-30": 19,
+     "30-40": 16,
+     "40-50": 17,
+     "50-60": 19,
+     "60-70": 124,
+     "70-80": 301,
+     "80-90": 683,
+     "90-100": 2237
+    }
+   },
+   "Potencia del tiro libre": {
+    "n": 2879,
+    "min": 3.0,
+    "p10": 58.0,
+    "p50": 83.0,
+    "p90": 94.0,
+    "max": 97.0,
+    "hist": {
+     "0-10": 26,
+     "10-20": 25,
+     "20-30": 32,
+     "30-40": 36,
+     "40-50": 87,
+     "50-60": 110,
+     "60-70": 222,
+     "70-80": 563,
+     "80-90": 1003,
+     "90-100": 775
+    }
+   }
+  }
+ }
+}
