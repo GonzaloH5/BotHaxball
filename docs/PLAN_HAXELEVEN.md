@@ -272,6 +272,15 @@ Validación:
 - El kernel es numba y parametrizado, para poder barrer variantes de las reglas no resueltas.
 - Agrega estado público para el actor: % de carga, fase de la barra, temporizadores de falta, línea de offside y estado de la barrera.
 
+**Hecho el 2026-10-08** ([reporte](../reports/hx11/s3_arbitro.md)):
+- **Componentes:**
+  - `env/hx11/contract.py` (HX11-1) y `tables.json`, con la barra y la rampa medidas;
+  - `env/hx11/kernel.py`, física y árbitro en numba;
+  - `env/hx11/core.py` (`HX11Env`).
+- **Pruebas:** la física es idéntica a la de `sim.physics`, y las 8 pruebas de reglas pasan.
+- **Velocidad:** unos 500.000 ticks de partido por segundo con 256 partidos en esta PC.
+- **Supuestos** (marcados en el contrato): plazo del saque, lateral mal sacado, comba de la pelota parada, penal y `!lado`/`!centro`.
+
 ### S4. Conformidad completa (`tools/hx11_conformance.py`)
 
 | Prueba | Criterio propuesto |

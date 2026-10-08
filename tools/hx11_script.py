@@ -10,6 +10,7 @@ física no explica: `setDiscProperties`) y de sus anuncios. Lee los partidos de 
 * `offside`: la regla de offside medida (patada de un compañero, desvíos, exenciones) contra los cobros.
 * `powershot`: demora, curva y niveles de la carga, % anunciado y comba de la patada.
 * `barra`: la barra de fuerza de la pelota parada por tipo de saque y la comba de esas patadas.
+* `tablas`: las tablas del contrato HX11-1 (forma de onda de la barra por tipo y rampa del powershot).
 
   python -m tools.hx11_script <subcomando> data/hx11/npz/*.npz --out reports/hx11/s2_<subcomando>.json
 """
@@ -537,6 +538,67 @@ def calls(m: Match, who):
     return out
 
 
+BAR_PERIOD = 150
+
+
+def tables(paths, ramp_len=440):
+    """Tablas del contrato HX11-1 medidas en las grabaciones:
+
+    * `bar[kind]`: forma de onda de la barra (masa de la pelota) en un período de 150 ticks, con las fases alineadas; el
+      valor fijo del comienzo (`hold_value`) y cuántos ticks dura (`hold_ticks`); la fase de cada saque (`phases`: el
+      índice de la onda en el primer tick después del valor fijo).
+    * `ramp`: masa de la pelota por tick desde el inicio de la carga del powershot (mediana; desvío máximo ~0,05)."""
+    traces = collections.defaultdict(list)
+    ramps = []
+    for p in paths:
+        m = Match(p)
+        z = m.z
+        inv = z["ball_invMass"].astype(float)
+        ok = open_play(m)
+        for r in pieces(m):
+            if r["wait"] is None or r["kind"] not in ("corner", "tiro_libre", "saque_arco"):
+                continue
+            i = m.fidx[r["frame"]]
+            traces[r["kind"]].append(inv[i + 1:i + 1 + r["wait"]])
+        for s in range(1, m.T):
+            if ok[s] and abs(inv[s - 1] - BASE_INV) < 1e-4 and inv[s] > BASE_INV + 1e-4:
+                j, t = s, []
+                while j < m.T and inv[j] > BASE_INV + 1e-4 and ok[j] and j - s < ramp_len:
+                    t.append(inv[j])
+                    j += 1
+                ramps.append(t)
+        del m
+    out = dict(bar={}, ramp=None)
+    for kind, trs in traces.items():
+        v0 = collections.Counter(round(float(t[0]), 4) for t in trs if len(t)).most_common(1)[0][0]
+        holds = [next((j for j, x in enumerate(t) if abs(x - v0) > 1e-3), len(t)) for t in trs]
+        hold = int(np.median(holds))
+        body = [t[h:] for t, h in zip(trs, holds) if len(t) - h >= BAR_PERIOD]
+        ref = body[0][:BAR_PERIOD]
+        for _ in range(3):  # alinear fases contra la referencia y rehacer la referencia
+            phases, rows = [], []
+            for t in body:
+                cand = [(np.mean(np.abs(np.array([t[j] for j in range(BAR_PERIOD)]) - np.roll(ref, -ph))), ph)
+                        for ph in range(BAR_PERIOD)]
+                err, ph = min(cand)
+                phases.append(ph)
+                rows.append(np.roll(t[:BAR_PERIOD], ph))
+            ref = np.median(np.vstack(rows), axis=0)
+        resid = [float(np.max(np.abs(np.roll(t[:BAR_PERIOD], ph) - ref))) for t, ph in zip(body, phases)]
+        out["bar"][kind] = dict(n=len(trs), hold_value=v0, hold_ticks=hold,
+                                hold_ticks_p10_p90=[float(np.percentile(holds, 10)), float(np.percentile(holds, 90))],
+                                wave=[round(float(x), 5) for x in ref], phases=phases,
+                                residual_p90=float(np.percentile(resid, 90)))
+    L = max(len(t) for t in ramps)
+    M = np.full((len(ramps), L), np.nan)
+    for a, t in enumerate(ramps):
+        M[a, :len(t)] = t
+    n = np.sum(~np.isnan(M), axis=0)
+    med = np.nanmedian(M, axis=0)
+    out["ramp"] = dict(n=len(ramps), values=[round(float(x), 5) for x, c in zip(med, n) if c >= 3])
+    return out
+
+
 def _dump(res, out):
     if out:
         Path(out).write_text(json.dumps(res, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -545,7 +607,7 @@ def _dump(res, out):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    for name in ("saques", "faltas", "ajuste_faltas", "offside", "powershot", "barra"):
+    for name in ("saques", "faltas", "ajuste_faltas", "offside", "powershot", "barra", "tablas"):
         sp = sub.add_parser(name)
         sp.add_argument("matches", nargs="+")
         sp.add_argument("--out", default=None)
@@ -579,6 +641,13 @@ def main():
         res = powershot(a.matches)
         _dump(res, a.out)
         print("demora", res["delay"], "fin", res["ends"])
+    elif a.cmd == "tablas":
+        res = tables(a.matches)
+        _dump(res, a.out)
+        for k, v in res["bar"].items():
+            print(k, v["n"], "fijo", v["hold_value"], v["hold_ticks"], v["hold_ticks_p10_p90"], "residuo p90",
+                  round(v["residual_p90"], 4), "rango", min(v["wave"]), max(v["wave"]))
+        print("rampa", res["ramp"]["n"], len(res["ramp"]["values"]))
     elif a.cmd == "barra":
         res = power_bar(a.matches)
         _dump(res, a.out)
