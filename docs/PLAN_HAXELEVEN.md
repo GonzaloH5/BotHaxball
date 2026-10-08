@@ -317,7 +317,16 @@ Los umbrales son propuestas, a fijar por el usuario antes de medir.
 - Cada prueba se pre-registra y se repite. La grabación de la sala es el dato.
 - Claude no ejecuta el script de la sala (regla vigente).
 
+**Hecho el 2026-10-08 en la sala del usuario** ([reporte](../reports/hx11/s5_s6_sala.md)):
+- **Faltas:** la prueba con bots no se pudo hacer. Con la latencia de la sala, un bot reactivo no sostiene el cuerpeo. La regla queda como se midió en las grabaciones.
+
 ### S6. Latencia
+
+**Hecho el 2026-10-08** ([reporte](../reports/hx11/s5_s6_sala.md)):
+- **Medición:** latencia bimodal en la sala del usuario, con p10 de 9–10, p50 de 21–25 y p90 de 26–31 ticks. El host procesa los frames a ráfagas; no es la red.
+- **El eco que mide el bot coincide con la latencia real:** puede medirla en vivo.
+- **Entrenamiento:** retardo de 8 a 36 ticks, con la latencia como observación.
+- **Falta:** medir en la sala real con un bot.
 - Medir en la sala donde va a jugar el bot, como cliente, con `latency_probe.js` y `--trace`. La ubicación del host y los 22 jugadores pueden cambiarla.
 - En RS fue de 9–12 ticks.
 - Se entrena con la distribución medida (convención de retardo de `PLAN.md` E1).
