@@ -423,6 +423,10 @@ Los umbrales son propuestas, a fijar por el usuario antes de medir.
 - **Revisión (P2, 2026-10-08):** el ancla de entrenamiento no es la del rol de plantilla de D2, sino la **medida del propio jugador** en la mitad del partido: su posición media relativa al centroide de los jugadores de campo, con y sin la pelota. Va junto con la línea de su rol dominante (ARQ, DEF, MCD, MED o DEL).
   - **Por qué:** es un dato y no una etiqueta. No arrastra el ruido del etiquetador (rol por tick estable en 63%) y es lo que fija el usuario: un puesto por tramo.
   - **En la sala:** `--pos LI` se traduce a la línea y al ancla típica de ese puesto. Se toma de los humanos de ese puesto en el banco y la valida el usuario (E1 liviano).
+  - **E1, parte 1, aprobada por el usuario (2026-10-08):** el dibujo de los 14 puestos (`reports/hx11/pos_vocab.html`) "está bien".
+  - **Observación del usuario:** algunos puestos, como el mediapunta, tienen libertad para moverse por todo el ancho.
+    - El ancla es un promedio y el bot imita el recorrido real de los humanos del puesto, pero hoy junta estilos: un MCO fijo y uno libre dan el mismo promedio.
+    - **Extensión anotada, para después de L0:** condicionar también por la "libertad" del jugador, medida como la dispersión de su posición respecto de su ancla. En la sala sería `--pos MCO` más una libertad elegida.
   - Implementado en `learn/hx11_data.py`.
 - **El puesto se representa con un ancla continua,** aprendida en D2: la posición media del rol en coordenadas del equipo, con y sin pelota.
 - **Se le suma un token de línea:** arquero, defensa, medio o ataque.
@@ -540,7 +544,8 @@ node deploy/hx11/join_bots.js --join <link> --pos LI
   - **Criterio propuesto:** ≥ 80% de las métricas dentro del techo, ninguna colectiva a más de 2 techos, y un clasificador real contra sintético (C2ST) sobre clips de 10 s con AUC ≤ 0,70.
   - **Si no pasa:** se arregla el realismo (ajuste en lazo cerrado con discriminador, estructura programada); más diversidad no lo arregla.
 - **Diversidad anclada en datos (P5):** estilos de jugadores reales, no sesgos inventados. Los compañeros "malos" realistas (AFK, que no vuelven, novatos) van como prueba de robustez.
-- **Medido (P13, N10): la población de L0 tal cual no sirve como L1.**
+- **Actualización (N11, 2026-10-09): con escala y entrenamiento largo, la población de L0 ya juega.** Con 290 partidos y 80k pasos hay 9,0 cambios de posesión por minuto contra 10,8 de los humanos y 0,46 patadas por jugador contra 0,72. Lo que sigue es la puerta de realismo (P5), no un arreglo estructural previo.
+- **Medido con L0-mini (P13, N10): la población de L0 tal cual no sirve como L1.**
   - **Qué pasa:** con los 22 imitando, nadie va a la pelota. El más cercano queda a 260–296 px (humanos 57), la velocidad es de 0,8–1,8 px por tick (humanos 2,26) y hay 0,02–0,05 patadas por jugador y minuto (humanos 0,72).
   - **Qué hace falta:** un arreglo estructural antes de cualquier L1, por ejemplo un ajuste en lazo cerrado con discriminador o una estructura programada para quién va a la pelota.
   - **Mientras tanto,** el bot se evalúa entre humanos: el lazo no reactivo y la sala (C0).

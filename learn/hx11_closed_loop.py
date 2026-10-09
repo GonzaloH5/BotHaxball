@@ -252,7 +252,10 @@ def rollout(policy, matches, owners, starts_list, n_env=64, seed=0, human=False,
                 rows[-1]["dist_ancla_pedida_humano"] = zone_dist(logs[i], s, int(end[i]), w.anchor[(pid, 0)],
                                                                  owners[mi], t0)
                 rows[-1]["puesto_pedido"] = req[i]
-            rows[-1].update(partido=matches[mi].name, t0=t0, lugar=s, retardo=d)
+            pid0 = int(matches[mi].pid[t0, s])
+            from learn.hx11_data import LINES
+            rows[-1].update(partido=matches[mi].name, t0=t0, lugar=s, retardo=d,
+                            linea=LINES[matches[mi].line.get(pid0, 3)])
     return rows
 
 

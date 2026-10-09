@@ -83,6 +83,8 @@ def main():
     ap.add_argument("--cerca-frac", type=float, default=0.0, help="fracción del lote con el jugador cerca de la pelota")
     ap.add_argument("--max-minutes", type=float, default=0.0, help="corta (evaluando y guardando) al pasar este tiempo")
     ap.add_argument("--hold", action="store_true", help="cabeza de duración: cuánto sostiene el humano la tecla")
+    ap.add_argument("--hidden", type=int, default=256, help="ancho del tronco")
+    ap.add_argument("--ent-hidden", type=int, default=128, help="ancho del codificador de entidades")
     ap.add_argument("--split-file", default=None, help="JSON con train/dev (para máquinas sin el manifiesto)")
     ap.add_argument("--drop-hist", type=float, default=0.0,
                     help="brazo: borra la historia propia en esta fracción de las muestras (en la inferencia va entera)")
@@ -106,7 +108,7 @@ def main():
     dev_data = batch_with_line(dv, 40000)
     print(f"datos: {len(train)} partidos de entrenamiento, {len(dev)} de desarrollo ({time.time() - t0:.0f} s)",
           flush=True)
-    net = SetPolicy(sin_historia=a.sin_historia, extra=a.extra, hold=a.hold)
+    net = SetPolicy(hidden=a.hidden, ent_hidden=a.ent_hidden, sin_historia=a.sin_historia, extra=a.extra, hold=a.hold)
     opt = torch.optim.AdamW(net.parameters(), lr=a.lr, weight_decay=1e-4)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, a.steps)
     lossf = nn.CrossEntropyLoss()

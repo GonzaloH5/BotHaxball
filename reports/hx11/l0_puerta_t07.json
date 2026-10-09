@@ -1,0 +1,420 @@
+{
+ "modelo": "runs/hx11_l0/l0_sinhist_full/model.pt",
+ "temp": 0.7,
+ "cada": 3,
+ "partidos": [
+  "BOL_SEH_HaxEleven-7-9-2026-11h56m",
+  "BOL_VB_HaxEleven-22-9-2026-0h08m (1)",
+  "CMC_BFC_HaxEleven-7-9-2026-22h50m (1)",
+  "HFC_LPM_HaxEleven-21-09-2026-9h43m",
+  "HaxEleven-10-2-2026-12h14m",
+  "HaxEleven-20-9-2026-21h23m",
+  "HaxEleven-24-9-2026-23h39m",
+  "HaxEleven-24-9-2026-23h54m",
+  "HaxEleven-3-10-2026-23h45m",
+  "HaxEleven-8-21-2026-11h11m",
+  "HaxEleven-9-17-2026-1h23m",
+  "HaxEleven-9-19-2026-6h09m",
+  "HaxEleven-9-19-2026-6h38m",
+  "HaxEleven-9-27-2026-1h29m",
+  "HaxEleven-9-27-2026-2h06m",
+  "HaxEleven-9-3-2026-11h34m",
+  "KJ_BOV_HaxEleven-14-9-2026-23h37m (1)",
+  "MUN_AV_HaxEleven-21-9-2026-23h43m (1)",
+  "VB_DTF_HaxEleven-14-9-2026-23h43m (1)",
+  "VB_SX_HaxEleven-10-9-2026-22h40m (1)"
+ ],
+ "resultado": {
+  "cerca": {
+   "DEF": {
+    "ventanas": 552,
+    "patadas_efectivas_min": {
+     "bot": 6.95,
+     "humano": 7.046,
+     "razon": 0.986,
+     "ic90": [
+      0.913,
+      1.049
+     ],
+     "pasa": true
+    },
+    "toques_min": {
+     "bot": 2.591,
+     "humano": 4.474,
+     "razon": 0.579,
+     "ic90": [
+      0.5,
+      0.67
+     ],
+     "pasa": false
+    },
+    "vel": {
+     "bot": 2.101,
+     "humano": 2.29,
+     "razon": 0.918,
+     "ic90": [
+      0.906,
+      0.929
+     ],
+     "pasa": true
+    },
+    "dist_pelota": {
+     "bot": 259.965,
+     "humano": 277.366,
+     "razon": 0.937,
+     "ic90": [
+      0.907,
+      0.969
+     ],
+     "pasa": true
+    }
+   },
+   "MCD": {
+    "ventanas": 92,
+    "patadas_efectivas_min": {
+     "bot": 5.307,
+     "humano": 5.866,
+     "razon": 0.905,
+     "ic90": [
+      0.725,
+      1.118
+     ],
+     "pasa": true
+    },
+    "toques_min": {
+     "bot": 1.951,
+     "humano": 2.188,
+     "razon": 0.891,
+     "ic90": [
+      0.582,
+      1.316
+     ],
+     "pasa": true
+    },
+    "vel": {
+     "bot": 2.0,
+     "humano": 2.275,
+     "razon": 0.879,
+     "ic90": [
+      0.851,
+      0.908
+     ],
+     "pasa": true
+    },
+    "dist_pelota": {
+     "bot": 269.552,
+     "humano": 290.145,
+     "razon": 0.929,
+     "ic90": [
+      0.831,
+      1.033
+     ],
+     "pasa": true
+    }
+   },
+   "MED": {
+    "ventanas": 604,
+    "patadas_efectivas_min": {
+     "bot": 6.594,
+     "humano": 7.052,
+     "razon": 0.935,
+     "ic90": [
+      0.874,
+      1.003
+     ],
+     "pasa": true
+    },
+    "toques_min": {
+     "bot": 3.173,
+     "humano": 6.764,
+     "razon": 0.469,
+     "ic90": [
+      0.413,
+      0.529
+     ],
+     "pasa": false
+    },
+    "vel": {
+     "bot": 2.129,
+     "humano": 2.306,
+     "razon": 0.923,
+     "ic90": [
+      0.912,
+      0.935
+     ],
+     "pasa": true
+    },
+    "dist_pelota": {
+     "bot": 248.739,
+     "humano": 257.945,
+     "razon": 0.964,
+     "ic90": [
+      0.932,
+      1.0
+     ],
+     "pasa": true
+    }
+   },
+   "DEL": {
+    "ventanas": 351,
+    "patadas_efectivas_min": {
+     "bot": 4.884,
+     "humano": 4.775,
+     "razon": 1.023,
+     "ic90": [
+      0.903,
+      1.163
+     ],
+     "pasa": true
+    },
+    "toques_min": {
+     "bot": 2.526,
+     "humano": 6.359,
+     "razon": 0.397,
+     "ic90": [
+      0.332,
+      0.466
+     ],
+     "pasa": false
+    },
+    "vel": {
+     "bot": 2.227,
+     "humano": 2.415,
+     "razon": 0.922,
+     "ic90": [
+      0.908,
+      0.939
+     ],
+     "pasa": true
+    },
+    "dist_pelota": {
+     "bot": 262.778,
+     "humano": 279.84,
+     "razon": 0.939,
+     "ic90": [
+      0.9,
+      0.988
+     ],
+     "pasa": true
+    }
+   }
+  },
+  "azar": {
+   "ARQ": {
+    "ventanas": 123,
+    "dist_ancla": {
+     "bot": 287.048,
+     "humano": 281.572,
+     "razon": 1.019,
+     "ic90": [
+      0.98,
+      1.06
+     ],
+     "pasa": true
+    },
+    "dist_pelota": {
+     "bot": 1083.187,
+     "humano": 1065.23,
+     "razon": 1.017,
+     "ic90": [
+      0.998,
+      1.039
+     ],
+     "pasa": true
+    },
+    "vel": {
+     "bot": 1.539,
+     "humano": 1.76,
+     "razon": 0.874,
+     "ic90": [
+      0.826,
+      0.923
+     ],
+     "pasa": true
+    },
+    "toques_min": {
+     "bot": 0.125,
+     "humano": 0.292,
+     "razon": 0.429,
+     "ic90": [
+      0.12,
+      5.0
+     ],
+     "pasa": true
+    }
+   },
+   "DEF": {
+    "ventanas": 542,
+    "dist_ancla": {
+     "bot": 179.414,
+     "humano": 173.054,
+     "razon": 1.037,
+     "ic90": [
+      1.007,
+      1.066
+     ],
+     "pasa": true
+    },
+    "dist_pelota": {
+     "bot": 565.021,
+     "humano": 567.811,
+     "razon": 0.995,
+     "ic90": [
+      0.982,
+      1.009
+     ],
+     "pasa": true
+    },
+    "vel": {
+     "bot": 2.067,
+     "humano": 2.227,
+     "razon": 0.928,
+     "ic90": [
+      0.915,
+      0.942
+     ],
+     "pasa": true
+    },
+    "toques_min": {
+     "bot": 0.221,
+     "humano": 0.447,
+     "razon": 0.495,
+     "ic90": [
+      0.32,
+      0.732
+     ],
+     "pasa": false
+    }
+   },
+   "MCD": {
+    "ventanas": 73,
+    "dist_ancla": {
+     "bot": 196.272,
+     "humano": 180.971,
+     "razon": 1.085,
+     "ic90": [
+      1.031,
+      1.145
+     ],
+     "pasa": true
+    },
+    "dist_pelota": {
+     "bot": 453.772,
+     "humano": 441.983,
+     "razon": 1.027,
+     "ic90": [
+      0.989,
+      1.061
+     ],
+     "pasa": true
+    },
+    "vel": {
+     "bot": 2.182,
+     "humano": 2.344,
+     "razon": 0.931,
+     "ic90": [
+      0.903,
+      0.962
+     ],
+     "pasa": true
+    },
+    "toques_min": {
+     "bot": 0.057,
+     "humano": 0.368,
+     "razon": 0.154,
+     "ic90": [
+      0.0,
+      1.652
+     ],
+     "pasa": true
+    }
+   },
+   "MED": {
+    "ventanas": 546,
+    "dist_ancla": {
+     "bot": 184.345,
+     "humano": 178.789,
+     "razon": 1.031,
+     "ic90": [
+      1.005,
+      1.062
+     ],
+     "pasa": true
+    },
+    "dist_pelota": {
+     "bot": 531.197,
+     "humano": 542.858,
+     "razon": 0.979,
+     "ic90": [
+      0.966,
+      0.993
+     ],
+     "pasa": true
+    },
+    "vel": {
+     "bot": 2.165,
+     "humano": 2.324,
+     "razon": 0.932,
+     "ic90": [
+      0.918,
+      0.945
+     ],
+     "pasa": true
+    },
+    "toques_min": {
+     "bot": 0.343,
+     "humano": 0.689,
+     "razon": 0.497,
+     "ic90": [
+      0.335,
+      0.8
+     ],
+     "pasa": true
+    }
+   },
+   "DEL": {
+    "ventanas": 316,
+    "dist_ancla": {
+     "bot": 195.776,
+     "humano": 189.453,
+     "razon": 1.033,
+     "ic90": [
+      1.004,
+      1.064
+     ],
+     "pasa": true
+    },
+    "dist_pelota": {
+     "bot": 543.795,
+     "humano": 553.813,
+     "razon": 0.982,
+     "ic90": [
+      0.964,
+      1.003
+     ],
+     "pasa": true
+    },
+    "vel": {
+     "bot": 2.186,
+     "humano": 2.332,
+     "razon": 0.938,
+     "ic90": [
+      0.921,
+      0.955
+     ],
+     "pasa": true
+    },
+    "toques_min": {
+     "bot": 0.138,
+     "humano": 0.579,
+     "razon": 0.239,
+     "ic90": [
+      0.137,
+      0.505
+     ],
+     "pasa": false
+    }
+   }
+  }
+ }
+}

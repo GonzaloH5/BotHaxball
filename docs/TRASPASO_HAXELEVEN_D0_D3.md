@@ -265,7 +265,9 @@ En los dos lazos, con las mismas ventanas:
 - **Cuenta:** `hxpod` es un usuario estándar, oculto en la pantalla de inicio. Su clave está en `C:\ProgramData\ssh\hxpod-claves`, con una regla `Match User` en `sshd_config`.
 - **Scripts de preparación:** `tools/pod_windows/preparar_hxpod.ps1` y `arreglar_hxpod.ps1`, que corrió el dueño como administrador.
 - **Sesión SSH:** no tiene perfil (`USERPROFILE` es `C:\WINDOWS`), así que todo va a `C:\hxpod` (`entorno.bat`). PowerShell corre en modo restringido y WMI está denegado; se usa Python con ctypes.
-- **Software:** Python 3.12 portable vía `uv`, con torch 2.14.1 CPU, numpy y numba en `C:\hxpodenv` (`instalar.bat`). El código va en `C:\hxpodepo` y los datos de los 330 partidos de entrenamiento y desarrollo en `C:\hxpodepo\data`.
+- **Software:** Python 3.12 portable vía `uv`, con torch 2.14.1 CPU, numpy y numba en `C:\hxpodenv` (`instalar.bat`). El código va en `C:\hxpod
+epo` y los datos de los 330 partidos de entrenamiento y desarrollo en `C:\hxpod
+epo\data`.
 - **Límites acordados con el usuario** (`tools/pod_windows/lanzar.py`, job object de Windows):
   - hilos lógicos 8–11;
   - tope duro del 33% de CPU;
@@ -280,6 +282,86 @@ En los dos lazos, con las mismas ventanas:
   - `--reanudar` sigue desde ahí;
   - `python -m tools.pod_windows.vigilar --nombre <n> -- <args de hx11_bc>` corre en la PC del usuario: cada 10 min baja los resultados a `runs/hx11_l0/<n>/` y relanza si se cortó.
 - **Corrida en curso:** `l0_sinhist_full`: sin historia, 290 partidos, 80.000 pasos, unas 2,5–3 h. El vigilante escribe en `runs/hx11_l0/vigilante_l0_sinhist_full.log`.
+
+### Resultado de escala en prueba (2026-10-09; `reports/hx11/l0_escala_prueba.md`)
+
+- **Corrida:** `l0_sinhist_full` (sin historia, 290 partidos, 80.000 pasos) terminó en la PC prestada en ~2,2 h a 9,8 pasos/s. NLL de desarrollo 1,406. El modelo está en `runs/hx11_l0/l0_sinhist_full/model.pt`.
+- **Partidos de prueba, no reactivo** (640 ventanas cerca de la pelota):
+
+  | Modelo | Patadas efectivas/min | Toques/min | Velocidad | Dist. al ancla |
+  |---|---|---|---|---|
+  | **Este modelo** | 6,42 | 2,15 | 1,95 | 218 |
+  | 290 partidos, 10k pasos | 3,20 | 0,88 | — | — |
+  | 30 partidos, 6k pasos | 2,19 | 1,30 | — | — |
+  | Humano | 7,16 | 4,63 | 2,34 | 196 |
+
+- **Reactivo** (los 22 con el modelo):
+
+  | Métrica | Modelo | Humano |
+  |---|---|---|
+  | Cambios de posesión por minuto | 9,0 | 10,8 |
+  | Patadas por jugador y minuto | 0,46 | 0,72 |
+  | Toques por jugador y minuto | 0,11 | 0,40 |
+  | Jugador más cercano a la pelota | 114 px | 79 px |
+
+  **Ya se juega al fútbol.** P13 queda matizado.
+- **Inferencia:**
+  - **Temperatura 0,7:** patadas 6,49 contra 6,64 de los humanos, toques 2,56 contra 4,46, velocidad 2,14 y 11,4 cambios/s.
+  - **Decidir cada 6 ticks:** patadas 4,77, toques 2,88 y 6,8 cambios/s.
+  - Quedan dos brechas: los toques y la vibración (el humano tiene 4 cambios/s).
+- **En curso:** `l0_sinhist_ancho` (la misma receta con hidden 512 y entidades 256, 1,5 M parámetros) en la PC prestada, de noche. El vigilante escribe en `runs/hx11_l0/vigilante_l0_sinhist_ancho.log`.
+
+### Puerta P3 por puesto en prueba (2026-10-09; `reports/hx11/l0_puerta_t07.md`, `learn/hx11_puerta.py`)
+
+Modelo `l0_sinhist_full` con temperatura 0,7, 20 partidos de prueba y 1600 ventanas cerca de la pelota más 1600 al azar. Criterio fijado antes de mirar: el IC 90% de la razón bot/humano se superpone con [0,75; 1,33].
+
+| Métrica | Razón bot/humano | ¿Pasa? |
+|---|---|---|
+| Patadas efectivas | 0,9–1,02 | sí, en todas las líneas |
+| Velocidad | 0,88–0,94 | sí |
+| Distancia a la pelota | 0,93–1,03 | sí |
+| Distancia al ancla | 1,02–1,09 | sí |
+| Arquero | — | sí |
+| Toques, cerca de la pelota | DEF 0,58, MED 0,47, DEL 0,40 | **no** |
+| Toques, al azar | DEF 0,50, DEL 0,24 | **no** |
+
+- **Lectura:** patea como un humano pero **no conduce ni retiene** la pelota, y eso importa para el powershot (~90 ticks de contacto) y el cuerpeo.
+- **Hipótesis:** la vibración de teclas (13 cambios/s contra 4). Decidir cada 6 ticks subió los toques al 61%.
+
+### Bot de sala: piezas listas (2026-10-09)
+
+- **`export/to_onnx_hx11.py`:** ONNX + meta, con el vocabulario de `--pos`. Verificado contra torch: 1,2e-6 en probabilidades. Exportado `deploy/hx11/l0.onnx`.
+- **`learn/hx11_fase.py`:** fase de juego **causal** para la sala. Usa el estado del juego, las colocaciones de la pelota por el script (el mismo evento de D0), las patadas y los goles; el equipo que saca sale de la regla del último toque. Contra D0, en 10 partidos de prueba:
+  - acuerdo por tick 97,3% (juego abierto 99,99%, pelota parada 98,2%, saque inicial 100%, gol 99,3%);
+  - tipo de pelota parada 100%;
+  - equipo que saca 90,4%;
+  - la "salida pendiente" de D0, que es hacia atrás, queda como juego abierto.
+- **`learn/hx11_cerebro.py` (cerebro):**
+  - ventana viva con el formato de D0, la fase causal y la observación de `build` con el ancla y la línea de `--pos`;
+  - `set_pos` para cambiar de puesto en caliente.
+  - **Paridad con el entrenamiento** (`learn/hx11_cerebro_paridad.py`, partido de prueba, 202 decisiones de juego abierto): fase igual al 100% y **diferencia de probabilidades 0,0**.
+- **`deploy/hx11/` (cliente node):**
+  - `frame.js`: arma el tick desde la sala o una repetición; colocaciones, patadas, goles, `!gk` y offside.
+  - `cerebro_proc.js`: proceso del cerebro.
+  - `bot.js`: cliente en vivo con `--join` y `--pos`. Se une con una clave nueva y no elige equipo. Retardo = eco medido (por defecto 22, de S6). Comandos de consola: `pos X`, `pausa`, `sigue`, `salir`.
+  - **Prueba de punta a punta** (`test_replay.js`, una grabación de prueba a velocidad real): una decisión cada 3,0 ticks; cerebro p50 5 ms y p95 53 ms; dirección igual a la del humano de ese lugar en el 54%.
+- **Falta probarlo en una sala real.** Es el piloto C0 con el usuario:
+
+  ```
+  node deploy/hx11/bot.js --join <link> --pos LI --name HX-Bot
+  ```
+
+  - El admin mueve al bot a un equipo.
+  - Partidos grabados.
+  - De 2 a 3 puestos.
+  - Métricas de proceso contra el banco (E4: con 6–10 partidos solo se ven fallas groseras).
+
+### Validación de puestos (E1 liviano)
+
+- **Parte 1, hecha:** el usuario aprobó el dibujo de `--pos` (`reports/hx11/pos_vocab.html`).
+  - **Observación suya:** el mediapunta y otros tienen libertad para moverse por todo el ancho.
+  - **Extensión anotada en el plan (§4):** condicionar también por la "libertad" medida del jugador.
+- **Parte 2, opcional:** `data/hx11/d2/muestra_revision.md`, con nombres. Solo si el usuario conoce esos grupos.
 
 ### En curso al escribir esto
 
