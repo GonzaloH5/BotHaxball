@@ -81,8 +81,11 @@ def sample(logits, temp_move=1.0, prev=None, hyst=0.0):
     mv = torch.multinomial(pm / pm.sum(1, keepdim=True), 1).squeeze(1)
     ar = torch.arange(len(mv))
     if hyst > 0 and prev is not None:
-        pv = torch.as_tensor(prev, dtype=torch.long) % 9
-        keep = pm[ar, pv] >= hyst * pm.max(1).values
+        pr = torch.as_tensor(prev, dtype=torch.long)
+        pv = pr.clamp_min(0) % 9                                     # prev < 0: sin acción anterior (no se mantiene)
+        # "quieto" (dirección 0) nunca se sostiene: en un saque todos están quietos y la histéresis los dejaba trabados
+        # (sala del 2026-10-09: 20 de 22 bots sin dirección el 100% del tiempo)
+        keep = (pr >= 0) & (pv != 0) & (pm[ar, pv] >= hyst * pm.max(1).values)
         mv = torch.where(keep, pv, mv)
     pk = p[ar, 1, mv] / p[ar, :, mv].sum(1).clamp_min(1e-12)
     kick = (torch.rand(len(mv)) < pk).long()

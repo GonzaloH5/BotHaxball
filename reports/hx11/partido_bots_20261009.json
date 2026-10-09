@@ -1,0 +1,455 @@
+{
+ "grabacion": "partido_bots_20261009_0149.hbr2",
+ "minutos_juego_abierto": 0.9,
+ "jugadores": 23,
+ "por_linea": {
+  "quieto": {
+   "bots": {
+    "ARQ": 0.316,
+    "DEF": 0.308,
+    "MED": 0.261,
+    "DEL": 0.553
+   },
+   "humanos": {
+    "ARQ": 0.099,
+    "DEF": 0.024,
+    "MCD": 0.013,
+    "MED": 0.022,
+    "DEL": 0.02
+   }
+  },
+  "cambios_s": {
+   "bots": {
+    "ARQ": 5.668,
+    "DEF": 5.608,
+    "MED": 4.647,
+    "DEL": 3.201
+   },
+   "humanos": {
+    "ARQ": 3.419,
+    "DEF": 4.232,
+    "MCD": 3.985,
+    "MED": 3.614,
+    "DEL": 3.436
+   }
+  },
+  "dist_pelota_p50": {
+   "bots": {
+    "ARQ": 1228.92,
+    "DEF": 695.026,
+    "MED": 458.54,
+    "DEL": 816.434
+   },
+   "humanos": {
+    "ARQ": 998.748,
+    "DEF": 561.329,
+    "MCD": 433.252,
+    "MED": 513.425,
+    "DEL": 518.809
+   }
+  },
+  "dist_zona": {
+   "bots": {
+    "ARQ": 293.132,
+    "DEF": 302.611,
+    "MED": 383.913,
+    "DEL": 663.066
+   },
+   "humanos": {
+    "ARQ": 269.459,
+    "DEF": 172.31,
+    "MCD": 165.286,
+    "MED": 179.915,
+    "DEL": 186.353
+   }
+  },
+  "patadas_min": {
+   "bots": {
+    "ARQ": 0.0,
+    "DEF": 0.554,
+    "MED": 0.792,
+    "DEL": 0.0
+   },
+   "humanos": {
+    "ARQ": 1.182,
+    "DEF": 1.049,
+    "MCD": 1.078,
+    "MED": 0.97,
+    "DEL": 0.804
+   }
+  },
+  "toques_min": {
+   "bots": {
+    "ARQ": 0.0,
+    "DEF": 0.164,
+    "MED": 0.459,
+    "DEL": 0.299
+   },
+   "humanos": {
+    "ARQ": 1.084,
+    "DEF": 0.527,
+    "MCD": 0.523,
+    "MED": 0.591,
+    "DEL": 0.631
+   }
+  }
+ },
+ "equipo": {
+  "bots": {
+   "patadas_jugador_min": 0.231,
+   "toques_jugador_min": 0.151,
+   "cambios_posesion_min": 7.898,
+   "goles_10min": 0.0,
+   "largo_equipo": 1145.094,
+   "ancho_equipo": 1204.484,
+   "juego_abierto": 0.509,
+   "vel_media": 1.025,
+   "mas_cercano_pelota_p50": 143.523,
+   "dist_zona": 422.587,
+   "cerca_pelota_150": 0.782,
+   "vecino_mas_cercano": 277.337,
+   "bloque_dx": 423.384,
+   "persigue": 0.907
+  },
+  "humanos": {
+   "patadas_jugador_min": 0.747,
+   "toques_jugador_min": 0.562,
+   "cambios_posesion_min": 12.4,
+   "goles_10min": 0.769,
+   "largo_equipo": 841.141,
+   "ancho_equipo": 949.909,
+   "juego_abierto": 0.745,
+   "vel_media": 2.049,
+   "mas_cercano_pelota_p50": 58.752,
+   "dist_zona": 177.485,
+   "cerca_pelota_150": 0.815,
+   "vecino_mas_cercano": 234.481,
+   "bloque_dx": 281.319,
+   "persigue": 1.016
+  }
+ },
+ "por_bot": [
+  {
+   "lugar": 0,
+   "id": 26,
+   "es_arquero": true,
+   "linea": "ARQ",
+   "minutos": 0.9,
+   "quieto": 0.134,
+   "cambios_s": 6.849,
+   "dist_pelota_p50": 1078.403,
+   "dist_zona": 301.127,
+   "patadas_min": 0.0,
+   "toques_min": 0.0,
+   "nombre": "R1 ARQ"
+  },
+  {
+   "lugar": 1,
+   "id": 27,
+   "es_arquero": false,
+   "linea": "DEF",
+   "minutos": 0.9,
+   "quieto": 0.338,
+   "cambios_s": 4.966,
+   "dist_pelota_p50": 806.774,
+   "dist_zona": 270.776,
+   "patadas_min": 0.0,
+   "toques_min": 0.0,
+   "nombre": "R2 DEF-I"
+  },
+  {
+   "lugar": 2,
+   "id": 28,
+   "es_arquero": false,
+   "linea": "DEF",
+   "minutos": 0.9,
+   "quieto": 0.196,
+   "cambios_s": 6.812,
+   "dist_pelota_p50": 639.153,
+   "dist_zona": 172.358,
+   "patadas_min": 1.108,
+   "toques_min": 0.018,
+   "nombre": "R3 DEF-CI"
+  },
+  {
+   "lugar": 3,
+   "id": 29,
+   "es_arquero": false,
+   "linea": "DEF",
+   "minutos": 0.9,
+   "quieto": 0.206,
+   "cambios_s": 5.871,
+   "dist_pelota_p50": 397.355,
+   "dist_zona": 216.885,
+   "patadas_min": 0.0,
+   "toques_min": 0.0,
+   "nombre": "R4 DEF-CD"
+  },
+  {
+   "lugar": 4,
+   "id": 30,
+   "es_arquero": false,
+   "linea": "DEF",
+   "minutos": 0.9,
+   "quieto": 0.383,
+   "cambios_s": 5.077,
+   "dist_pelota_p50": 606.432,
+   "dist_zona": 352.431,
+   "patadas_min": 2.215,
+   "toques_min": 0.295,
+   "nombre": "R5 DEF-D"
+  },
+  {
+   "lugar": 5,
+   "id": 31,
+   "es_arquero": false,
+   "linea": "MED",
+   "minutos": 0.9,
+   "quieto": 0.243,
+   "cambios_s": 5.132,
+   "dist_pelota_p50": 478.538,
+   "dist_zona": 300.268,
+   "patadas_min": 0.0,
+   "toques_min": 0.0,
+   "nombre": "R6 MED-I"
+  },
+  {
+   "lugar": 6,
+   "id": 33,
+   "es_arquero": false,
+   "linea": "MED",
+   "minutos": 0.9,
+   "quieto": 0.288,
+   "cambios_s": 4.985,
+   "dist_pelota_p50": 352.311,
+   "dist_zona": 228.09,
+   "patadas_min": 1.108,
+   "toques_min": 0.0,
+   "nombre": "R8 MED-D"
+  },
+  {
+   "lugar": 7,
+   "id": 34,
+   "es_arquero": false,
+   "linea": "DEL",
+   "minutos": 0.9,
+   "quieto": 0.366,
+   "cambios_s": 4.578,
+   "dist_pelota_p50": 724.105,
+   "dist_zona": 521.103,
+   "patadas_min": 0.0,
+   "toques_min": 0.868,
+   "nombre": "R9 DEL-I"
+  },
+  {
+   "lugar": 8,
+   "id": 35,
+   "es_arquero": false,
+   "linea": "DEL",
+   "minutos": 0.9,
+   "quieto": 0.428,
+   "cambios_s": 3.711,
+   "dist_pelota_p50": 847.319,
+   "dist_zona": 440.283,
+   "patadas_min": 0.0,
+   "toques_min": 0.351,
+   "nombre": "R10 DEL-C"
+  },
+  {
+   "lugar": 9,
+   "id": 36,
+   "es_arquero": false,
+   "linea": "DEL",
+   "minutos": 0.9,
+   "quieto": 0.562,
+   "cambios_s": 3.545,
+   "dist_pelota_p50": 555.168,
+   "dist_zona": 452.288,
+   "patadas_min": 0.0,
+   "toques_min": 0.0,
+   "nombre": "R11 DEL-D"
+  },
+  {
+   "lugar": 10,
+   "id": 1,
+   "es_arquero": false,
+   "linea": "MED",
+   "minutos": 0.65,
+   "quieto": 0.153,
+   "cambios_s": 2.155,
+   "dist_pelota_p50": 286.386,
+   "dist_zona": NaN,
+   "patadas_min": 3.078,
+   "toques_min": 1.36,
+   "nombre": "humano"
+  },
+  {
+   "lugar": 10,
+   "id": 32,
+   "es_arquero": false,
+   "linea": "MED",
+   "minutos": 0.25,
+   "quieto": 0.0,
+   "cambios_s": 8.562,
+   "dist_pelota_p50": 328.606,
+   "dist_zona": 504.644,
+   "patadas_min": 0.0,
+   "toques_min": 1.581,
+   "nombre": "R7 MED-C"
+  },
+  {
+   "lugar": 11,
+   "id": 37,
+   "es_arquero": true,
+   "linea": "ARQ",
+   "minutos": 0.9,
+   "quieto": 0.498,
+   "cambios_s": 4.486,
+   "dist_pelota_p50": 1379.438,
+   "dist_zona": 285.137,
+   "patadas_min": 0.0,
+   "toques_min": 0.0,
+   "nombre": "A1 ARQ"
+  },
+  {
+   "lugar": 12,
+   "id": 38,
+   "es_arquero": false,
+   "linea": "DEF",
+   "minutos": 0.9,
+   "quieto": 0.101,
+   "cambios_s": 6.942,
+   "dist_pelota_p50": 346.654,
+   "dist_zona": 505.388,
+   "patadas_min": 0.0,
+   "toques_min": 0.905,
+   "nombre": "A2 DEF-I"
+  },
+  {
+   "lugar": 13,
+   "id": 39,
+   "es_arquero": false,
+   "linea": "DEF",
+   "minutos": 0.9,
+   "quieto": 0.456,
+   "cambios_s": 3.766,
+   "dist_pelota_p50": 912.686,
+   "dist_zona": 319.529,
+   "patadas_min": 1.108,
+   "toques_min": 0.092,
+   "nombre": "A3 DEF-CI"
+  },
+  {
+   "lugar": 14,
+   "id": 40,
+   "es_arquero": false,
+   "linea": "DEF",
+   "minutos": 0.9,
+   "quieto": 0.503,
+   "cambios_s": 4.745,
+   "dist_pelota_p50": 947.057,
+   "dist_zona": 310.061,
+   "patadas_min": 0.0,
+   "toques_min": 0.0,
+   "nombre": "A4 DEF-CD"
+  },
+  {
+   "lugar": 15,
+   "id": 41,
+   "es_arquero": false,
+   "linea": "DEF",
+   "minutos": 0.9,
+   "quieto": 0.278,
+   "cambios_s": 6.683,
+   "dist_pelota_p50": 904.101,
+   "dist_zona": 273.458,
+   "patadas_min": 0.0,
+   "toques_min": 0.0,
+   "nombre": "A5 DEF-D"
+  },
+  {
+   "lugar": 16,
+   "id": 42,
+   "es_arquero": false,
+   "linea": "MED",
+   "minutos": 0.9,
+   "quieto": 0.536,
+   "cambios_s": 1.994,
+   "dist_pelota_p50": 781.999,
+   "dist_zona": 511.359,
+   "patadas_min": 0.0,
+   "toques_min": 0.369,
+   "nombre": "A6 MED-I"
+  },
+  {
+   "lugar": 17,
+   "id": 43,
+   "es_arquero": false,
+   "linea": "MED",
+   "minutos": 0.9,
+   "quieto": 0.097,
+   "cambios_s": 6.849,
+   "dist_pelota_p50": 290.636,
+   "dist_zona": 410.001,
+   "patadas_min": 0.0,
+   "toques_min": 0.812,
+   "nombre": "A7 MED-CI"
+  },
+  {
+   "lugar": 18,
+   "id": 44,
+   "es_arquero": false,
+   "linea": "MED",
+   "minutos": 0.9,
+   "quieto": 0.28,
+   "cambios_s": 4.8,
+   "dist_pelota_p50": 395.098,
+   "dist_zona": 357.163,
+   "patadas_min": 2.215,
+   "toques_min": 0.609,
+   "nombre": "A8 MED-CD"
+  },
+  {
+   "lugar": 19,
+   "id": 45,
+   "es_arquero": false,
+   "linea": "MED",
+   "minutos": 0.9,
+   "quieto": 0.275,
+   "cambios_s": 4.837,
+   "dist_pelota_p50": 613.082,
+   "dist_zona": 463.063,
+   "patadas_min": 0.0,
+   "toques_min": 0.0,
+   "nombre": "A9 MED-D"
+  },
+  {
+   "lugar": 20,
+   "id": 46,
+   "es_arquero": false,
+   "linea": "DEL",
+   "minutos": 0.9,
+   "quieto": 0.98,
+   "cambios_s": 0.462,
+   "dist_pelota_p50": 1000.959,
+   "dist_zona": 1068.885,
+   "patadas_min": 0.0,
+   "toques_min": 0.0,
+   "nombre": "A10 DEL-CI"
+  },
+  {
+   "lugar": 21,
+   "id": 47,
+   "es_arquero": false,
+   "linea": "DEL",
+   "minutos": 0.9,
+   "quieto": 0.428,
+   "cambios_s": 3.711,
+   "dist_pelota_p50": 954.616,
+   "dist_zona": 832.774,
+   "patadas_min": 0.0,
+   "toques_min": 0.277,
+   "nombre": "A11 DEL-CD"
+  }
+ ]
+}

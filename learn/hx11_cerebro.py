@@ -37,16 +37,26 @@ ROOT = Path(__file__).resolve().parent.parent
 CAP = 4096
 
 
+def lookup(vocab, key):
+    """Puesto del vocabulario (`LI`, `DC`, …) o rol de una formación (`4-3-3:DEF-CI`, para partidos con varios bots)."""
+    if key in vocab and key != "roles":
+        return vocab[key]
+    return vocab.get("roles", {}).get(key)
+
+
 class Cerebro:
-    def __init__(self, model, pos, vocab, temp=1.0, every=3):
+    def __init__(self, model, pos, vocab, temp=1.0, every=3, hyst=0.0):
         ck = torch.load(model, map_location="cpu", weights_only=False)
         self.net = SetPolicy(**ck["config"])
         self.net.load_state_dict(ck["state"])
         self.net.eval()
         self.net.hold = False
-        self.temp, self.every = temp, every
-        self.anchor = np.array(vocab[pos]["ancla"], np.float32)
-        self.line = int(vocab[pos]["linea_idx"])
+        self.temp, self.every, self.hyst = temp, every, hyst
+        self.prev = {}                          # id -> última acción (coordenadas del equipo), para la histéresis
+        v = lookup(vocab, pos) if pos else None
+        self.anchor = np.array(v["ancla"], np.float32) if v else None
+        self.line = int(v["linea_idx"]) if v else 3
+        self.bots = {}                          # varios bots: id -> (ancla, línea)
         self.fase = Fase()
         self.slot_of = {}                       # id de jugador -> lugar fijo (0–10 rojo, 11–21 azul)
         self.n = 0                              # filas usadas de la ventana
@@ -127,12 +137,45 @@ class Cerebro:
         self.n += 1
         self.ticks += 1
 
+    def decide_many(self, bots):
+        """Varios bots a la vez: bots = [(id, retardo)] registrados con `self.bots`. Devuelve {id: bits}."""
+        if self.ticks % self.every or self.n < MAX_BACK + 1:
+            return {}
+        w = self.w
+        L = self.n - 1
+        rows = [(int(me), self.slot_of.get(int(me)), int(np.clip(dl, D_MIN, D_MAX))) for me, dl in bots
+                if int(me) in self.bots and self.slot_of.get(int(me)) is not None]
+        if not rows:
+            return {}
+        tmax = L + max(d for _, _, d in rows) + 1
+        w.pid[L + 1:tmax + 1] = w.pid[L]
+        for me, s, d in rows:
+            w.inp[L + 1:tmax + 1, s] = w.inp[L, s]
+            anc, line = self.bots[me]
+            w.anchor[(me, 0)] = w.anchor[(me, 1)] = anc
+            w.line[me] = line
+        w.T = 10 ** 9
+        own, ents, _, _ = build(w, np.array([L + d + 1 for _, _, d in rows]), np.array([s for _, s, _ in rows]),
+                                np.array([d for _, _, d in rows]), self.net.extra)
+        w.T = CAP
+        with torch.no_grad():
+            acts = sample(self.net(torch.from_numpy(own), torch.from_numpy(ents)), self.temp,
+                          prev=np.array([self.prev.get(me, -1) for me, _, _ in rows]), hyst=self.hyst)
+        out = {}
+        for (me, s, d), a in zip(rows, acts):
+            a = int(a)
+            self.prev[me] = a
+            if s >= 11:
+                a = int(ROT_MOVE[a % 9] + 9 * (a // 9))
+            out[me] = int(bits_of_action(np.array([a]))[0])
+        return out
+
     def decide(self, me, delay):
         """Teclas del bot (bits de HaxBall), o None si no le toca decidir en este tick."""
         if self.ticks % self.every or self.n < MAX_BACK + 1:
             return None
         s = self.slot_of.get(int(me))
-        if s is None:
+        if s is None or self.anchor is None:
             return None
         w = self.w
         d = int(np.clip(delay, D_MIN, D_MAX))
@@ -153,7 +196,9 @@ class Cerebro:
         own, ents, _, _ = build(w, np.array([t]), np.array([s]), np.array([d]), self.net.extra)
         w.T = CAP
         with torch.no_grad():
-            a = int(sample(self.net(torch.from_numpy(own), torch.from_numpy(ents)), self.temp)[0])
+            a = int(sample(self.net(torch.from_numpy(own), torch.from_numpy(ents)), self.temp,
+                           prev=np.array([self.prev.get(int(me), -1)]), hyst=self.hyst)[0])
+        self.prev[int(me)] = a
         if s >= 11:
             a = int(ROT_MOVE[a % 9] + 9 * (a // 9))
         bits = int(bits_of_action(np.array([a]))[0])
@@ -164,15 +209,17 @@ class Cerebro:
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--model", required=True)
-    ap.add_argument("--pos", required=True)
+    ap.add_argument("--pos", default=None, help="puesto de un bot; sin esto, modo de varios bots (register)")
     ap.add_argument("--temp", type=float, default=0.7)
     ap.add_argument("--every", type=int, default=3)
+    ap.add_argument("--hyst", type=float, default=0.0,
+                    help="mantiene la dirección anterior si su probabilidad es >= hyst × la máxima (menos cambios de tecla)")
     a = ap.parse_args()
     torch.set_num_threads(2)
     vocab = json.loads((ROOT / "reports" / "hx11" / "pos_vocab.json").read_text(encoding="utf-8"))
-    if a.pos not in vocab:
-        sys.exit(f"puesto desconocido {a.pos}; opciones: {', '.join(vocab)}")
-    c = Cerebro(a.model, a.pos, vocab, a.temp, a.every)
+    if a.pos and lookup(vocab, a.pos) is None:
+        sys.exit(f"puesto desconocido {a.pos}; opciones: {', '.join(k for k in vocab if k != 'roles')}")
+    c = Cerebro(a.model, a.pos, vocab, a.temp, a.every, a.hyst)
     print(json.dumps({"listo": True, "pos": a.pos, "linea": LINES[c.line]}), flush=True)
     for line in sys.stdin:
         if not line.strip():
@@ -180,15 +227,28 @@ def main():
         fr = json.loads(line)
         if "set_pos" in fr:
             # cambio de puesto desde la consola del usuario (lo elige solo él: P2 y §4 del plan)
-            pos = fr["set_pos"]
-            if pos in vocab:
-                c.anchor = np.array(vocab[pos]["ancla"], np.float32)
-                c.line = int(vocab[pos]["linea_idx"])
-                print(json.dumps({"pos": pos, "linea": LINES[c.line]}), flush=True)
+            v = lookup(vocab, fr["set_pos"])
+            if v:
+                c.anchor = np.array(v["ancla"], np.float32)
+                c.line = int(v["linea_idx"])
+                print(json.dumps({"pos": fr["set_pos"], "linea": LINES[c.line]}), flush=True)
             else:
-                print(json.dumps({"error": f"puesto desconocido {pos}"}), flush=True)
+                print(json.dumps({"error": f"puesto desconocido {fr['set_pos']}"}), flush=True)
+            continue
+        if "register" in fr:
+            # varios bots: cada uno con su puesto o rol
+            r = fr["register"]
+            v = lookup(vocab, r["pos"])
+            if v:
+                c.bots[int(r["id"])] = (np.array(v["ancla"], np.float32), int(v["linea_idx"]))
+            print(json.dumps({"registrado": r["id"], "pos": r["pos"], "ok": bool(v)}), flush=True)
             continue
         c.push(fr)
+        if "bots" in fr:
+            out = c.decide_many([(b["me"], b.get("delay", 20)) for b in fr["bots"]])
+            if out:
+                print(json.dumps({"t": fr.get("t"), "inputs": {str(k): v for k, v in out.items()}}), flush=True)
+            continue
         bits = c.decide(fr.get("me"), fr.get("delay", 20))
         if bits is not None:
             print(json.dumps({"t": fr.get("t"), "input": bits}), flush=True)

@@ -1,7 +1,7 @@
 // Bot de HaxEleven X11 en una sala real, como cliente (docs/PLAN_HAXELEVEN.md §4; piloto C0).
 //
 //   node deploy/hx11/bot.js --join <id o link de la sala> --pos LI [--name HX-Bot] [--password x]
-//        [--model runs/hx11_l0/l0_sinhist_full/model.pt] [--temp 0.7]
+//        [--model runs/hx11_l0/l0_sinhist_ancho/model_final.pt] [--temp 0.7]
 //
 // * El puesto lo elige SOLO el usuario con --pos (o escribiendo "pos MC" en esta consola). Nada del chat lo cambia.
 // * No elige equipo: lo pone el admin de la sala. Mientras no esté en un equipo, no juega.
@@ -29,7 +29,7 @@ if (!joinArg || !pos) {
   process.exit(1);
 }
 const joinId = joinArg.includes("?c=") ? joinArg.split("?c=")[1].split("&")[0] : joinArg;
-const model = arg("--model", "runs/hx11_l0/l0_sinhist_full/model.pt");
+const model = arg("--model", "runs/hx11_l0/l0_sinhist_ancho/model_final.pt");
 const temp = parseFloat(arg("--temp", "0.7"));
 const D_MIN = 8, D_MAX = 36;
 

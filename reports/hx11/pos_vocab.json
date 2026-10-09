@@ -208,5 +208,733 @@
    110.0
   ],
   "jugadores_mitad": 895
+ },
+ "roles": {
+  "3-4-3:ARQ": {
+   "linea": "ARQ",
+   "linea_idx": 0,
+   "ancla": [
+    -898.6,
+    2.6,
+    -942.9,
+    -2.1
+   ],
+   "jugadores_mitad": 318
+  },
+  "3-4-3:DEF-C": {
+   "linea": "DEF",
+   "linea_idx": 1,
+   "ancla": [
+    -330.3,
+    1.5,
+    -331.4,
+    0.8
+   ],
+   "jugadores_mitad": 326
+  },
+  "3-4-3:DEF-D": {
+   "linea": "DEF",
+   "linea_idx": 1,
+   "ancla": [
+    -307.8,
+    248.0,
+    -307.4,
+    229.8
+   ],
+   "jugadores_mitad": 316
+  },
+  "3-4-3:DEF-I": {
+   "linea": "DEF",
+   "linea_idx": 1,
+   "ancla": [
+    -307.4,
+    -233.2,
+    -301.9,
+    -229.1
+   ],
+   "jugadores_mitad": 323
+  },
+  "3-4-3:DEL-C": {
+   "linea": "DEL",
+   "linea_idx": 4,
+   "ancla": [
+    299.4,
+    -6.3,
+    311.6,
+    -0.2
+   ],
+   "jugadores_mitad": 321
+  },
+  "3-4-3:DEL-D": {
+   "linea": "DEL",
+   "linea_idx": 4,
+   "ancla": [
+    290.5,
+    282.1,
+    294.9,
+    263.5
+   ],
+   "jugadores_mitad": 323
+  },
+  "3-4-3:DEL-I": {
+   "linea": "DEL",
+   "linea_idx": 4,
+   "ancla": [
+    291.8,
+    -267.0,
+    291.9,
+    -254.0
+   ],
+   "jugadores_mitad": 321
+  },
+  "3-4-3:MED-CD": {
+   "linea": "MED",
+   "linea_idx": 3,
+   "ancla": [
+    27.6,
+    71.6,
+    19.1,
+    73.1
+   ],
+   "jugadores_mitad": 322
+  },
+  "3-4-3:MED-CI": {
+   "linea": "MED",
+   "linea_idx": 3,
+   "ancla": [
+    15.8,
+    -78.2,
+    4.3,
+    -62.6
+   ],
+   "jugadores_mitad": 322
+  },
+  "3-4-3:MED-D": {
+   "linea": "MED",
+   "linea_idx": 3,
+   "ancla": [
+    -8.3,
+    398.2,
+    -16.8,
+    378.6
+   ],
+   "jugadores_mitad": 331
+  },
+  "3-4-3:MED-I": {
+   "linea": "MED",
+   "linea_idx": 3,
+   "ancla": [
+    1.0,
+    -395.3,
+    3.4,
+    -372.2
+   ],
+   "jugadores_mitad": 325
+  },
+  "3-5-2:ARQ": {
+   "linea": "ARQ",
+   "linea_idx": 0,
+   "ancla": [
+    -865.6,
+    -11.9,
+    -900.7,
+    7.9
+   ],
+   "jugadores_mitad": 82
+  },
+  "3-5-2:DEF-C": {
+   "linea": "DEF",
+   "linea_idx": 1,
+   "ancla": [
+    -348.2,
+    -21.4,
+    -341.0,
+    -19.8
+   ],
+   "jugadores_mitad": 83
+  },
+  "3-5-2:DEF-D": {
+   "linea": "DEF",
+   "linea_idx": 1,
+   "ancla": [
+    -303.3,
+    269.7,
+    -301.9,
+    259.2
+   ],
+   "jugadores_mitad": 85
+  },
+  "3-5-2:DEF-I": {
+   "linea": "DEF",
+   "linea_idx": 1,
+   "ancla": [
+    -288.6,
+    -255.9,
+    -282.2,
+    -239.4
+   ],
+   "jugadores_mitad": 83
+  },
+  "3-5-2:DEL-CD": {
+   "linea": "DEL",
+   "linea_idx": 4,
+   "ancla": [
+    312.1,
+    116.9,
+    312.2,
+    114.2
+   ],
+   "jugadores_mitad": 85
+  },
+  "3-5-2:DEL-CI": {
+   "linea": "DEL",
+   "linea_idx": 4,
+   "ancla": [
+    319.8,
+    -112.9,
+    320.5,
+    -107.2
+   ],
+   "jugadores_mitad": 86
+  },
+  "3-5-2:MED-C": {
+   "linea": "MED",
+   "linea_idx": 3,
+   "ancla": [
+    24.6,
+    3.5,
+    20.0,
+    1.3
+   ],
+   "jugadores_mitad": 82
+  },
+  "3-5-2:MED-CD": {
+   "linea": "MED",
+   "linea_idx": 3,
+   "ancla": [
+    34.7,
+    106.0,
+    12.1,
+    103.0
+   ],
+   "jugadores_mitad": 83
+  },
+  "3-5-2:MED-CI": {
+   "linea": "MED",
+   "linea_idx": 3,
+   "ancla": [
+    40.6,
+    -171.4,
+    30.5,
+    -149.5
+   ],
+   "jugadores_mitad": 85
+  },
+  "3-5-2:MED-D": {
+   "linea": "MED",
+   "linea_idx": 3,
+   "ancla": [
+    104.9,
+    477.1,
+    102.8,
+    461.1
+   ],
+   "jugadores_mitad": 84
+  },
+  "3-5-2:MED-I": {
+   "linea": "MED",
+   "linea_idx": 3,
+   "ancla": [
+    108.8,
+    -438.3,
+    114.1,
+    -415.7
+   ],
+   "jugadores_mitad": 83
+  },
+  "4-1-4-1:ARQ": {
+   "linea": "ARQ",
+   "linea_idx": 0,
+   "ancla": [
+    -889.6,
+    5.1,
+    -938.8,
+    -0.9
+   ],
+   "jugadores_mitad": 390
+  },
+  "4-1-4-1:DEF-CD": {
+   "linea": "DEF",
+   "linea_idx": 1,
+   "ancla": [
+    -321.2,
+    116.4,
+    -315.8,
+    112.1
+   ],
+   "jugadores_mitad": 389
+  },
+  "4-1-4-1:DEF-CI": {
+   "linea": "DEF",
+   "linea_idx": 1,
+   "ancla": [
+    -315.5,
+    -94.8,
+    -308.8,
+    -95.8
+   ],
+   "jugadores_mitad": 402
+  },
+  "4-1-4-1:DEF-D": {
+   "linea": "DEF",
+   "linea_idx": 1,
+   "ancla": [
+    -213.1,
+    380.2,
+    -223.6,
+    364.9
+   ],
+   "jugadores_mitad": 395
+  },
+  "4-1-4-1:DEF-I": {
+   "linea": "DEF",
+   "linea_idx": 1,
+   "ancla": [
+    -222.8,
+    -374.4,
+    -219.1,
+    -359.0
+   ],
+   "jugadores_mitad": 393
+  },
+  "4-1-4-1:DEL-C": {
+   "linea": "DEL",
+   "linea_idx": 4,
+   "ancla": [
+    353.6,
+    -4.3,
+    355.9,
+    -4.8
+   ],
+   "jugadores_mitad": 397
+  },
+  "4-1-4-1:MCD-C": {
+   "linea": "MCD",
+   "linea_idx": 2,
+   "ancla": [
+    -52.5,
+    10.6,
+    -65.2,
+    4.5
+   ],
+   "jugadores_mitad": 392
+  },
+  "4-1-4-1:MED-CD": {
+   "linea": "MED",
+   "linea_idx": 3,
+   "ancla": [
+    129.2,
+    88.5,
+    123.2,
+    82.9
+   ],
+   "jugadores_mitad": 389
+  },
+  "4-1-4-1:MED-CI": {
+   "linea": "MED",
+   "linea_idx": 3,
+   "ancla": [
+    122.7,
+    -87.6,
+    117.3,
+    -79.7
+   ],
+   "jugadores_mitad": 392
+  },
+  "4-1-4-1:MED-D": {
+   "linea": "MED",
+   "linea_idx": 3,
+   "ancla": [
+    246.0,
+    381.8,
+    248.2,
+    355.4
+   ],
+   "jugadores_mitad": 397
+  },
+  "4-1-4-1:MED-I": {
+   "linea": "MED",
+   "linea_idx": 3,
+   "ancla": [
+    244.7,
+    -402.6,
+    244.5,
+    -374.0
+   ],
+   "jugadores_mitad": 403
+  },
+  "4-2-3-1:ARQ": {
+   "linea": "ARQ",
+   "linea_idx": 0,
+   "ancla": [
+    -863.8,
+    5.9,
+    -907.3,
+    2.9
+   ],
+   "jugadores_mitad": 310
+  },
+  "4-2-3-1:DEF-CD": {
+   "linea": "DEF",
+   "linea_idx": 1,
+   "ancla": [
+    -315.8,
+    118.8,
+    -307.5,
+    116.3
+   ],
+   "jugadores_mitad": 316
+  },
+  "4-2-3-1:DEF-CI": {
+   "linea": "DEF",
+   "linea_idx": 1,
+   "ancla": [
+    -318.9,
+    -118.7,
+    -315.3,
+    -110.3
+   ],
+   "jugadores_mitad": 318
+  },
+  "4-2-3-1:DEF-D": {
+   "linea": "DEF",
+   "linea_idx": 1,
+   "ancla": [
+    -185.6,
+    399.2,
+    -178.8,
+    378.3
+   ],
+   "jugadores_mitad": 317
+  },
+  "4-2-3-1:DEF-I": {
+   "linea": "DEF",
+   "linea_idx": 1,
+   "ancla": [
+    -196.3,
+    -414.3,
+    -189.3,
+    -387.4
+   ],
+   "jugadores_mitad": 322
+  },
+  "4-2-3-1:DEL-C": {
+   "linea": "DEL",
+   "linea_idx": 4,
+   "ancla": [
+    360.3,
+    1.4,
+    364.0,
+    4.0
+   ],
+   "jugadores_mitad": 318
+  },
+  "4-2-3-1:MCD-CD": {
+   "linea": "MCD",
+   "linea_idx": 2,
+   "ancla": [
+    -10.6,
+    71.9,
+    -23.2,
+    61.4
+   ],
+   "jugadores_mitad": 319
+  },
+  "4-2-3-1:MCD-CI": {
+   "linea": "MCD",
+   "linea_idx": 2,
+   "ancla": [
+    -2.5,
+    -79.9,
+    -16.9,
+    -79.8
+   ],
+   "jugadores_mitad": 317
+  },
+  "4-2-3-1:MED-C": {
+   "linea": "MED",
+   "linea_idx": 3,
+   "ancla": [
+    159.2,
+    10.1,
+    152.4,
+    7.3
+   ],
+   "jugadores_mitad": 310
+  },
+  "4-2-3-1:MED-D": {
+   "linea": "MED",
+   "linea_idx": 3,
+   "ancla": [
+    249.3,
+    348.3,
+    248.6,
+    325.5
+   ],
+   "jugadores_mitad": 317
+  },
+  "4-2-3-1:MED-I": {
+   "linea": "MED",
+   "linea_idx": 3,
+   "ancla": [
+    260.6,
+    -333.4,
+    263.2,
+    -315.4
+   ],
+   "jugadores_mitad": 314
+  },
+  "4-3-3:ARQ": {
+   "linea": "ARQ",
+   "linea_idx": 0,
+   "ancla": [
+    -876.3,
+    -1.7,
+    -917.2,
+    -7.4
+   ],
+   "jugadores_mitad": 322
+  },
+  "4-3-3:DEF-CD": {
+   "linea": "DEF",
+   "linea_idx": 1,
+   "ancla": [
+    -307.4,
+    105.1,
+    -300.4,
+    97.6
+   ],
+   "jugadores_mitad": 324
+  },
+  "4-3-3:DEF-CI": {
+   "linea": "DEF",
+   "linea_idx": 1,
+   "ancla": [
+    -320.4,
+    -98.6,
+    -308.8,
+    -93.4
+   ],
+   "jugadores_mitad": 329
+  },
+  "4-3-3:DEF-D": {
+   "linea": "DEF",
+   "linea_idx": 1,
+   "ancla": [
+    -210.3,
+    394.2,
+    -210.3,
+    374.6
+   ],
+   "jugadores_mitad": 324
+  },
+  "4-3-3:DEF-I": {
+   "linea": "DEF",
+   "linea_idx": 1,
+   "ancla": [
+    -221.8,
+    -387.1,
+    -220.2,
+    -367.4
+   ],
+   "jugadores_mitad": 326
+  },
+  "4-3-3:DEL-C": {
+   "linea": "DEL",
+   "linea_idx": 4,
+   "ancla": [
+    327.2,
+    1.9,
+    333.5,
+    -0.8
+   ],
+   "jugadores_mitad": 328
+  },
+  "4-3-3:DEL-D": {
+   "linea": "DEL",
+   "linea_idx": 4,
+   "ancla": [
+    296.7,
+    307.1,
+    301.3,
+    284.2
+   ],
+   "jugadores_mitad": 328
+  },
+  "4-3-3:DEL-I": {
+   "linea": "DEL",
+   "linea_idx": 4,
+   "ancla": [
+    279.6,
+    -312.2,
+    292.2,
+    -295.0
+   ],
+   "jugadores_mitad": 332
+  },
+  "4-3-3:MED-C": {
+   "linea": "MED",
+   "linea_idx": 3,
+   "ancla": [
+    25.7,
+    -3.6,
+    18.3,
+    3.3
+   ],
+   "jugadores_mitad": 318
+  },
+  "4-3-3:MED-D": {
+   "linea": "MED",
+   "linea_idx": 3,
+   "ancla": [
+    49.1,
+    177.3,
+    33.9,
+    163.2
+   ],
+   "jugadores_mitad": 328
+  },
+  "4-3-3:MED-I": {
+   "linea": "MED",
+   "linea_idx": 3,
+   "ancla": [
+    48.4,
+    -177.0,
+    42.3,
+    -165.4
+   ],
+   "jugadores_mitad": 319
+  },
+  "4-4-2:ARQ": {
+   "linea": "ARQ",
+   "linea_idx": 0,
+   "ancla": [
+    -892.1,
+    0.2,
+    -914.1,
+    -3.1
+   ],
+   "jugadores_mitad": 111
+  },
+  "4-4-2:DEF-CD": {
+   "linea": "DEF",
+   "linea_idx": 1,
+   "ancla": [
+    -296.3,
+    70.1,
+    -292.6,
+    72.3
+   ],
+   "jugadores_mitad": 121
+  },
+  "4-4-2:DEF-CI": {
+   "linea": "DEF",
+   "linea_idx": 1,
+   "ancla": [
+    -306.0,
+    -80.7,
+    -310.2,
+    -76.7
+   ],
+   "jugadores_mitad": 110
+  },
+  "4-4-2:DEF-D": {
+   "linea": "DEF",
+   "linea_idx": 1,
+   "ancla": [
+    -249.4,
+    345.2,
+    -237.2,
+    330.0
+   ],
+   "jugadores_mitad": 119
+  },
+  "4-4-2:DEF-I": {
+   "linea": "DEF",
+   "linea_idx": 1,
+   "ancla": [
+    -235.0,
+    -348.7,
+    -235.1,
+    -335.0
+   ],
+   "jugadores_mitad": 114
+  },
+  "4-4-2:DEL-CD": {
+   "linea": "DEL",
+   "linea_idx": 4,
+   "ancla": [
+    326.2,
+    122.1,
+    329.1,
+    129.1
+   ],
+   "jugadores_mitad": 114
+  },
+  "4-4-2:DEL-CI": {
+   "linea": "DEL",
+   "linea_idx": 4,
+   "ancla": [
+    315.6,
+    -113.8,
+    323.5,
+    -124.4
+   ],
+   "jugadores_mitad": 117
+  },
+  "4-4-2:MED-CD": {
+   "linea": "MED",
+   "linea_idx": 3,
+   "ancla": [
+    58.1,
+    83.9,
+    55.4,
+    77.7
+   ],
+   "jugadores_mitad": 120
+  },
+  "4-4-2:MED-CI": {
+   "linea": "MED",
+   "linea_idx": 3,
+   "ancla": [
+    71.8,
+    -70.1,
+    54.6,
+    -65.4
+   ],
+   "jugadores_mitad": 113
+  },
+  "4-4-2:MED-D": {
+   "linea": "MED",
+   "linea_idx": 3,
+   "ancla": [
+    156.7,
+    342.5,
+    161.4,
+    326.4
+   ],
+   "jugadores_mitad": 116
+  },
+  "4-4-2:MED-I": {
+   "linea": "MED",
+   "linea_idx": 3,
+   "ancla": [
+    138.5,
+    -370.8,
+    142.1,
+    -361.8
+   ],
+   "jugadores_mitad": 115
+  }
  }
 }

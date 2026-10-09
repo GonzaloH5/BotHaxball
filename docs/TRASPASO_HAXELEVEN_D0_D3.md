@@ -356,6 +356,80 @@ Modelo `l0_sinhist_full` con temperatura 0,7, 20 partidos de prueba y 1600 venta
   - De 2 a 3 puestos.
   - Métricas de proceso contra el banco (E4: con 6–10 partidos solo se ven fallas groseras).
 
+### Partido de 22 bots en la sala del usuario (2026-10-09, madrugada)
+
+- **Montaje:** `deploy/hx11/partido.js`, un cliente por rol (rojo 4-3-3, azul 4-4-2) con el cerebro en modo de varios bots. El ingreso tiene que ir de a uno, con unos 10 s entre bots, porque el servidor maestro limita por IP ("Error de conexión Master"). Entraron los 22 y el usuario le dio admin a un bot, que repartió los equipos.
+- **Lo que vio el usuario:** pocas jugadas razonables, mucho ruido, extrapolación enorme en todas las fichas, muchos bots quietos y la sala con lag (picos de ping del host).
+- **Grabación del host:** `data/hx11/salas/partido_bots_20261009_0149.hbr2` (no se versiona). Diagnóstico con `tools/hx11_rec_bots.py`, guardado en `reports/hx11/partido_bots_20261009.json`, contra 8 partidos humanos de prueba:
+  - **quietos:** del 26% al 55% del juego abierto, contra 2% en los humanos;
+  - **velocidad media:** 1,03 contra 2,0;
+  - **distancia a la zona:** 300 a 660 contra unos 180;
+  - **teclas congeladas:** rachas de más de 1 s sin ningún cambio de tecla en el 20 al 70% del tiempo, de hasta 14 s. Un bot (A10) no se movió nunca.
+- **Causa medida:** el proceso de Node con los 22 clientes usaba 1,2 núcleos, con el hilo principal saturado. Cada cliente de node-haxball simula el partido y lo vuelve a simular con cada tecla atrasada que llega. Las teclas salían a ráfagas. Además, los bots cambian de tecla unas 10 veces por segundo contra unas 3,8 de un humano, y el host reenvía cada cambio a todos.
+- **Arreglo:**
+  - `partido.js` reparte los bots en `--procesos` (6 por defecto), cada uno con su observador y su cerebro;
+  - el proceso padre ordena los ingresos de a uno;
+  - cada 10 s se informa por proceso: ticks por segundo del observador (tiene que dar 60), decisiones por segundo (20), retraso p95 del bucle y eco.
+  - **Histéresis de la dirección** en el cerebro (`--hyst`), para bajar los cambios de tecla.
+- **Tercer y cuarto intento (madrugada del 2026-10-09):**
+  - Con un cerebro por proceso, los bots andaban bien: ~60 ticks/s por proceso y 20 decisiones por segundo. Pero la PC del usuario quedó al 100% de CPU (cerebros 4,3 núcleos, node 3,7, el navegador del host 1,75) y su ping subió a 1500.
+  - Con **un solo cerebro** en el proceso principal (≈ 1,1 núcleos para los 22; prueba sin sala `deploy/hx11/test_partido_replay.js`: los 22 con teclas, respuesta p50 8 ms) anduvo de nuestro lado: observador 59–61 ticks/s, 20 decisiones por segundo, eco p50 8 ticks y los dos arqueros confirmados. La CPU quedó en 70% (node 5,4 núcleos, el host 4,5).
+  - **Arqueros:** el `!gk` al cambiar de equipo no alcanzaba. Ahora se repite cada 8 s hasta ver el anuncio "[✅] … es el Arquero del Red/Blue".
+  - **El ping del host volvió a dispararse.** El usuario decidió **abandonar por ahora el partido de 22 bots** y probar con **21 humanos y un bot**, que es el objetivo real. Un host en la misma PC que 22 clientes de node-haxball no aguanta.
+- **Lo del modelo, aparte de la sala:** el lazo reactivo del simulador con 22 bots (`learn/hx11_selfplay.py`, ahora con métricas de posicionamiento; 16 juegos de 60 s en prueba, temperatura 0,7) da, contra humanos en las mismas ventanas:
+
+  | Métrica | Bot / humano |
+  |---|---|
+  | Toques | 0,21 |
+  | Patadas | 0,57 |
+  | Jugador más cercano a la pelota | 150 px contra 58 |
+  | Bloque lejos de la jugada | 1,6 |
+  | Juego abierto | 0,71 |
+  | Goles | 6 veces más |
+
+  - Distancia a la zona: 0,93. La zona la cuidan.
+  - En juego abierto, la mediana del más cercano queda en 85–100 px contra 58 desde los primeros 5 s, así que no es una degradación lenta.
+  - **Conclusión:** con 22 imitadores nadie sale a disputar la pelota (cada uno "espera" al que la disputaría en los datos). Es un fallo de coordinación y de estados fuera de distribución. La inferencia no lo arregla. Es material para L0.5 o L1 (por ejemplo, ajuste corto contra estadísticas humanas) y para la puerta de realismo P5.
+- **Retención de pelota** (lazo no reactivo, 10 partidos de prueba, 640 ventanas cerca de la pelota, temperatura 0,7). Proporción respecto del humano:
+
+  | Variante | Patadas | Toques | Cambios/s |
+  |---|---|---|---|
+  | Cada 3 ticks | 98% | 57% | 11,4 |
+  | Cada 4 | 86% | 63% | 8,6 |
+  | Cada 6 | 71% | 75% | 5,9 |
+  | Adaptativo (6 a ≤ 30 px) | 70% | 76% | 10,2 |
+  | Adaptativo a ≤ 60 px | 71% | 63% | 9,7 |
+  | Dirección sostenida y patada libre | 85% | 52% | 10,5 |
+  | Histéresis 0,5 | 70% | 40% | 2,1 |
+  | Histéresis 0,3 (más fuerte: se mantiene si p ≥ 0,3 × máx) | 62% | 38% | 1,8 |
+  | Histéresis 0,8 (la más suave) | 80% | 50% | 2,7 |
+  | **Red ancha** (`l0_sinhist_ancho`, paso 42k de 80k, NLL de desarrollo 1,384 contra 1,406), cada 3 | 101% | 56% | 11,2 |
+
+  | **Red ancha, paso 60k** (NLL de desarrollo 1,372), cada 3 | 99% | **71%** | 10,9 |
+  | **Red ancha final, paso 80k** (NLL 1,368), cada 3 | 99% | 64% | 10,8 |
+
+  - Entre puntos de control los toques varían de 56% a 71% con el mismo banco, así que el 71% del paso 60k era en parte ruido de una sola evaluación.
+  - Con el modelo final, la red ancha mejora la retención unos 7 puntos sobre la angosta (64% contra 57%). No alcanza la puerta.
+
+  - A los 42k la red ancha no cambiaba la retención: 56% contra 57% de la angosta.
+  - **A los 60k los toques suben a 71%**, con las patadas en 99%. Es la primera variante que deja los dos cerca de la puerta [0,75; 1,33].
+  - Es una sola evaluación, así que hay que confirmarla con el modelo final y con la puerta por puesto (`learn/hx11_puerta.py`).
+- **Corte de la PC prestada (2026-10-09):**
+  - Dejó de responder entre las 03:55 y las 04:11.
+  - Entre los pasos 64k y 66k el reloj de la corrida salta 11,3 h con el mismo pid, así que la PC estuvo **suspendida**; al despertar siguió sola.
+  - Además, el Tailscale de la PC del usuario quedó trabado ("starting", sin IP) hasta que el usuario lo reinició, a las 16:50.
+  - El vigilante había muerto con la sesión de Claude Code (último registro 04:57). **Lección:** el vigilante no sobrevive al cierre de la sesión, y una PC prestada que se suspende pausa la corrida sin perder nada.
+- **`l0_sinhist_ancho` terminado:** 80.000 pasos y NLL de desarrollo **1,3676**, contra 1,4064 de la angosta. Ya está bajado a `runs/hx11_l0/l0_sinhist_ancho/` (`model_final.pt`).
+
+  **La histéresis quedó descartada para la sala.** En el lazo no reactivo, 0,8 parecía buena: dividía por 4 los cambios de tecla y las patadas seguían dentro de la puerta. Pero ese lazo arranca en juego abierto y con humanos alrededor.
+  - **Segundo partido en la sala con 0,8** (grabación `partido_bots_20261009_0212.hbr2`): 20 de 22 bots sin dirección el 100% del tiempo y el 54% del tiempo en saque inicial.
+    - En el saque todos están quietos y la histéresis sostenía el "quieto".
+    - Se reprodujo en el lazo reactivo desde saques (`learn/hx11_selfplay.py --solo-saques --hyst 0.8`): velocidad 0,54 del humano y más cercano a la pelota a 237 px contra 92. Sin histéresis, 1,07 y 108 px.
+  - **Sin sostener el "quieto"** (arreglo en `sample`): corren 1,48 veces la velocidad humana, se abren 1,34 veces la separación humana y el más cercano queda a 172 px.
+  - **Conclusión:** la histéresis queda en 0 por defecto. Para el temblor y la carga del host hay que buscar otra cosa, como decidir cada 4–6 ticks o una cabeza de duración entrenada.
+
+  Ninguna variante deja a la vez patadas y toques en [0,75; 1,33]. Patear y retener compiten. Lo que queda es estructural: la red ancha en curso, una cabeza de duración o entrenar para decisiones más espaciadas.
+
 ### Validación de puestos (E1 liviano)
 
 - **Parte 1, hecha:** el usuario aprobó el dibujo de `--pos` (`reports/hx11/pos_vocab.html`).
@@ -363,37 +437,35 @@ Modelo `l0_sinhist_full` con temperatura 0,7, 20 partidos de prueba y 1600 venta
   - **Extensión anotada en el plan (§4):** condicionar también por la "libertad" medida del jugador.
 - **Parte 2, opcional:** `data/hx11/d2/muestra_revision.md`, con nombres. Solo si el usuario conoce esos grupos.
 
-### En curso al escribir esto
+### Puerta P3 con la red ancha final (2026-10-09; `reports/hx11/l0_puerta_ancho_t07.md`)
 
-- **L0-mini en CPU:** 60 partidos de entrenamiento y 15 de desarrollo, 15.000 pasos con lotes de 1024. Salida en `runs/hx11_l0/mini/` y log en `runs/hx11_l0/mini.log`.
-- **Después:** evaluarlo en el banco de lazo cerrado:
+Mismo banco que la puerta anterior: temperatura 0,7, 20 partidos de prueba, 1600 ventanas cerca de la pelota y 1600 al azar, el mismo criterio. Toques por minuto, razón bot/humano con su IC 90%:
 
-  ```
-  .venv/Scripts/python.exe -m learn.hx11_closed_loop --model runs/hx11_l0/mini/model.pt --matches 10 --starts 320 --out runs/hx11_l0/mini/lazo.json
-  ```
+| Línea | Angosta, cerca | **Ancha, cerca** | Angosta, al azar | **Ancha, al azar** | Puesto con la ancha |
+|---|---|---|---|---|---|
+| ARQ | — | — | 0,43 (pasa) | 0,53 (pasa) | **pasa** |
+| DEF | 0,58 (0,50–0,67) no | **0,65 (0,56–0,75) pasa** | 0,50 no | 0,54 (pasa) | **pasa** (justo) |
+| MCD | 0,89 pasa | 0,83 pasa | 0,15 (pasa) | 0,25 (pasa) | **pasa** |
+| MED | 0,47 no | 0,51 (0,45–0,57) no | 0,50 pasa | 0,46 pasa | no |
+| DEL | 0,40 no | 0,58 (0,50–0,67) no | 0,24 no | 0,49 pasa | no |
 
-  y compararlo con `--policy humano`.
+- El resto de las métricas pasa en todas las líneas: patadas 0,9–1,2, velocidad 0,86–0,95, distancia a la pelota 0,88–1,03 y al ancla 1,02–1,07.
+- **Lectura:** la red ancha pasa la puerta en ARQ, DEF y MCD. MED y DEL siguen cortos de toques cerca de la pelota (los humanos de esas líneas conducen más: 6,2–6,8 toques/min contra ~3,5 del bot).
+- **Para el piloto con 21 humanos:** empezar por puestos defensivos (ARQ, LI, LD, DFC, MCD). La ancha es el modelo por defecto de `bot.js` y `partido.js` (`runs/hx11_l0/l0_sinhist_ancho/model_final.pt`). La paridad del cerebro con este modelo da diferencia 0,0.
+
+### En curso al escribir esto (2026-10-09, tarde)
+
+- Nada corriendo. La PC prestada está libre y el vigilante no está activo.
 
 ### Lo que sigue, en orden
 
-1. **Leer L0-mini en los dos lazos.** Atención a la pasividad: patadas y toques por minuto contra el humano en las mismas ventanas, distancia a la pelota y al ancla.
-2. **Según el resultado:** ajustar la observación o el modelo con pruebas chicas, y decidir con el usuario el **L0 completo en el pod** (GPU, requiere aprobación).
-3. **E4:** tabla de potencia, barata.
-4. **Techos humano contra humano** para la puerta de realismo de L1 (B7). Se pueden calcular ya con D1–D3.
-5. **Muestras para el usuario.** Contienen nombres: quedan en `data/` y no se versionan.
-   - `python -m tools.hx11_d1 muestra --per-kind 4`;
-   - `python -m tools.hx11_d2 muestra --matches 10`;
-   - una planilla liviana de E1 (vocabulario de `--pos` → ancla y unos 10 equipos-partido).
-6. **Mejoras de análisis de nivel 2,** solo cuando una evaluación las necesite:
-   - recalibrar el control del espacio (grilla más chica de σ, calibración en desarrollo) (P10);
-   - rediseñar la marca perdida;
-   - árbitro en sombra en otros meses (E2b).
-7. **Cerrar el bloque:**
-   - memoria;
-   - `graphify update .`;
-   - commit solo de los archivos HaxEleven. Hay que revisar antes que ningún reporte tenga nombres de jugadores.
+1. **Piloto C0 con 21 humanos y el bot** en un puesto defensivo, cuando el usuario arme el partido. Grabar y analizar con `tools/hx11_rec_bots.py`, que también sirve para una sola rec con un bot, contra humanos del mismo puesto.
+2. **¿Más datos ayudan?** Misma receta ancha con la mitad de los partidos de entrenamiento (145). Si sale claramente peor, sumar las ~310 grabaciones de mapas anteriores, adaptando las coordenadas. Va en la PC prestada (~4 h); hay que proponérselo al usuario antes.
+3. **Retención en MED y DEL** (estructural): etiquetas de decisión cada 6 ticks (la tecla sostenida del tramo) o el ajuste corto L0.5 contra estadísticas de proceso por puesto. Requiere aprobación de cómputo.
+4. **Partido de 22 bots:** abandonado por ahora (decisión del usuario). Lo que se sabe está en la sección del partido de 22 bots.
+5. **Pendientes de análisis de antes:** techos humano contra humano para la puerta de realismo de L1 (B7), y las mejoras de nivel 2 (P10, marca perdida, E2b), solo cuando una evaluación las necesite.
 
-### Archivos nuevos o modificados en esta sesión (sin commitear)
+### Archivos de la sesión del 2026-10-08 (ya commiteados en a806f15 y 4c86209)
 
 - **Nuevos:**
   - `tools/hx11_d2_valida.py`, `tools/hx11_modos.py`;

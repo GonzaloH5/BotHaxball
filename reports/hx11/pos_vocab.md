@@ -18,3 +18,5 @@ P2 de la revisión de la auditoría, con [`tools/hx11_pos.py`](../../tools/hx11_
 | MCO | MED | (159.2, 10.1) | (152.4, 7.3) | 96.8 / 97.9 | 310 |
 | MD | MED | (237.0, 365.6) | (238.8, 339.8) | 103.5 / 101.4 | 894 |
 | MI | MED | (241.7, -371.0) | (244.1, -347.3) | 109.5 / 110.0 | 895 |
+
+**Roles por formación** (para partidos con varios bots): 66 roles con >= 40 jugadores-mitad, en `pos_vocab.json` → `roles` (clave `formación:rol`, por ejemplo `4-3-3:DEF-CI`).

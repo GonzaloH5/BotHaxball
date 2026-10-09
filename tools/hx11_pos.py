@@ -61,6 +61,7 @@ def position(role, formation):
 def main():
     vals = collections.defaultdict(list)
     lines = collections.defaultdict(collections.Counter)
+    roles = collections.defaultdict(list)       # "formación:rol" -> anclas (para partidos con varios bots)
     for n in apt_names():
         if not (D2 / f"{n}.json").exists():
             continue
@@ -82,6 +83,7 @@ def main():
                     if a is not None and np.any(a):
                         vals[pos].append(a)
                         lines[pos][info["nombre_rol"].split("-")[0]] += 1
+                        roles[f"{f}:{info['nombre_rol']}"].append(a)
     vocab = {}
     for pos, v in sorted(vals.items()):
         v = np.array(v, np.float64)
@@ -91,6 +93,16 @@ def main():
         disp = [float(np.median(np.hypot(dev[:, 2 * k], dev[:, 2 * k + 1]))) for k in (0, 1)]
         vocab[pos] = dict(linea=ln, linea_idx=LINES.index(ln), ancla=[round(float(x), 1) for x in med],
                           dispersion_px=[round(x, 1) for x in disp], jugadores_mitad=len(v))
+    # roles por formación: dos centrales de un mismo equipo no comparten ancla (DFC izquierdo y derecho, etc.)
+    vocab_roles = {}
+    for key, v in sorted(roles.items()):
+        if len(v) < 40:
+            continue
+        v = np.array(v, np.float64)
+        ln = key.split(":")[1].split("-")[0]
+        vocab_roles[key] = dict(linea=ln, linea_idx=LINES.index(ln), ancla=[round(float(x), 1) for x in np.median(v, 0)],
+                                jugadores_mitad=len(v))
+    vocab["roles"] = vocab_roles
     (REPORTS / "pos_vocab.json").write_text(json.dumps(vocab, indent=1, ensure_ascii=False), encoding="utf-8")
     md = ["# Vocabulario de `--pos`", "",
           "P2 de la revisión de la auditoría, con [`tools/hx11_pos.py`](../../tools/hx11_pos.py). El ancla es relativa "
@@ -100,11 +112,18 @@ def main():
           "| Puesto | Línea | Ancla con pelota (x, y) | Ancla sin pelota (x, y) | Dispersión (px) | Jugadores-mitad |",
           "|---|---|---|---|---|---|"]
     for pos, r in vocab.items():
+        if pos == "roles":
+            continue
         a = r["ancla"]
         md.append(f"| {pos} | {r['linea']} | ({a[0]}, {a[1]}) | ({a[2]}, {a[3]}) | {r['dispersion_px'][0]} / "
                   f"{r['dispersion_px'][1]} | {r['jugadores_mitad']} |")
     (REPORTS / "pos_vocab.md").write_text("\n".join(md) + "\n", encoding="utf-8")
-    print(json.dumps({k: (v["linea"], v["ancla"], v["jugadores_mitad"]) for k, v in vocab.items()}, ensure_ascii=False))
+    md += ["", f"**Roles por formación** (para partidos con varios bots): {len(vocab_roles)} roles con >= 40 jugadores-mitad, "
+               "en `pos_vocab.json` → `roles` (clave `formación:rol`, por ejemplo `4-3-3:DEF-CI`)."]
+    (REPORTS / "pos_vocab.md").write_text(chr(10).join(md) + chr(10), encoding="utf-8")
+    print(json.dumps({k: (v["linea"], v["ancla"], v["jugadores_mitad"]) for k, v in vocab.items() if k != "roles"},
+                     ensure_ascii=False))
+    print(sorted(vocab_roles))
 
 
 if __name__ == "__main__":

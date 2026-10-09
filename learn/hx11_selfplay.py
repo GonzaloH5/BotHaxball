@@ -90,6 +90,7 @@ def game_metrics(w: Match, k0, k1):
     # posesión por último toque
     last = -1
     changes = 0
+    poss = np.full(len(ks), -1)
     for t in range(len(ks)):
         tt = np.nonzero(touch[t])[0]
         if len(tt):
@@ -97,6 +98,7 @@ def game_metrics(w: Match, k0, k1):
             if last >= 0 and team != last:
                 changes += 1
             last = team
+        poss[t] = last
     goals = int(np.clip(np.diff(w.score[ks].astype(np.int64), axis=0), 0, None).sum())
     shape = []
     for team in (0, 1):
@@ -106,6 +108,7 @@ def game_metrics(w: Match, k0, k1):
         xs = np.where(f, q[..., 0], np.nan)
         ys = np.where(f, q[..., 1], np.nan)
         shape.append((np.nanmax(xs, 1) - np.nanmin(xs, 1), np.nanmax(ys, 1) - np.nanmin(ys, 1)))
+    pos_m = positioning(w, ks, pos, ball, on, poss)
     open_frac = float((w.phase[ks] == OPEN).mean())
     sp = np.hypot(*np.diff(pos, axis=0).transpose(2, 0, 1))[on[1:] & on[:-1]]
     sp = sp[sp < 10]
@@ -113,10 +116,61 @@ def game_metrics(w: Match, k0, k1):
     return dict(patadas_jugador_min=float(kicks / n_on / mins), toques_jugador_min=float(touch.sum() / 60 / n_on / mins),
                 cambios_posesion_min=changes / mins, goles_10min=goals / mins * 10, largo_equipo=float(np.nanmean([s[0] for s in shape])),
                 ancho_equipo=float(np.nanmean([s[1] for s in shape])), juego_abierto=open_frac,
-                vel_media=float(sp.mean()), mas_cercano_pelota_p50=float(np.median(nearest)))
+                vel_media=float(sp.mean()), mas_cercano_pelota_p50=float(np.median(nearest)), **pos_m)
 
 
-def play(policy, matches, n_games, H, seed=0, n_env=8, every=FRAME_SKIP, temp_move=1.0):
+def positioning(w: Match, ks, pos, ball, on, poss):
+    """Posicionamiento en juego abierto, por equipo (coordenadas del equipo, ataca hacia +x):
+    * dist_zona: distancia de cada jugador de campo a su zona (centroide de campo + ancla, con o sin la pelota según el
+      último toque), la misma zona que ve la red;
+    * cerca_pelota_150: jugadores de campo del equipo a <= 150 px de la pelota (amontonamiento);
+    * vecino_mas_cercano: distancia al compañero de campo más cercano (separación);
+    * bloque_dx: |x del centroide de campo − x de la pelota| (qué tan lejos queda el bloque de la jugada);
+    * persigue: jugadores de campo del equipo a <= 300 px de la pelota que van hacia ella (> 1 px/tick)."""
+    op = w.phase[ks] == OPEN
+    if op.sum() < 60:
+        return dict(dist_zona=np.nan, cerca_pelota_150=np.nan, vecino_mas_cercano=np.nan, bloque_dx=np.nan,
+                    persigue=np.nan)
+    vel = w.vel[ks][op].astype(np.float64) / 1000
+    zd, near, mate, blk, chase = [], [], [], [], []
+    for team in (0, 1):
+        sl = np.arange(team * 11, team * 11 + 11)
+        att = 1.0 if team == 0 else -1.0
+        q = pos[op][:, sl] * att
+        b = ball[op] * att
+        pid = w.pid[ks][op][:, sl]
+        f = on[op][:, sl] & (pid != w.gk[ks][op][:, team][:, None])
+        nf = np.maximum(f.sum(1), 1)
+        cen = (q * f[..., None]).sum(1) / nf[:, None]
+        rel = q - cen[:, None]
+        wb = poss[op] == team
+        for i in range(11):
+            for pp in np.unique(pid[f[:, i], i]):
+                mm = f[:, i] & (pid[:, i] == pp)
+                a = [w.anchor.get((int(pp), h)) for h in (0, 1)]
+                a = [x for x in a if x is not None]
+                if not a:
+                    continue
+                a = np.mean(a, 0)
+                anc = np.where(wb[mm][:, None], a[None, 0:2], a[None, 2:4])
+                zd.append(np.hypot(*(rel[mm, i] - anc).T))
+        dball = np.hypot(*(q - b[:, None]).transpose(2, 0, 1))
+        near.append(np.where(f, dball <= 150, False).sum(1))
+        dd = np.hypot(*(q[:, :, None] - q[:, None, :]).transpose(3, 0, 1, 2))
+        dd[:, np.arange(11), np.arange(11)] = np.inf
+        dd = np.where(f[:, :, None] & f[:, None, :], dd, np.inf).min(2)
+        mate.append(dd[f & np.isfinite(dd)])
+        blk.append(np.abs(cen[:, 0] - b[:, 0]))
+        to_b = (b[:, None] - q) / np.maximum(dball, 1e-6)[..., None]
+        v_in = (vel[:, sl] * att * to_b).sum(-1)
+        chase.append(np.where(f & (dball <= 300), v_in > 1.0, False).sum(1))
+    cat = lambda xs: float(np.mean(np.concatenate(xs))) if xs and len(np.concatenate(xs)) else np.nan
+    return dict(dist_zona=cat(zd), cerca_pelota_150=cat(near), vecino_mas_cercano=cat(mate), bloque_dx=cat(blk),
+                persigue=cat(chase))
+
+
+def play(policy, matches, n_games, H, seed=0, n_env=8, every=FRAME_SKIP, temp_move=1.0, delay=None, hyst=0.0,
+         only_kickoff=False):
     rng = np.random.default_rng(seed)
     env = HX11Env(n_env, seed=seed)
     res, logs_ref, traj = [], [], []
@@ -124,7 +178,8 @@ def play(policy, matches, n_games, H, seed=0, n_env=8, every=FRAME_SKIP, temp_mo
     for mi, m in enumerate(matches):
         ko = np.nonzero((m.phase == KICKOFF) & (np.arange(m.T) >= MAX_BACK))[0]
         op = np.nonzero((m.phase == OPEN) & (np.arange(m.T) >= MAX_BACK) & (np.arange(m.T) < m.T - H - 1))[0]
-        pool = list(ko[np.r_[True, np.diff(ko) > 1]]) + list(rng.choice(op, size=min(4, len(op)), replace=False))
+        pool = list(ko[np.r_[True, np.diff(ko) > 1]]) + ([] if only_kickoff else
+                                                         list(rng.choice(op, size=min(4, len(op)), replace=False)))
         for t0 in pool:
             starts.append((mi, int(t0)))
     rng.shuffle(starts)
@@ -143,9 +198,10 @@ def play(policy, matches, n_games, H, seed=0, n_env=8, every=FRAME_SKIP, temp_mo
                 env.ri[i, K.RI_KO] = 1
                 env.ri[i, K.RI_KO_TEAM] = max(int(matches[mi].pteam[t0]), 0)
             W.append(w)
-            D.append(rng.integers(D_MIN, D_MAX + 1, 22))
+            D.append(rng.integers(D_MIN, D_MAX + 1, 22) if delay is None else np.full(22, delay))
         n = len(chunk)
         acts = np.zeros((n_env, 22), np.int64)
+        prev = np.full((n_env, 22), -1, np.int64)       # última acción en coordenadas del equipo (histéresis)
         next_dec = np.zeros((n_env, 22), np.int64)
         use_hold = getattr(policy, "hold", False)
         for k in range(H):
@@ -170,9 +226,10 @@ def play(policy, matches, n_games, H, seed=0, n_env=8, every=FRAME_SKIP, temp_mo
                         hc = torch.distributions.Categorical(logits=hl).sample().numpy()
                     else:
                         lg = policy(ot, et)
-                    act = sample(lg, temp_move)
+                    act = sample(lg, temp_move, prev=np.array([prev[i, s] for i, s in who]), hyst=hyst)
                 for j, ((i, s), a) in enumerate(zip(who, act)):
                     a = int(a)
+                    prev[i, s] = a
                     if s >= 11:
                         a = int(ROT_MOVE[a % 9] + 9 * (a // 9))
                     acts[i, s] = a
@@ -199,9 +256,9 @@ def play(policy, matches, n_games, H, seed=0, n_env=8, every=FRAME_SKIP, temp_mo
 
 def summarize(rows):
     keys = [k for k in rows[0] if isinstance(rows[0][k], float)]
-    return {k: dict(media=round(float(np.mean([r[k] for r in rows])), 3),
-                    p10=round(float(np.percentile([r[k] for r in rows], 10)), 3),
-                    p90=round(float(np.percentile([r[k] for r in rows], 90)), 3)) for k in keys}
+    return {k: dict(media=round(float(np.nanmean([r[k] for r in rows])), 3),
+                    p10=round(float(np.nanpercentile([r[k] for r in rows], 10)), 3),
+                    p90=round(float(np.nanpercentile([r[k] for r in rows], 90)), 3)) for k in keys}
 
 
 def main():
@@ -214,12 +271,17 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--every", type=int, default=FRAME_SKIP)
     ap.add_argument("--temp", type=float, default=1.0)
+    ap.add_argument("--split", default="dev", choices=["dev", "test"])
+    ap.add_argument("--delay", type=int, default=None, help="retardo fijo para los 22 (sin esto: sorteado en [8, 36])")
+    ap.add_argument("--hyst", type=float, default=0.0, help="histéresis de la dirección, como en el cerebro de la sala")
+    ap.add_argument("--solo-saques", action="store_true", help="arrancar solo desde saques iniciales (como la sala)")
+    ap.add_argument("--threads", type=int, default=6)
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
-    torch.set_num_threads(6)
+    torch.set_num_threads(a.threads)
     modos = json.loads((ROOT / "data" / "hx11" / "modos.json").read_text(encoding="utf-8"))
     rng = np.random.default_rng(a.seed)
-    names = sorted(rng.permutation(l0_split()["dev"])[:a.matches].tolist())
+    names = sorted(rng.permutation(l0_split()[a.split])[:a.matches].tolist())
     matches = [load_match(n, modos) for n in names]
     ck = torch.load(a.model, map_location="cpu", weights_only=False)
     policy = SetPolicy(**ck["config"])
@@ -227,7 +289,7 @@ def main():
     policy.eval()
     t0 = time.time()
     rows, ref, traj = play(policy, matches, a.games, a.seconds * 60, seed=a.seed, n_env=a.n_env, every=a.every,
-                           temp_move=a.temp)
+                           temp_move=a.temp, delay=a.delay, hyst=a.hyst, only_kickoff=a.solo_saques)
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     res = dict(modelo=a.model, juegos=len(rows), segundos_por_juego=a.seconds, simulado=summarize(rows),

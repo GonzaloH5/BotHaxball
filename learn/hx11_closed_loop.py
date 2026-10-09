@@ -153,7 +153,7 @@ def store(env, i, w: Match, k, acts):
 
 
 def rollout(policy, matches, owners, starts_list, n_env=64, seed=0, human=False, swap=None, every=FRAME_SKIP,
-            temp_move=1.0, hyst=0.0, hold_scale=1.0, delay=None):
+            temp_move=1.0, hyst=0.0, hold_scale=1.0, delay=None, every_near=None, near_px=30.0, kick_free=False):
     """Corre las ventanas en lotes de n_env entornos; devuelve una fila de métricas por ventana.
 
     `swap` (vocabulario de `tools.hx11_pos`): al bot se le pide otro puesto, de otra línea (E8). Se pisa su ancla y su
@@ -189,13 +189,16 @@ def rollout(policy, matches, owners, starts_list, n_env=64, seed=0, human=False,
         kicks_eff = np.zeros(n, np.int64)
         cancel_prev = np.array([bool(env.kick_cancel[i, W[i][2]]) for i in range(n)])
         next_dec = np.zeros(n, np.int64)
+        move_until = np.zeros(n, np.int64)      # kick_free: dirección sostenida hasta este tick (pegado a la pelota)
         use_hold = getattr(policy, "hold", False)
         for k in range(H):
             kk = MAX_BACK + k
             acts = np.zeros((n_env, 22), np.int64)
             for i, (w, a, s, d, mi, t0) in enumerate(W):
                 acts[i] = action_of_bits(logs[i].inp[kk])
-            deciding = [i for i in range(len(W)) if (k >= next_dec[i] if use_hold else k % every == 0)]
+            deciding = [i for i in range(len(W)) if (k >= next_dec[i] if (use_hold or (every_near is not None
+                                                                                    and not kick_free))
+                                                     else k % every == 0)]
             if not human and deciding:
                 own, ents = [], []
                 for i in deciding:
@@ -213,13 +216,32 @@ def rollout(policy, matches, owners, starts_list, n_env=64, seed=0, human=False,
                     prev_team = [int(held[i]) if W[i][2] < 11 else int(ROT_MOVE[held[i] % 9] + 9 * (held[i] // 9))
                                  for i in deciding]
                     a_team = sample(lg, temp_move, prev=prev_team if k > 0 else None, hyst=hyst)
+                    if kick_free:
+                        # dirección sostenida pegado a la pelota; la patada se decide igual, dada esa dirección
+                        pr = torch.softmax(lg.float(), -1).reshape(-1, 2, 9).numpy()
+                        for j, i in enumerate(deciding):
+                            if k < move_until[i]:
+                                mv = int(prev_team[j] % 9)
+                                pk = pr[j, 1, mv] / max(pr[j, :, mv].sum(), 1e-12)
+                                a_team[j] = mv + 9 * int(rng.random() < pk)
                 for j, i in enumerate(deciding):
                     s = W[i][2]
                     act = int(a_team[j])
                     if s >= 11:
                         act = int(ROT_MOVE[act % 9] + 9 * (act // 9))
                     held[i] = act
-                    next_dec[i] = k + (max(every, int(round(HOLD_REP[hc[j]] * hold_scale))) if use_hold else every)
+                    step = every
+                    if kick_free and every_near is not None and k >= move_until[i]:
+                        bp, mp = env.pos[i, 0], env.pos[i, env.fp + s]
+                        if np.hypot(*(bp - mp)) - 23.0 <= near_px:
+                            move_until[i] = k + every_near
+                    if every_near is not None and not kick_free:
+                        # decisión adaptativa: pegado a la pelota sostiene más (conducir), lejos decide más seguido
+                        bp = env.pos[i, 0]
+                        mp = env.pos[i, env.fp + s]
+                        if np.hypot(*(bp - mp)) - 23.0 <= near_px:
+                            step = every_near
+                    next_dec[i] = k + (max(every, int(round(HOLD_REP[hc[j]] * hold_scale))) if use_hold else step)
             if not human:
                 for i, (w, a, s, d, mi, t0) in enumerate(W):
                     acts[i, s] = held[i]
@@ -353,6 +375,10 @@ def main():
     ap.add_argument("--hyst", type=float, default=0.0, help="histéresis de la dirección (0 = sin)")
     ap.add_argument("--hold-scale", type=float, default=1.0, help="escala de la duración sorteada (cabeza de duración)")
     ap.add_argument("--delay", type=int, default=None, help="retardo fijo del bot (por defecto, sorteado en [8, 36])")
+    ap.add_argument("--every-cerca", type=int, default=None, help="ticks entre decisiones pegado a la pelota")
+    ap.add_argument("--cerca-px", type=float, default=30.0)
+    ap.add_argument("--patada-libre", action="store_true",
+                    help="con --every-cerca: sostiene solo la dirección; la patada se decide cada --every ticks")
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     torch.set_num_threads(4)
@@ -373,7 +399,8 @@ def main():
     swap = (json.loads((ROOT / "reports" / "hx11" / "pos_vocab.json").read_text(encoding="utf-8"))
             if a.intercambio else None)
     rows = rollout(policy, matches, owners, sl, n_env=a.n_env, seed=a.seed, human=a.policy == "humano", swap=swap,
-                   every=a.every, temp_move=a.temp, hyst=a.hyst, hold_scale=a.hold_scale, delay=a.delay)
+                   every=a.every, temp_move=a.temp, hyst=a.hyst, hold_scale=a.hold_scale, delay=a.delay,
+                   every_near=a.every_cerca, near_px=a.cerca_px, kick_free=a.patada_libre)
     res = dict(politica=a.policy, modelo=a.model, cada=a.every, temp=a.temp, hyst=a.hyst, cerca=a.cerca, partidos=names, ventanas=len(rows), resumen=summarize(rows),
                segundos=round(time.time() - t0))
     Path(a.out).parent.mkdir(parents=True, exist_ok=True)

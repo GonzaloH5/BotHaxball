@@ -7,9 +7,13 @@ const readline = require("readline");
 
 const REPO = path.join(__dirname, "..", "..");
 
-function startCerebro({ model, pos, temp = 0.7, python, onDecision, onReady }) {
+function startCerebro({ model, pos, temp = 0.7, hyst = 0, every = 3, python, onDecision, onReady }) {
   const py = python || path.join(REPO, ".venv", process.platform === "win32" ? "Scripts\\python.exe" : "bin/python");
-  const proc = spawn(py, ["-u", "-m", "learn.hx11_cerebro", "--model", model, "--pos", pos, "--temp", String(temp)], {
+  const argv = ["-u", "-m", "learn.hx11_cerebro", "--model", model, "--temp", String(temp)];
+  if (pos) argv.push("--pos", pos);
+  if (hyst > 0) argv.push("--hyst", String(hyst));
+  if (every !== 3) argv.push("--every", String(every));   // sin puesto: modo de varios bots (cada uno se registra)
+  const proc = spawn(py, argv, {
     cwd: REPO, env: { ...process.env, PYTHONIOENCODING: "utf-8" }, stdio: ["pipe", "pipe", "pipe"], windowsHide: true,
   });
   readline.createInterface({ input: proc.stdout }).on("line", (line) => {
