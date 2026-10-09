@@ -30,7 +30,7 @@ from env.hx11 import kernel as K
 from env.hx11.core import HX11Env
 from learn.hx11_closed_loop import FRAME_SKIP, bits_of_action, load_state
 from learn.hx11_data import D_MAX, D_MIN, HOLD_REP, MAX_BACK, ROT_MOVE, Match, build, l0_split, load_match
-from learn.hx11_policy import SetPolicy, sample
+from learn.hx11_policy import Ensemble, SetPolicy, StickyNoise, piece_rows, policy_logits, sample
 from tools.hx11_d0 import KICKOFF, OPEN
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -170,9 +170,11 @@ def positioning(w: Match, ks, pos, ball, on, poss):
 
 
 def play(policy, matches, n_games, H, seed=0, n_env=8, every=FRAME_SKIP, temp_move=1.0, delay=None, hyst=0.0,
-         only_kickoff=False):
+         only_kickoff=False, ens_k=0, ens_m=0.0, renew=1.0, renew_kick=1.0):
     rng = np.random.default_rng(seed)
     env = HX11Env(n_env, seed=seed)
+    ens = Ensemble(min(ens_k, policy.chunk), ens_m, every) if (ens_k > 1 and getattr(policy, "chunk", 1) > 1) else None
+    noise = StickyNoise(renew, seed, renew_kick) if (renew < 1.0 or renew_kick < 1.0) else None
     res, logs_ref, traj = [], [], []
     starts = []
     for mi, m in enumerate(matches):
@@ -225,8 +227,12 @@ def play(policy, matches, n_games, H, seed=0, n_env=8, every=FRAME_SKIP, temp_mo
                         lg, hl = policy.forward_hold(ot, et)
                         hc = torch.distributions.Categorical(logits=hl).sample().numpy()
                     else:
-                        lg = policy(ot, et)
-                    act = sample(lg, temp_move, prev=np.array([prev[i, s] for i, s in who]), hyst=hyst)
+                        lg = policy_logits(policy, ot, et, ens, [(b0, i, s) for i, s in who], [k] * len(who))
+                    act = sample(lg, temp_move, prev=np.array([prev[i, s] for i, s in who]), hyst=hyst,
+                                 gumbel=noise.get([(b0, i, s) for i, s in who]) if noise and renew < 1.0 else None,
+                                    kick_u=noise.get_kick([(b0, i, s) for i, s in who],
+                                                          piece_rows([env.ri[i, K.RI_MODE] for i, s in who]))
+                                    if noise and renew_kick < 1.0 else None)
                 for j, ((i, s), a) in enumerate(zip(who, act)):
                     a = int(a)
                     prev[i, s] = a
@@ -245,7 +251,8 @@ def play(policy, matches, n_games, H, seed=0, n_env=8, every=FRAME_SKIP, temp_mo
             res.append(r)
             traj.append(dict(pos=W[i].pos[MAX_BACK:].tolist(), ball=W[i].ball[MAX_BACK:].tolist(),
                              pid=(W[i].pid[MAX_BACK] >= 0).tolist(), phase=W[i].phase[MAX_BACK:].tolist(),
-                             score=W[i].score[MAX_BACK:].tolist()))
+                             score=W[i].score[MAX_BACK:].tolist(), pkind=W[i].pkind[MAX_BACK:].tolist(),
+                             pteam=W[i].pteam[MAX_BACK:].tolist(), spot=W[i].spot[MAX_BACK:].tolist()))
             # referencia humana: la misma ventana en la grabación (si el partido alcanza)
             m = matches[mi]
             if t0 + H < m.T:
@@ -275,6 +282,10 @@ def main():
     ap.add_argument("--delay", type=int, default=None, help="retardo fijo para los 22 (sin esto: sorteado en [8, 36])")
     ap.add_argument("--hyst", type=float, default=0.0, help="histéresis de la dirección, como en el cerebro de la sala")
     ap.add_argument("--solo-saques", action="store_true", help="arrancar solo desde saques iniciales (como la sala)")
+    ap.add_argument("--ens", type=int, default=0, help="acciones en bloque: ensamble temporal de K decisiones (0 = no)")
+    ap.add_argument("--ens-m", type=float, default=0.0, help="peso exp(−m·antigüedad) del ensamble (0 = parejo)")
+    ap.add_argument("--renovar", type=float, default=1.0, help="ruido persistente de la dirección (1 = no)")
+    ap.add_argument("--renovar-patada", type=float, default=1.0, help="ruido persistente de la tecla de patear")
     ap.add_argument("--threads", type=int, default=6)
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
@@ -289,7 +300,8 @@ def main():
     policy.eval()
     t0 = time.time()
     rows, ref, traj = play(policy, matches, a.games, a.seconds * 60, seed=a.seed, n_env=a.n_env, every=a.every,
-                           temp_move=a.temp, delay=a.delay, hyst=a.hyst, only_kickoff=a.solo_saques)
+                           temp_move=a.temp, delay=a.delay, hyst=a.hyst, only_kickoff=a.solo_saques, ens_k=a.ens,
+                           ens_m=a.ens_m, renew=a.renovar, renew_kick=a.renovar_patada)
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     res = dict(modelo=a.model, juegos=len(rows), segundos_por_juego=a.seconds, simulado=summarize(rows),

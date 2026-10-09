@@ -35,7 +35,7 @@ from env.hx11 import kernel as K
 from env.hx11.core import HX11Env
 from learn.hx11_data import (D_MAX, D_MIN, HOLD_REP, MAX_BACK, MOVE_DX, MOVE_DY, ROT_MOVE, Match, build, l0_split,
                              load_match, move_of_input)
-from learn.hx11_policy import SetPolicy, sample
+from learn.hx11_policy import Ensemble, SetPolicy, StickyNoise, piece_rows, policy_logits, sample
 from tools.hx11_d0 import OPEN
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -153,7 +153,8 @@ def store(env, i, w: Match, k, acts):
 
 
 def rollout(policy, matches, owners, starts_list, n_env=64, seed=0, human=False, swap=None, every=FRAME_SKIP,
-            temp_move=1.0, hyst=0.0, hold_scale=1.0, delay=None, every_near=None, near_px=30.0, kick_free=False):
+            temp_move=1.0, hyst=0.0, hold_scale=1.0, delay=None, every_near=None, near_px=30.0, kick_free=False,
+            ens_k=0, ens_m=0.0, renew=1.0, renew_kick=1.0):
     """Corre las ventanas en lotes de n_env entornos; devuelve una fila de métricas por ventana.
 
     `swap` (vocabulario de `tools.hx11_pos`): al bot se le pide otro puesto, de otra línea (E8). Se pisa su ancla y su
@@ -161,6 +162,9 @@ def rollout(policy, matches, owners, starts_list, n_env=64, seed=0, human=False,
     rng = np.random.default_rng(seed)
     env = HX11Env(n_env, seed=seed)
     rows = []
+    # acciones en bloque: ensamble temporal (ACT) si la política predice varias decisiones
+    ens = Ensemble(min(ens_k, policy.chunk), ens_m, every) if (ens_k > 1 and getattr(policy, "chunk", 1) > 1) else None
+    noise = StickyNoise(renew, seed, renew_kick) if (renew < 1.0 or renew_kick < 1.0) else None
     for b0 in range(0, len(starts_list), n_env):
         chunk = starts_list[b0:b0 + n_env]
         W, logs = [], []
@@ -212,10 +216,14 @@ def rollout(policy, matches, owners, starts_list, n_env=64, seed=0, human=False,
                         lg, hl = policy.forward_hold(ot, et)
                         hc = torch.distributions.Categorical(logits=hl).sample().numpy()
                     else:
-                        lg = policy(ot, et)
+                        lg = policy_logits(policy, ot, et, ens, [(b0, i) for i in deciding], [k] * len(deciding))
                     prev_team = [int(held[i]) if W[i][2] < 11 else int(ROT_MOVE[held[i] % 9] + 9 * (held[i] // 9))
                                  for i in deciding]
-                    a_team = sample(lg, temp_move, prev=prev_team if k > 0 else None, hyst=hyst)
+                    a_team = sample(lg, temp_move, prev=prev_team if k > 0 else None, hyst=hyst,
+                                    gumbel=noise.get([(b0, i) for i in deciding]) if noise and renew < 1.0 else None,
+                                    kick_u=noise.get_kick([(b0, i) for i in deciding],
+                                                          piece_rows([env.ri[i, K.RI_MODE] for i in deciding]))
+                                    if noise and renew_kick < 1.0 else None)
                     if kick_free:
                         # dirección sostenida pegado a la pelota; la patada se decide igual, dada esa dirección
                         pr = torch.softmax(lg.float(), -1).reshape(-1, 2, 9).numpy()
@@ -314,6 +322,16 @@ def metrics(w: Match, log: Match, s, end, acts, m: Match, t0, owner):
     out["patadas_min_humano"] = kick_hum / mins
     out["toques_min_bot"] = float((gap_bot <= TOUCH).sum()) / 60 / mins
     out["toques_min_humano"] = float((gap_hum <= TOUCH).sum()) / 60 / mins
+    # conducción y powershot: tiempo con la pelota a <= 4 px (control), el que está en rachas de >= 90 ticks (lo que
+    # pide el powershot para empezar a cargar, S2) y patadas con la pelota cargada (invMass >= 2,43)
+    for who, gap, kf, arr in (("bot", gap_bot, (kb == 1) & (kb_prev == 0) & (gb_prev <= 4.0), w),
+                              ("humano", gap_hum, (hk == 1) & (hk_prev == 0) & (gh_prev <= 4.0), log)):
+        ctl = gap <= 4.0
+        edges = np.flatnonzero(np.diff(np.r_[0, ctl.astype(np.int8), 0]))
+        runs = edges[1::2] - edges[::2]
+        out[f"control_min_{who}"] = float(ctl.sum()) / 60 / mins
+        out[f"control_largo_min_{who}"] = float(runs[runs >= 90].sum()) / 60 / mins
+        out[f"patadas_cargadas_min_{who}"] = float((kf & (arr.binv[ks].astype(np.float64) >= 2.4)).sum()) / mins
     out["cambios_s_bot"] = float((np.diff(acts) != 0).sum()) / (end / 60)
     ha = action_of_bits(log.inp[ks, s])
     out["cambios_s_humano"] = float((np.diff(ha) != 0).sum()) / (end / 60)
@@ -377,6 +395,12 @@ def main():
     ap.add_argument("--delay", type=int, default=None, help="retardo fijo del bot (por defecto, sorteado en [8, 36])")
     ap.add_argument("--every-cerca", type=int, default=None, help="ticks entre decisiones pegado a la pelota")
     ap.add_argument("--cerca-px", type=float, default=30.0)
+    ap.add_argument("--ens", type=int, default=0, help="acciones en bloque: ensamble temporal de K decisiones (0 = no)")
+    ap.add_argument("--ens-m", type=float, default=0.0, help="peso exp(−m·antigüedad) del ensamble (0 = parejo)")
+    ap.add_argument("--renovar", type=float, default=1.0,
+                    help="ruido persistente: probabilidad de renovar la tirada de la dirección por decisión (1 = no)")
+    ap.add_argument("--renovar-patada", type=float, default=1.0,
+                    help="ruido persistente de la tecla de patear (1 = sorteo independiente)")
     ap.add_argument("--patada-libre", action="store_true",
                     help="con --every-cerca: sostiene solo la dirección; la patada se decide cada --every ticks")
     ap.add_argument("--out", required=True)
@@ -400,7 +424,8 @@ def main():
             if a.intercambio else None)
     rows = rollout(policy, matches, owners, sl, n_env=a.n_env, seed=a.seed, human=a.policy == "humano", swap=swap,
                    every=a.every, temp_move=a.temp, hyst=a.hyst, hold_scale=a.hold_scale, delay=a.delay,
-                   every_near=a.every_cerca, near_px=a.cerca_px, kick_free=a.patada_libre)
+                   every_near=a.every_cerca, near_px=a.cerca_px, kick_free=a.patada_libre, ens_k=a.ens, ens_m=a.ens_m,
+                   renew=a.renovar, renew_kick=a.renovar_patada)
     res = dict(politica=a.policy, modelo=a.model, cada=a.every, temp=a.temp, hyst=a.hyst, cerca=a.cerca, partidos=names, ventanas=len(rows), resumen=summarize(rows),
                segundos=round(time.time() - t0))
     Path(a.out).parent.mkdir(parents=True, exist_ok=True)

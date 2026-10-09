@@ -155,3 +155,130 @@ def test_set_piece_kick_restores(env):
     run(env, 1)
     assert env.inv[0, 0] == C.BASE_BALL_INV
     assert (env.inv[0, fp:] == C.PLAYER_INV).all() and env.group[0, fp] == RED
+
+
+def test_goal_kick_clears_rivals_from_box(env):
+    """La sala saca a los rivales del área grande a |x| = 1035 con su misma y, un tick después de la colocación."""
+    open_play(env, ball=(1795.0, -600.0), last=4)  # tocó un rojo: saque de arco para el azul (arco en x > 0)
+    fp = env.fp
+    env.pos[0, fp + 9] = (1400.0, 200.0)           # rojo dentro del área
+    env.pos[0, fp + 10] = (900.0, 100.0)           # rojo fuera del área
+    env.vel[0, 0] = (3.0, 0.0)
+    ev = run(env, 30)
+    assert env.ri[0, K.RI_KIND] == C.GOAL_KICK and K.EV_PLACE in ev
+    assert env.pos[0, fp + 9, 0] == pytest.approx(C.GK_CLEAR_X, abs=3.0)
+    assert env.pos[0, fp + 9, 1] == pytest.approx(200.0, abs=3.0)
+    assert env.pos[0, fp + 10, 0] < 1000.0
+
+
+def test_lateral_carried_without_kick_stays(env):
+    """Llevar la pelota con el cuerpo en un lateral no cambia el saque (los humanos lo hacen para buscar el ángulo; la
+    regla estricta del 2026-10-09 trababa a los bots en un ida y vuelta de laterales)."""
+    open_play(env, ball=(100.0, 1190.0), last=3)   # tocó un rojo: lateral para el azul
+    env.vel[0, 0] = (0.5, 3.0)
+    run(env, 40)
+    assert env.ri[0, K.RI_KIND] == C.LATERAL and env.ri[0, K.RI_TEAM] == 1
+    env.pos[0, 0, 0] += 40.0                       # la pelota se movió sin patada
+    ev = run(env, 5)
+    assert K.EV_PLACE not in ev and K.EV_OUT not in ev
+    assert env.ri[0, K.RI_MODE] == K.PIECE and env.ri[0, K.RI_TEAM] == 1
+
+
+def _lateral_kicked(env, thrower=14, vel=(9.0, 0.0)):
+    """Lateral del azul en (100, 1230) recién pateado por `thrower`, con la pelota a `vel` (paralela: no entra)."""
+    open_play(env, ball=(100.0, 1190.0), last=3)
+    env.vel[0, 0] = (0.5, 3.0)
+    run(env, 40)
+    assert env.ri[0, K.RI_KIND] == C.LATERAL and env.ri[0, K.RI_TEAM] == 1
+    spot = env.pos[0, 0].copy()
+    env.ri[0, K.RI_MODE] = K.OPEN
+    env.ri[0, K.RI_TICKS] = 0
+    env.ri[0, K.RI_AFTER_KIND] = C.LATERAL
+    env.ri[0, K.RI_AFTER_T] = 0
+    env.ri[0, K.RI_LAST] = thrower
+    env.ri[0, K.RI_LAT_THROWER] = thrower
+    env.ri[0, K.RI_LAT_TOUCHED] = 0
+    env.ri[0, K.RI_LAT_ARMED] = 0
+    env.vel[0, 0] = vel
+    return spot
+
+
+def test_lateral_that_does_not_enter_goes_to_rival(env):
+    spot = _lateral_kicked(env)
+    ev = run(env, C.BAD_LATERAL_TICKS + C.LATERAL_DELAY + 3)
+    assert K.EV_OUT in ev and K.EV_PLACE in ev
+    assert ev.index(K.EV_PLACE) - ev.index(K.EV_OUT) == C.LATERAL_DELAY
+    assert env.ri[0, K.RI_KIND] == C.LATERAL and env.ri[0, K.RI_TEAM] == 0     # ahora saca el rojo
+    assert np.allclose(env.pos[0, 0], spot)                                      # en el punto original
+
+
+def test_lateral_touched_by_rival_outside_goes_back(env):
+    """Si un rival la toca afuera y no entra, vuelve a sacar el mismo equipo (contra el último que la tocó)."""
+    spot = _lateral_kicked(env)
+    env.ri[0, K.RI_LAST] = 3                        # la tocó un rojo antes de entrar
+    ev = run(env, C.BAD_LATERAL_TICKS + C.LATERAL_DELAY + 3)
+    assert K.EV_PLACE in ev
+    assert env.ri[0, K.RI_KIND] == C.LATERAL and env.ri[0, K.RI_TEAM] == 1     # vuelve a sacar el azul
+    assert np.allclose(env.pos[0, 0], spot)
+
+
+def test_lateral_that_enters_is_play(env):
+    _lateral_kicked(env, vel=(6.0, -4.0))           # con ángulo: entra
+    ev = run(env, C.BAD_LATERAL_TICKS + C.LATERAL_DELAY + 3)
+    assert env.ri[0, K.RI_LAT_ARMED] == 1 and K.EV_PLACE not in ev
+
+
+def test_lateral_kicked_from_inside_goes_to_rival(env):
+    """Meter la pelota empujando y patearla desde adentro es mal sacado: lateral para el rival en el punto original."""
+    open_play(env, ball=(100.0, 1190.0), last=3)   # tocó un rojo: lateral para el azul en y = 1230
+    env.vel[0, 0] = (0.5, 3.0)
+    run(env, 40)
+    assert env.ri[0, K.RI_KIND] == C.LATERAL and env.ri[0, K.RI_TEAM] == 1
+    spot = env.pos[0, 0].copy()
+    fp = env.fp
+    env.pos[0, 0] = (spot[0], 1190.0)               # la metió empujando
+    env.vel[0, 0] = 0.0
+    env.pos[0, fp + 14] = (spot[0], 1190.0 - C.PLAYER_R - C.BALL_R - 1.0)   # azul pegado, del lado de la cancha
+    env.vel[0, fp + 14] = 0.0
+    a = np.zeros((1, 22), np.int64)
+    a[0, 14] = 9                                    # patear sin moverse
+    ev = run(env, C.LATERAL_DELAY + 4, a)
+    assert K.EV_OUT in ev and K.EV_PLACE in ev
+    assert env.ri[0, K.RI_KIND] == C.LATERAL and env.ri[0, K.RI_TEAM] == 0     # ahora saca el rojo
+    assert np.allclose(env.pos[0, 0], spot)
+
+
+def test_lateral_pushed_in_and_kept_goes_to_rival(env):
+    """Meterla empujando y quedarse adentro sin patear es mal sacado pasados LATERAL_INSIDE_TICKS; menos tiempo, no."""
+    open_play(env, ball=(100.0, 1190.0), last=3)
+    env.vel[0, 0] = (0.5, 3.0)
+    run(env, 40)
+    spot = env.pos[0, 0].copy()
+    env.pos[0, 0] = (spot[0], 1150.0)               # la metió y quedó adentro, quieta
+    env.vel[0, 0] = 0.0
+    ev = run(env, C.LATERAL_INSIDE_TICKS - 10)
+    assert K.EV_OUT not in ev and env.ri[0, K.RI_MODE] == K.PIECE
+    ev = run(env, 20 + C.LATERAL_DELAY)
+    assert K.EV_OUT in ev and K.EV_PLACE in ev
+    assert env.ri[0, K.RI_KIND] == C.LATERAL and env.ri[0, K.RI_TEAM] == 0
+    assert np.allclose(env.pos[0, 0], spot)
+
+
+def test_lateral_touched_by_teammate_outside_is_taken(env):
+    """Si un compañero la toca antes de entrar, el lateral cuenta como sacado: no hay cobro a los 45 ticks."""
+    _lateral_kicked(env, vel=(1.0, 0.0))
+    env.ri[0, K.RI_LAST] = 15                       # un compañero del azul que sacó (14)
+    ev = run(env, C.BAD_LATERAL_TICKS + C.LATERAL_DELAY + 10)
+    assert K.EV_OUT not in ev and env.ri[0, K.RI_LAT_TOUCHED] == 1
+
+
+def test_lateral_retouched_by_thrower_is_taken(env):
+    """Si el que sacó la vuelve a tocar antes de que entre, el lateral cuenta como sacado (plazo largo)."""
+    _lateral_kicked(env, vel=(1.0, 0.0))
+    fp = env.fp
+    run(env, 5)
+    b = env.pos[0, 0].copy()
+    env.pos[0, fp + 14] = (b[0] + C.PLAYER_R + C.BALL_R + 0.5, b[1])   # el mismo azul, delante de la pelota
+    env.vel[0, fp + 14] = 0.0
+    ev = run(env, C.BAD_LATERAL_TICKS + C.LATERAL_DELAY + 10)
+    assert env.ri[0, K.RI_LAT_TOUCHED] == 1 and K.EV_OUT not in ev

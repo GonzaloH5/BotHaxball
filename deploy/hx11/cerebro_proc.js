@@ -7,12 +7,15 @@ const readline = require("readline");
 
 const REPO = path.join(__dirname, "..", "..");
 
-function startCerebro({ model, pos, temp = 0.7, hyst = 0, every = 3, python, onDecision, onReady }) {
+function startCerebro({ model, pos, temp = 0.7, hyst = 0, every = 3, ens = 0, ensM = 0, renovarPatada = 1,
+                        python, onDecision, onReady }) {
   const py = python || path.join(REPO, ".venv", process.platform === "win32" ? "Scripts\\python.exe" : "bin/python");
   const argv = ["-u", "-m", "learn.hx11_cerebro", "--model", model, "--temp", String(temp)];
   if (pos) argv.push("--pos", pos);
   if (hyst > 0) argv.push("--hyst", String(hyst));
-  if (every !== 3) argv.push("--every", String(every));   // sin puesto: modo de varios bots (cada uno se registra)
+  if (every !== 3) argv.push("--every", String(every));
+  if (ens > 1) argv.push("--ens", String(ens), "--ens-m", String(ensM));   // acciones en bloque (ACT)
+  if (renovarPatada < 1) argv.push("--renovar-patada", String(renovarPatada));   // tecla de patear persistente   // sin puesto: modo de varios bots (cada uno se registra)
   const proc = spawn(py, argv, {
     cwd: REPO, env: { ...process.env, PYTHONIOENCODING: "utf-8" }, stdio: ["pipe", "pipe", "pipe"], windowsHide: true,
   });

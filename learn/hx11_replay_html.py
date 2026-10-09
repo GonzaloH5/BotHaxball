@@ -1,7 +1,9 @@
 """Visor HTML de los partidos simulados de `learn/hx11_selfplay.py` (sin nombres: solo posiciones).
 
-Un archivo autocontenido por partido, con la cancha de HaxEleven [1800, 1200], los 22 jugadores, la pelota, el
-marcador y controles de reproducción (play/pausa, velocidad, barra de tiempo).
+Un archivo autocontenido por partido, con la cancha de HaxEleven [1800, 1200] (las líneas de
+stadiums/haxeleven_x11.hbs: área grande con medialuna, área chica, punto de penal, arcos y banderines), los 22
+jugadores, la pelota, el marcador, la pelota parada en juego y controles de reproducción (play/pausa, velocidad, barra
+de tiempo).
 
   python -m learn.hx11_replay_html runs/hx11_l0/mini/self/trayectorias.json --game 0 --out runs/hx11_l0/mini/self/juego0.html
 """
@@ -45,7 +47,17 @@ function draw() {
   ctx.strokeRect(X(-1800), Y(-1200), 3600 * S, 2400 * S);
   ctx.beginPath(); ctx.moveTo(X(0), Y(-1200)); ctx.lineTo(X(0), Y(1200)); ctx.stroke();
   ctx.beginPath(); ctx.arc(X(0), Y(0), 180 * S, 0, 7); ctx.stroke();
-  for (const sx of [-1, 1]) { ctx.strokeRect(X(sx > 0 ? 1800 - 300 : -1800), Y(-450), 300 * S, 900 * S); }
+  // líneas del estadio real (stadiums/haxeleven_x11.hbs)
+  for (const sx of [-1, 1]) {
+    const x0 = sx * 1800;
+    ctx.strokeRect(X(Math.min(x0, sx * 1050)), Y(-675), 750 * S, 1350 * S);      // área grande
+    ctx.strokeRect(X(Math.min(x0, sx * 1535)), Y(-350), 265 * S, 700 * S);       // área chica
+    const a = Math.asin(300 / 373);                                               // medialuna: radio 373 desde el penal
+    ctx.beginPath(); ctx.arc(X(sx * 1275), Y(0), 373 * S, sx < 0 ? -a : Math.PI - a, sx < 0 ? a : Math.PI + a); ctx.stroke();
+    ctx.fillStyle = css('--line'); ctx.beginPath(); ctx.arc(X(sx * 1275), Y(0), 4 * S * 2, 0, 7); ctx.fill();   // penal
+    ctx.beginPath(); ctx.moveTo(X(x0), Y(-172)); ctx.lineTo(X(sx * 1908), Y(-172)); ctx.lineTo(X(sx * 1908), Y(172));
+    ctx.lineTo(X(x0), Y(172)); ctx.stroke();                                      // arco
+  }
   const p = G.pos[f];
   for (let i = 0; i < 22; i++) {
     if (!G.on[i]) continue;
@@ -56,7 +68,10 @@ function draw() {
   ctx.fillStyle = css('--ball'); ctx.strokeStyle = '#000'; ctx.lineWidth = 2;
   ctx.beginPath(); ctx.arc(X(b[0] / 10), Y(b[1] / 10), 8 * S * 1.6, 0, 7); ctx.fill(); ctx.stroke();
   const sc = G.score[f];
-  document.getElementById('info').textContent = `${(f / 60).toFixed(1)} s · ${sc[0]}–${sc[1]}`;
+  const KIND = {1: 'lateral', 2: 'córner', 3: 'saque de arco', 4: 'tiro libre', 5: 'penal'};
+  const ph = G.phase[f], k = G.pkind ? G.pkind[f] : 0, tm = G.pteam ? G.pteam[f] : -1;
+  const pieza = ph === 2 && KIND[k] ? ` · ${KIND[k]} para ${tm === 0 ? 'rojo' : 'azul'}` : (ph === 5 ? ' · saque inicial' : '');
+  document.getElementById('info').textContent = `${(f / 60).toFixed(1)} s · ${sc[0]}–${sc[1]}${pieza}`;
   seek.value = f;
 }
 function loop(now) {
@@ -77,7 +92,8 @@ def main():
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     g = json.loads(Path(a.traj).read_text(encoding="utf-8"))[a.game]
-    data = dict(pos=g["pos"], ball=g["ball"], on=g["pid"], score=g["score"])
+    data = dict(pos=g["pos"], ball=g["ball"], on=g["pid"], score=g["score"], phase=g["phase"],
+                pkind=g.get("pkind"), pteam=g.get("pteam"))
     html = PAGE.replace("__DATA__", json.dumps(data, separators=(",", ":"))).replace("__SRC__", Path(a.traj).name)
     Path(a.out).write_text(html, encoding="utf-8")
     print(a.out)

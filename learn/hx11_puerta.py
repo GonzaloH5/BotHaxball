@@ -60,6 +60,10 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--model", required=True)
     ap.add_argument("--temp", type=float, default=1.0)
+    ap.add_argument("--ens", type=int, default=0, help="acciones en bloque: ensamble temporal de K decisiones (0 = no)")
+    ap.add_argument("--ens-m", type=float, default=0.0)
+    ap.add_argument("--renovar", type=float, default=1.0, help="ruido persistente de la dirección (1 = no)")
+    ap.add_argument("--renovar-patada", type=float, default=1.0, help="ruido persistente de la tecla de patear")
     ap.add_argument("--every", type=int, default=CL.FRAME_SKIP)
     ap.add_argument("--matches", type=int, default=20)
     ap.add_argument("--cerca", type=int, default=1600)
@@ -83,7 +87,8 @@ def main():
         per = max(1, n // len(matches))
         sl = [(mi, t0, s) for mi, m in enumerate(matches)
               for t0, s in CL.starts(m, owners[mi], per, rng, near=kind == "cerca")]
-        rows = CL.rollout(net, matches, owners, sl, n_env=64, seed=0, temp_move=a.temp, every=a.every)
+        rows = CL.rollout(net, matches, owners, sl, n_env=64, seed=0, temp_move=a.temp, every=a.every, ens_k=a.ens,
+                          ens_m=a.ens_m, renew=a.renovar, renew_kick=a.renovar_patada)
         res[kind] = {}
         for line in ("ARQ", "DEF", "MCD", "MED", "DEL"):
             rr = [r for r in rows if r.get("linea") == line]
@@ -96,11 +101,17 @@ def main():
                                             ic90=[round(lo, 3), round(hi, 3)], pasa=bool(hi >= LO and lo <= HI))
         print(kind, json.dumps({l: {k: (v["razon"], v["pasa"]) for k, v in d.items() if k != "ventanas"}
                                 for l, d in res[kind].items()}, ensure_ascii=False), flush=True)
-    Path(a.out + ".json").write_text(json.dumps(dict(modelo=a.model, temp=a.temp, cada=a.every, partidos=names,
+    Path(a.out + ".json").write_text(json.dumps(dict(modelo=a.model, temp=a.temp, cada=a.every, ens=a.ens,
+                                                     ens_m=a.ens_m, renovar=a.renovar,
+                                                     renovar_patada=a.renovar_patada, partidos=names,
                                                      resultado=res), indent=1), encoding="utf-8")
     md = ["# Puerta P3 de L0 por puesto (partidos de prueba)", "",
           f"Con [`learn/hx11_puerta.py`](../../learn/hx11_puerta.py). Modelo `{a.model}`, temperatura {a.temp}, "
-          f"decisión cada {a.every} ticks, {len(names)} partidos de prueba. Razón bot/humano en las mismas ventanas, "
+          f"decisión cada {a.every} ticks"
+          f"{f', ensamble temporal de {a.ens} decisiones (m = {a.ens_m})' if a.ens > 1 else ''}"
+          f"{f', ruido persistente (renovación {a.renovar})' if a.renovar < 1 else ''}"
+          f"{f', patada persistente (renovación {a.renovar_patada})' if a.renovar_patada < 1 else ''}, "
+          f"{len(names)} partidos de prueba. Razón bot/humano en las mismas ventanas, "
           f"con IC 90%; **pasa** si el IC se superpone con [{LO}; {HI}].", ""]
     for kind, d in res.items():
         md += [f"## Ventanas {'cerca de la pelota' if kind == 'cerca' else 'al azar'}", "",

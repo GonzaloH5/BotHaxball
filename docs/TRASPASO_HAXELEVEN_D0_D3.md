@@ -453,17 +453,80 @@ Mismo banco que la puerta anterior: temperatura 0,7, 20 partidos de prueba, 1600
 - **Lectura:** la red ancha pasa la puerta en ARQ, DEF y MCD. MED y DEL siguen cortos de toques cerca de la pelota (los humanos de esas líneas conducen más: 6,2–6,8 toques/min contra ~3,5 del bot).
 - **Para el piloto con 21 humanos:** empezar por puestos defensivos (ARQ, LI, LD, DFC, MCD). La ancha es el modelo por defecto de `bot.js` y `partido.js` (`runs/hx11_l0/l0_sinhist_ancho/model_final.pt`). La paridad del cerebro con este modelo da diferencia 0,0.
 
-### En curso al escribir esto (2026-10-09, tarde)
+### Retención: la causa era el sorteo de la tecla de patear (2026-10-09, noche)
 
-- Nada corriendo. La PC prestada está libre y el vigilante no está activo.
+- **Diagnóstico** (`learn/hx11_closed_loop.py`, métricas nuevas de control, control largo y patadas cargadas): todo el déficit estaba en las posesiones largas. El control en rachas de 90 ticks o más estaba al 33–42% del humano, mientras el control corto estaba a la par.
+- **Mecanismo:** el bot patea un 33% más por segundo de control. La patada sale al *apretar* la tecla, y el sorteo independiente cada 3 ticks partía una apretada en varias.
+  - En los datos humanos, la probabilidad de patear por segundo de control es casi constante (~0,8/s), así que no faltaba un "reloj de posesión".
+  - El ruido persistente de la dirección (`StickyNoise`, Gumbel-max) baja la vibración a nivel humano, pero no mejora los toques: la vibración no era la causa.
+- **Arreglo de inferencia:** tecla de patear persistente (`--renovar-patada`, en `sample`, el lazo, el selfplay, la puerta y el cerebro de la sala). Elegido en partidos de **desarrollo** (12 partidos, 640 ventanas):
+
+  | Renovación | Patadas | Toques | Control largo |
+  |---|---|---|---|
+  | 1 | 0,98 | 0,57 | 0,33 |
+  | 0,7 | 0,95 | 0,63 | 0,46 |
+  | 0,5 | 0,91 | 0,68 | 0,44 |
+  | 0,33 | 0,79 | 0,78 | 0,72 |
+
+- **Puerta P3 en prueba** (`reports/hx11/l0_puerta_ancho_patada033.md`): **pasan los 5 puestos.**
+  - Patadas 0,73–0,80 (el IC toca 0,75).
+  - Toques cerca de la pelota: DEF 1,14, MCD 1,44, MED 0,87 y DEL 0,86.
+  - Velocidad 0,87–0,95 y ubicación 1,02–1,07.
+  - Corrió con el árbitro antes de los dos últimos cambios del lateral; en las ventanas no reactivas cerca de la pelota eso casi no pesa.
+- **Acciones en bloque** (`--chunk`, `Ensemble` de ACT): el ajuste `l0_ancho_bloque` (20.000 pasos desde la ancha) terminó en la PC prestada, pero **todavía no se evaluó**.
+
+### Simulador: reglas de pelota parada corregidas con las grabaciones (2026-10-09, noche)
+
+El usuario las vio en los partidos simulados (visor `learn/hx11_replay_html.py`, ahora con las líneas reales del estadio y la pelota parada en juego):
+
+- **Saque de arco:** la sala saca a los rivales del área grande a |x| = 1035, con su misma y, un tick después de la colocación (328 de 328 en el banco). Faltaba en `env/hx11` (`_gk_clear_box`).
+- **Lateral** (anuncios "COMO NO VAS A SABER SACAR UN LATERAL! 💀" y 6603 laterales del banco):
+  - **Llevar la pelota por la línea es legal** (122 px de mediana). Hay planos solo para la pelota en |y| = 1238,14, que la frenan en 1230.
+  - **Patear con la pelota ya adentro** (metida empujando) es mal sacado: 36 de 37 casos.
+  - **Meterla, volver a sacarla y patear desde afuera** es legal: 24 de 25 casos, adentro hasta 66 ticks.
+  - **Metida y dejada adentro sin patear:** mal sacado pasados `LATERAL_INSIDE_TICKS` = 90 (regla del usuario; los humanos casi no lo hacen).
+  - **Patada que no mete la pelota** en 45 ticks: mal sacado contra el **último que la tocó** (la sala repite a los ~51 ticks). Si la toca un rival afuera, vuelve a sacar el mismo equipo (6 de 8).
+  - Las primeras versiones de ese día estaban mal: el supuesto de 2 s desde la colocación, y "cualquier empujón es mal sacado", que trababa a los bots en un ida y vuelta.
+- **Pruebas:** 15 en `tests/test_hx11_env.py`, una por regla. El árbitro en sombra contra las 31 grabaciones corre con las reglas finales (`runs/hx11_l0/s4_arbitro_v2.json`).
+- **Pelotas paradas de los bots en el lazo reactivo** (`learn/hx11_pelota_parada.py`): con las reglas correctas, **mal sacado 48% contra 2% humano**. Además, a veces ningún bot va a sacar (laterales de 27 s, un córner de 47 s).
+
+### Ajuste corto del lateral (L0.5 dirigido, aprobado por el usuario el 2026-10-09)
+
+- `learn/hx11_ajuste_lateral.py`: **autoimitación filtrada** (Oh et al. 2018).
+  1. Episodios de lateral en el simulador desde laterales reales de entrenamiento, con los 22 bots con la configuración de sala (temperatura 0,7, patada 0,33).
+  2. Se guardan las decisiones del equipo que saca, cerca de la pelota, en los laterales bien sacados.
+  3. Ajuste con `learn.hx11_bc --init <ancha> --extra-data <colecta.npz> --extra-frac f`.
+- **Prueba chica:** 75% bien, 22% mal y 3% por tiempo.
+- **Medición:** tasa de "bien" sobre 400 laterales de desarrollo (`base_dev`) antes y después, y la puerta P3 completa antes de usar el modelo.
+
+- **Resultado del ajuste r1** (`runs/hx11_l0/l0_ajuste_lateral_r1`; 2000 pasos, 20% del lote con 105.416 decisiones de laterales bien sacados; NLL humana 1,370 contra 1,368): **empeoró**, de 75% a 70% bien sacados en los mismos 400 laterales de desarrollo. **No se usa.**
+  - Con 75% de éxito, filtrar por episodio casi no da contraste.
+  - Además, entrenar sobre acciones sorteadas a temperatura 0,7 y volver a aplicar 0,7 endurece al bot.
+- **La causa real era la patada persistente.** Todos los fallos eran "metida empujando sin patear a tiempo": el que saca se guardaba la patada.
+  - Con sorteo independiente: 91% bien.
+  - **Con la persistente solo en juego abierto** (`piece_rows`: independiente en pelota parada y saque inicial; también en el cerebro de la sala, con la fase causal): **90% bien, 10% mal** (los humanos rondan el 97%).
+  - La retención en desarrollo **mejora**: toques 0,91, control largo 0,90, patadas 0,80.
+  - Con 22 bots, el lateral sigue mal (61%): el compañero más cercano está a 140–830 px al colocar. Es el fallo de coordinación, no la patada.
+- **Simulador final contra la sala** (árbitro en sombra v4, `runs/hx11_l0/s4_arbitro_v4.json`): colocaciones 1509 aciertos, 43 de más y 30 no vistas (original 1490, 53 y 49). Precisión 96,0% y recall 96,8%, **mejor que el original en todo**. El lateral, refinado con los toques: si lo vuelve a tocar el que sacó o un compañero, cuenta como sacado (370 + 35 casos del banco).
 
 ### Lo que sigue, en orden
 
-1. **Piloto C0 con 21 humanos y el bot** en un puesto defensivo, cuando el usuario arme el partido. Grabar y analizar con `tools/hx11_rec_bots.py`, que también sirve para una sola rec con un bot, contra humanos del mismo puesto.
-2. **¿Más datos ayudan?** Misma receta ancha con la mitad de los partidos de entrenamiento (145). Si sale claramente peor, sumar las ~310 grabaciones de mapas anteriores, adaptando las coordenadas. Va en la PC prestada (~4 h); hay que proponérselo al usuario antes.
-3. **Retención en MED y DEL** (estructural): etiquetas de decisión cada 6 ticks (la tecla sostenida del tramo) o el ajuste corto L0.5 contra estadísticas de proceso por puesto. Requiere aprobación de cómputo.
-4. **Partido de 22 bots:** abandonado por ahora (decisión del usuario). Lo que se sabe está en la sección del partido de 22 bots.
-5. **Pendientes de análisis de antes:** techos humano contra humano para la puerta de realismo de L1 (B7), y las mejoras de nivel 2 (P10, marca perdida, E2b), solo cuando una evaluación las necesite.
+1. **Puerta P3 con la patada mixta** (`reports/hx11/l0_puerta_ancho_patada033_mixta.md`). Si pasa, es la configuración por defecto del bot de sala.
+2. **Evaluar `l0_ancho_bloque`** (acciones en bloque, con y sin ensamble) en el mismo banco, sobre desarrollo.
+3. **Piloto C0 con 21 humanos y el bot**, con `--renovar-patada 0.33`. Grabar y analizar con `tools/hx11_rec_bots.py`.
+4. **Córner** (pedido del usuario: "lo mismo que el lateral, cómo funcionan en la sala"). Lo medido hasta ahora:
+   - Colocación, barrera de 750 px, disco del punto y jugadores sin masa: coinciden con la sala (99,6–100%). La pelota no se puede mover antes de la patada.
+   - **"CORNER ITALIANO? 🍕"** (2 casos) es la patada que sale hacia afuera por la línea de fondo (pega en la red de afuera y no llega al área). La sala lo cobra como salida normal, saque de arco para el rival; el simulador ya lo hace.
+   - **"¡SE ACABA EL TIEMPO PARA SACAR EL CORNER!"** es solo un aviso. En ~10.600 pelotas paradas del banco la sala nunca cedió por tiempo: córners pateados hasta 1366 ticks después. `PIECE_TIMEOUT` pasó de 600 (cesión supuesta) a 1800 (solo red de seguridad).
+   - **Comba del córner:** el modelo del simulador tiene ~20% de error relativo en la gravedad (p50 0,0035 contra 0,0152 de la sala). Falta ajustarlo con los 18.000 ticks de córner (pendiente de S2).
+   - **Falta medir a los bots en córners**, con un colector como el del lateral: tiempo hasta sacar, tasa de córner italiano, si llega al área, primer toque atacante o defensor, tiros y goles.
+5. **Lateral después de la patada, refinado con el árbitro en sombra (v2 tenía 33 cobros de más):**
+   - si un compañero la toca antes de entrar, el lateral cuenta como sacado (plazo de seguridad de 480 ticks);
+   - si la toca un rival afuera, el lateral vuelve al que sacaba (`RI_LAT_THROWER`, `RI_LAT_TOUCHED`).
+   Árbitro en sombra v3: `runs/hx11_l0/s4_arbitro_v3.json`.
+6. **"¿Quién va?" en pelotas paradas y en la disputa de la pelota** (el fallo de coordinación de 22 imitadores), y los rivales que vuelven a entrar al área en el saque de arco: ajuste dirigido como el del lateral.
+5. **¿Más datos ayudan?** La prueba de la mitad de los partidos. El usuario la postergó.
+6. **Pendientes de análisis:** techos humano contra humano para la puerta de realismo de L1 (B7), y las mejoras de nivel 2 (P10, marca perdida, E2b).
 
 ### Archivos de la sesión del 2026-10-08 (ya commiteados en a806f15 y 4c86209)
 

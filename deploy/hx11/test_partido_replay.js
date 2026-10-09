@@ -27,7 +27,8 @@ const got = new Set();
 let ready = false, msgs = 0, moves = 0, total = 0, frames = 0, t0 = null;
 
 const cer = startCerebro({ model: opt("--model", "runs/hx11_l0/l0_sinhist_ancho/model_final.pt"), pos: null, temp: 0.7,
-                           every: Number(opt("--cada-ticks", "3")), onReady: () => { ready = true; } });
+                           every: Number(opt("--cada-ticks", "3")), renovarPatada: parseFloat(opt("--renovar-patada", "0.33")),
+                           onReady: () => { ready = true; } });
 require("readline").createInterface({ input: cer.proc.stdout }).on("line", (line) => {
   let m; try { m = JSON.parse(line); } catch { return; }
   if (!m.inputs) return;

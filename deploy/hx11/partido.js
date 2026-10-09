@@ -67,7 +67,9 @@ function parent() {
 
   const cer = startCerebro({
     model: arg("--model", "runs/hx11_l0/l0_sinhist_ancho/model_final.pt"), pos: null, temp: parseFloat(arg("--temp", "0.7")),
-    every: Number(arg("--cada-ticks", "3")), onReady: () => { ready = true; console.log("cerebro listo (varios bots)"); },
+    every: Number(arg("--cada-ticks", "3")), ens: Number(arg("--ens", "0")), ensM: parseFloat(arg("--ens-m", "0")),
+    renovarPatada: parseFloat(arg("--renovar-patada", "0.33")),
+    onReady: () => { ready = true; console.log("cerebro listo (varios bots)"); },
   });
   // el cerebro en modo varios bots responde {"t", "inputs": {id: bits}}: a cada proceso, las teclas de sus bots
   readline.createInterface({ input: cer.proc.stdout }).on("line", (line) => {

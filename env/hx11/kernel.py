@@ -60,7 +60,10 @@ RI_DONE = 27         # partido terminado
 RI_LEN = 28          # duración del partido en ticks de reloj
 RI_EVENT = 29        # evento del tick (para el entorno y las pruebas; EV_*)
 RI_HOLD = 30         # ticks del valor fijo de la barra en este saque (sorteado)
-RI_SIZE = 31
+RI_LAT_INSIDE = 31   # lateral pendiente: ticks seguidos con la pelota ya adentro de la cancha (metida sin patear)
+RI_LAT_THROWER = 32  # el que pateó el lateral (para saber si después la tocó otro antes de entrar)
+RI_LAT_TOUCHED = 33  # un compañero del que sacó la tocó antes de entrar: el lateral ya cuenta como sacado
+RI_SIZE = 34
 # eventos del tick
 EV_NONE, EV_GOAL_RED, EV_GOAL_BLUE, EV_OUT, EV_PLACE, EV_PIECE_KICK, EV_FOUL, EV_OFFSIDE, EV_KICKOFF, EV_TIMEOUT = range(10)
 # ---------------------------------------------------------------------------- estado real
@@ -229,7 +232,23 @@ def _place(pos, vel, inv, mask, group, radius, grav, ri, rf, kind, team, x, y, f
         for p in range(P):
             if _team_of(p, n_red) != team:
                 group[fp + p] = C0 if x < 0 else C1
+    ri[RI_LAT_INSIDE] = 0
     ri[RI_EVENT] = EV_PLACE
+
+
+@njit(cache=True)
+def _gk_clear_box(pos, vel, radius, fp, P, n_red, team, spot_x):
+    """Saque de arco: los rivales que están dentro del área grande van a |x| = 1035 (justo afuera de la línea), con su
+    misma y (la sala lo hace un tick después de la colocación; 328 de 328 en el banco, 2026-10-09)."""
+    side = 1.0 if spot_x > 0 else -1.0
+    for p in range(P):
+        q = fp + p
+        if _team_of(p, n_red) == team or radius[q] <= 0.0:
+            continue
+        if pos[q, 0] * side > C.BOX_X and abs(pos[q, 1]) < C.BOX_Y:
+            pos[q, 0] = side * C.GK_CLEAR_X
+            vel[q, 0] = 0.0
+            vel[q, 1] = 0.0
 
 
 @njit(cache=True)
@@ -441,6 +460,8 @@ def referee(pos, vel, mask, group, radius, inv, grav, ri, rf, fs, fl, kicked, kv
         team = ri[RI_TEAM]
         if ri[RI_TICKS] >= 1 and ri[RI_BARRIER_ON] == 0:
             _barrier_on(pos, radius, mask, ri, rf)
+            if kind == C.GOAL_KICK:
+                _gk_clear_box(pos, vel, radius, fp, P, n_red, team, rf[RF_SPOT_X])
         # masa de la pelota: barra (valor fijo y onda de 150 ticks) o fija
         if kind == C.CORNER or kind == C.FREE_KICK or kind == C.GOAL_KICK:
             t = ri[RI_TICKS]
@@ -448,6 +469,19 @@ def referee(pos, vel, mask, group, radius, inv, grav, ri, rf, fs, fl, kicked, kv
                 inv[0] = hold[kind]
             else:
                 inv[0] = bar[kind, (t - ri[RI_HOLD]) % C.BAR_PERIOD]
+        if kind == C.LATERAL:
+            ri[RI_LAT_INSIDE] = ri[RI_LAT_INSIDE] + 1 if abs(pos[0, 1]) < C.LATERAL_OUT_Y else 0
+        if kind == C.LATERAL and (ri[RI_LAT_INSIDE] > C.LATERAL_INSIDE_TICKS or (
+                kicker >= 0 and _team_of(kicker, n_red) == team and abs(pos[0, 1] - vel[0, 1]) < C.LATERAL_OUT_Y)):
+            # lateral pateado con la pelota ya adentro (antes de la patada), o metida sin patear y dejada adentro: mal
+            # sacado, para el rival en el punto original
+            ri[RI_LAT_INSIDE] = 0
+            ri[RI_MODE] = OUT_PENDING
+            ri[RI_TICKS] = 0
+            ri[RI_KIND] = C.LATERAL
+            ri[RI_TEAM] = 1 - team
+            ri[RI_EVENT] = EV_OUT
+            return 0
         if kicker >= 0 and _team_of(kicker, n_red) == team:
             ri[RI_MODE] = OPEN
             ri[RI_TICKS] = 0
@@ -456,6 +490,8 @@ def referee(pos, vel, mask, group, radius, inv, grav, ri, rf, fs, fl, kicked, kv
             ri[RI_LAST] = kicker
             ri[RI_EXEMPT] = 1 if (kind == C.LATERAL or kind == C.CORNER or kind == C.GOAL_KICK) else 0
             ri[RI_LAT_ARMED] = 0 if kind == C.LATERAL else 1
+            ri[RI_LAT_THROWER] = kicker
+            ri[RI_LAT_TOUCHED] = 0
             ri[RI_EVENT] = EV_PIECE_KICK
             # comba de la pelota parada [aproximado]
             vx = kvel[kicker, 0]
@@ -609,13 +645,33 @@ def referee(pos, vel, mask, group, radius, inv, grav, ri, rf, fs, fl, kicked, kv
         rf[RF_CROSS_X] = bx
     ri[RI_PREV_IN_Y] = 1 if inside_y else 0
     if ri[RI_LAT_ARMED] == 0:
-        if abs(by) < C.LINE_H - C.OUT_MARGIN:
+        thrower = ri[RI_LAT_THROWER]
+        if abs(by) < C.LATERAL_OUT_Y:
+            # entró a la cancha: el lateral ya se sacó
             ri[RI_LAT_ARMED] = 1
-        elif ri[RI_TICKS] >= C.BAD_LATERAL_TICKS and poss >= 0:
-            # [supuesto] lateral mal sacado: se repite para el rival del último que tocó, en el mismo punto
+        elif poss >= 0 and thrower >= 0 and poss != thrower and _team_of(poss, n_red) != _team_of(thrower, n_red):
+            # la tocó un rival con la pelota afuera: salida contra el rival, el lateral vuelve al que sacaba, en el punto
             ri[RI_LAT_ARMED] = 1
             ri[RI_MODE] = OUT_PENDING
-            ri[RI_TICKS] = C.LATERAL_DELAY
+            ri[RI_TICKS] = 0
+            ri[RI_KIND] = C.LATERAL
+            ri[RI_TEAM] = _team_of(thrower, n_red)
+            ri[RI_EVENT] = EV_OUT
+            return 0
+        elif thrower >= 0 and ri[RI_LAT_TOUCHED] == 0 and (
+                (toucher >= 0 and _team_of(toucher, n_red) == _team_of(thrower, n_red)
+                 and (toucher != thrower or ri[RI_TICKS] >= 3))
+                or (poss >= 0 and poss != thrower and _team_of(poss, n_red) == _team_of(thrower, n_red))):
+            # la volvió a tocar el que sacó, o un compañero: el lateral ya cuenta como sacado (puede entrar mucho
+            # después; en el banco, 370 + 35 casos entraron hasta 418 ticks después de la patada)
+            ri[RI_LAT_TOUCHED] = 1
+            return 0
+        elif ri[RI_TICKS] >= (C.BAD_LATERAL_TICKS_TOUCHED if ri[RI_LAT_TOUCHED] else C.BAD_LATERAL_TICKS) and poss >= 0:
+            # lateral mal sacado (no entró): se repite para el rival del último que la tocó, en el punto original,
+            # después de la demora de colocación (la sala: p50 51 ticks desde la patada)
+            ri[RI_LAT_ARMED] = 1
+            ri[RI_MODE] = OUT_PENDING
+            ri[RI_TICKS] = 0
             ri[RI_KIND] = C.LATERAL
             ri[RI_TEAM] = 1 - _team_of(poss, n_red)
             ri[RI_EVENT] = EV_OUT

@@ -297,16 +297,31 @@ def build(m: Match, t, s, d, extra=False):
     return own, ents, y, y != prev
 
 
+CHUNK_STEP = 3          # acciones en bloque: una por decisión (cada 3 ticks)
+
+
+def chunk_labels(m: Match, t, s, K, step=CHUNK_STEP):
+    """Acciones humanas en t, t + step, …, t + step·(K − 1), en coordenadas del equipo, para las acciones en bloque
+    (ACT, Zhao 2023). −100 donde el lugar cambió de jugador, no hay tecla o se acabó el partido (se ignoran)."""
+    tj = t[:, None] + step * np.arange(K)[None]
+    tc = np.minimum(tj, m.T - 1)
+    ss = np.broadcast_to(s[:, None], tc.shape)
+    ok = (tj < m.T) & (m.pid[tc, ss] == m.pid[t, s][:, None]) & (m.inp[tc, ss] >= 0)
+    y = action_of_input(np.maximum(m.inp[tc, ss], 0), ss >= 11)
+    return np.where(ok, y, -100).astype(np.int64)
+
+
 class Sampler:
-    """Muestras al azar de varios partidos: (propia, entidades, acción, cambió, línea)."""
+    """Muestras al azar de varios partidos: (propia, entidades, acción, cambió[, duración][, acciones en bloque])."""
 
     def __init__(self, names, stride=2, seed=0, modos=None, extra=False, cerca_frac=0.0, cerca_px=150.0, hold=False,
-                 por_lote=32):
+                 por_lote=32, chunk=0):
         """`cerca_frac` > 0: esa fracción de cada lote sale de muestras con el jugador a <= `cerca_px` de la pelota en
         el tick de la etiqueta (sobremuestreo de los momentos con pelota; brazo del 2026-10-08)."""
         self.rng = np.random.default_rng(seed)
         self.extra = extra
         self.hold = hold
+        self.chunk = chunk
         self.por_lote = por_lote
         self.cerca_frac = cerca_frac
         self.matches = [load_match(n, modos, hold=hold) for n in names]
@@ -339,7 +354,8 @@ class Sampler:
                  else self.rng.integers(0, len(t_all), m_n))
             d = self.rng.integers(D_MIN, D_MAX + 1, m_n)
             out.append(build(self.matches[j], t_all[r], s_all[r], d, self.extra)
-                       + ((hold_class(self.matches[j], t_all[r], s_all[r]),) if self.hold else ()))
+                       + ((hold_class(self.matches[j], t_all[r], s_all[r]),) if self.hold else ())
+                       + ((chunk_labels(self.matches[j], t_all[r], s_all[r], self.chunk),) if self.chunk > 1 else ()))
         return out
 
     def batch(self, B):

@@ -31,7 +31,7 @@ import torch
 from learn.hx11_closed_loop import bits_of_action
 from learn.hx11_data import D_MAX, D_MIN, FAULT_MODES, LINES, MAX_BACK, ROT_MOVE, Match, build
 from learn.hx11_fase import Fase
-from learn.hx11_policy import SetPolicy, sample
+from learn.hx11_policy import Ensemble, SetPolicy, StickyNoise, piece_rows, policy_logits, sample
 
 ROOT = Path(__file__).resolve().parent.parent
 CAP = 4096
@@ -45,7 +45,7 @@ def lookup(vocab, key):
 
 
 class Cerebro:
-    def __init__(self, model, pos, vocab, temp=1.0, every=3, hyst=0.0):
+    def __init__(self, model, pos, vocab, temp=1.0, every=3, hyst=0.0, ens_k=0, ens_m=0.0, renew=1.0, renew_kick=1.0):
         ck = torch.load(model, map_location="cpu", weights_only=False)
         self.net = SetPolicy(**ck["config"])
         self.net.load_state_dict(ck["state"])
@@ -53,6 +53,12 @@ class Cerebro:
         self.net.hold = False
         self.temp, self.every, self.hyst = temp, every, hyst
         self.prev = {}                          # id -> última acción (coordenadas del equipo), para la histéresis
+        # acciones en bloque (ACT): ensamble temporal por jugador, si el modelo predice varias decisiones
+        # ruido persistente (dirección y tecla de patear), por jugador
+        self.renew, self.renew_kick = renew, renew_kick
+        self.noise = StickyNoise(renew, 0, renew_kick) if (renew < 1.0 or renew_kick < 1.0) else None
+        self.ens = (Ensemble(min(ens_k, self.net.chunk), ens_m, every)
+                    if ens_k > 1 and getattr(self.net, "chunk", 1) > 1 else None)
         v = lookup(vocab, pos) if pos else None
         self.anchor = np.array(v["ancla"], np.float32) if v else None
         self.line = int(v["linea_idx"]) if v else 3
@@ -137,6 +143,14 @@ class Cerebro:
         self.n += 1
         self.ticks += 1
 
+    def _noise(self, ids):
+        """Tiradas persistentes para `sample` (vacío si no hay ruido persistente)."""
+        if self.noise is None:
+            return {}
+        return dict(gumbel=self.noise.get(ids) if self.renew < 1.0 else None,
+                    kick_u=self.noise.get_kick(ids, piece_rows([self.w.phase[self.n - 1]] * len(ids)))
+                    if self.renew_kick < 1.0 else None)
+
     def decide_many(self, bots):
         """Varios bots a la vez: bots = [(id, retardo)] registrados con `self.bots`. Devuelve {id: bits}."""
         if self.ticks % self.every or self.n < MAX_BACK + 1:
@@ -159,8 +173,11 @@ class Cerebro:
                                 np.array([d for _, _, d in rows]), self.net.extra)
         w.T = CAP
         with torch.no_grad():
-            acts = sample(self.net(torch.from_numpy(own), torch.from_numpy(ents)), self.temp,
-                          prev=np.array([self.prev.get(me, -1) for me, _, _ in rows]), hyst=self.hyst)
+            lg = policy_logits(self.net, torch.from_numpy(own), torch.from_numpy(ents), self.ens,
+                               [me for me, _, _ in rows], [self.ticks] * len(rows))
+            ids = [me for me, _, _ in rows]
+            acts = sample(lg, self.temp, prev=np.array([self.prev.get(me, -1) for me in ids]), hyst=self.hyst,
+                          **self._noise(ids))
         out = {}
         for (me, s, d), a in zip(rows, acts):
             a = int(a)
@@ -196,8 +213,9 @@ class Cerebro:
         own, ents, _, _ = build(w, np.array([t]), np.array([s]), np.array([d]), self.net.extra)
         w.T = CAP
         with torch.no_grad():
-            a = int(sample(self.net(torch.from_numpy(own), torch.from_numpy(ents)), self.temp,
-                           prev=np.array([self.prev.get(int(me), -1)]), hyst=self.hyst)[0])
+            lg = policy_logits(self.net, torch.from_numpy(own), torch.from_numpy(ents), self.ens, [int(me)], [self.ticks])
+            a = int(sample(lg, self.temp, prev=np.array([self.prev.get(int(me), -1)]), hyst=self.hyst,
+                           **self._noise([int(me)]))[0])
         self.prev[int(me)] = a
         if s >= 11:
             a = int(ROT_MOVE[a % 9] + 9 * (a // 9))
@@ -214,12 +232,17 @@ def main():
     ap.add_argument("--every", type=int, default=3)
     ap.add_argument("--hyst", type=float, default=0.0,
                     help="mantiene la dirección anterior si su probabilidad es >= hyst × la máxima (menos cambios de tecla)")
+    ap.add_argument("--ens", type=int, default=0, help="acciones en bloque: ensamble temporal de K decisiones")
+    ap.add_argument("--ens-m", type=float, default=0.0)
+    ap.add_argument("--renovar", type=float, default=1.0, help="ruido persistente de la dirección (1 = no)")
+    ap.add_argument("--renovar-patada", type=float, default=1.0,
+                    help="ruido persistente de la tecla de patear (1 = sorteo independiente)")
     a = ap.parse_args()
     torch.set_num_threads(2)
     vocab = json.loads((ROOT / "reports" / "hx11" / "pos_vocab.json").read_text(encoding="utf-8"))
     if a.pos and lookup(vocab, a.pos) is None:
         sys.exit(f"puesto desconocido {a.pos}; opciones: {', '.join(k for k in vocab if k != 'roles')}")
-    c = Cerebro(a.model, a.pos, vocab, a.temp, a.every, a.hyst)
+    c = Cerebro(a.model, a.pos, vocab, a.temp, a.every, a.hyst, a.ens, a.ens_m, a.renovar, a.renovar_patada)
     print(json.dumps({"listo": True, "pos": a.pos, "linea": LINES[c.line]}), flush=True)
     for line in sys.stdin:
         if not line.strip():

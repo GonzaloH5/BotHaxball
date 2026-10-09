@@ -1,7 +1,7 @@
 // Bot de HaxEleven X11 en una sala real, como cliente (docs/PLAN_HAXELEVEN.md §4; piloto C0).
 //
 //   node deploy/hx11/bot.js --join <id o link de la sala> --pos LI [--name HX-Bot] [--password x]
-//        [--model runs/hx11_l0/l0_sinhist_ancho/model_final.pt] [--temp 0.7]
+//        [--model runs/hx11_l0/l0_sinhist_ancho/model_final.pt] [--temp 0.7] [--renovar-patada 0.33]
 //
 // * El puesto lo elige SOLO el usuario con --pos (o escribiendo "pos MC" en esta consola). Nada del chat lo cambia.
 // * No elige equipo: lo pone el admin de la sala. Mientras no esté en un equipo, no juega.
@@ -44,7 +44,8 @@ const echo = () => {
 };
 
 const cer = startCerebro({
-  model, pos, temp,
+  model, pos, temp, ens: Number(arg("--ens", "0")), ensM: parseFloat(arg("--ens-m", "0")),
+  renovarPatada: parseFloat(arg("--renovar-patada", "0.33")),   // patada persistente en juego abierto (puerta P3)
   onReady: (m) => { ready = true; console.log(`cerebro listo: puesto ${m.pos} (línea ${m.linea})`); },
   onDecision: (msg) => {
     if (!room || paused) return;

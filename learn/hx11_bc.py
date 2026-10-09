@@ -10,6 +10,10 @@ puerta (P3):
 
 Aumento por espejo (y → −y), que además intercambia izquierda y derecha en el ancla.
 
+Acciones en bloque (`--chunk K`, ACT de Zhao et al. 2023): la red predice también las acciones de las K − 1
+decisiones siguientes (cada 3 ticks) y la pérdida promedia las K cabezas. `--init` arranca de otro modelo (la cabeza de
+la acción actual se copia en las K) para un ajuste corto en vez de entrenar de cero.
+
   python -m learn.hx11_bc --train 60 --dev 15 --steps 15000 --out runs/hx11_l0/mini
 """
 from __future__ import annotations
@@ -36,7 +40,12 @@ def mirror(own, ents, y):
     own, ents = own.copy(), ents.copy()
     own[:, OWN_Y] *= -1
     ents[..., ENT_Y] *= -1
-    return own, ents, Y_FLIP[y % 9] + 9 * (y // 9)
+    return own, ents, flip_y(y)
+
+
+def flip_y(y):
+    """Acción espejada; respeta las etiquetas ignoradas (−100) de las acciones en bloque."""
+    return np.where(y >= 0, Y_FLIP[np.maximum(y, 0) % 9] + 9 * (np.maximum(y, 0) // 9), y)
 
 
 def evaluate(net, data):
@@ -88,6 +97,11 @@ def main():
     ap.add_argument("--split-file", default=None, help="JSON con train/dev (para máquinas sin el manifiesto)")
     ap.add_argument("--drop-hist", type=float, default=0.0,
                     help="brazo: borra la historia propia en esta fracción de las muestras (en la inferencia va entera)")
+    ap.add_argument("--chunk", type=int, default=0, help="acciones en bloque: cuántas decisiones predice (ACT)")
+    ap.add_argument("--init", default=None, help="arranca con los pesos de este modelo (ajuste corto)")
+    ap.add_argument("--extra-data", default=None,
+                    help="npz con own/ents/y (p. ej. learn.hx11_ajuste_lateral): se mezcla en cada lote")
+    ap.add_argument("--extra-frac", type=float, default=0.0, help="fracción de cada lote que sale de --extra-data")
     ap.add_argument("--out", default="runs/hx11_l0/mini")
     ap.add_argument("--reanudar", action="store_true",
                     help="si hay out/ultimo.pt con el optimizador, sigue desde ese paso (para PCs que se apagan)")
@@ -103,15 +117,32 @@ def main():
     train = sorted(rng.permutation(sp["train"])[:a.train].tolist())
     dev = sorted(rng.permutation(sp["dev"])[:a.dev].tolist())
     t0 = time.time()
-    tr = Sampler(train, stride=a.stride, seed=a.seed, modos=modos, extra=a.extra, cerca_frac=a.cerca_frac, hold=a.hold)
+    tr = Sampler(train, stride=a.stride, seed=a.seed, modos=modos, extra=a.extra, cerca_frac=a.cerca_frac, hold=a.hold,
+                 chunk=a.chunk)
     dv = Sampler(dev, stride=a.stride, seed=a.seed + 1, modos=modos, extra=a.extra, hold=a.hold)
     dev_data = batch_with_line(dv, 40000)
     print(f"datos: {len(train)} partidos de entrenamiento, {len(dev)} de desarrollo ({time.time() - t0:.0f} s)",
           flush=True)
-    net = SetPolicy(hidden=a.hidden, ent_hidden=a.ent_hidden, sin_historia=a.sin_historia, extra=a.extra, hold=a.hold)
+    net = SetPolicy(hidden=a.hidden, ent_hidden=a.ent_hidden, sin_historia=a.sin_historia, extra=a.extra, hold=a.hold,
+                    chunk=a.chunk)
+    if a.init:
+        src = torch.load(a.init, map_location="cpu", weights_only=False)["state"]
+        if net.chunk > 1 and src["logits.weight"].shape[0] == net.n_actions:
+            # la cabeza de la acción actual del modelo de partida, copiada en las K del bloque
+            src = dict(src, **{"logits.weight": src["logits.weight"].repeat(net.chunk, 1),
+                               "logits.bias": src["logits.bias"].repeat(net.chunk)})
+        net.load_state_dict(src)
+        print(f"pesos iniciales de {a.init}", flush=True)
     opt = torch.optim.AdamW(net.parameters(), lr=a.lr, weight_decay=1e-4)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, a.steps)
-    lossf = nn.CrossEntropyLoss()
+    lossf = nn.CrossEntropyLoss(ignore_index=-100)
+    extra = None
+    if a.extra_data and a.extra_frac > 0:
+        assert net.chunk == 1 and not a.hold, "--extra-data solo con la cabeza de una acción"
+        z = np.load(a.extra_data)
+        extra = (z["own"], z["ents"], z["y"].astype(np.int64))
+        print(f"datos extra: {len(extra[2])} muestras de {a.extra_data}, {a.extra_frac:.0%} de cada lote", flush=True)
+    ci = 4 + int(a.hold)             # índice de las acciones en bloque en el lote
     hist = []
     best = 1e9
     first = 1
@@ -138,14 +169,26 @@ def main():
     for step in range(first, a.steps + 1):
         bt = tr.batch(a.batch)
         own, ents, y = bt[0], bt[1], bt[2]
+        if extra is not None:
+            ne = int(round(len(y) * a.extra_frac))
+            j = rng.integers(0, len(extra[2]), ne)
+            own = np.concatenate([own[ne:], extra[0][j]])
+            ents = np.concatenate([ents[ne:], extra[1][j]])
+            y = np.concatenate([y[ne:], extra[2][j]])
+        yc = bt[ci] if net.chunk > 1 else None
         if rng.random() < 0.5:
             own, ents, y = mirror(own, ents, y)
+            if yc is not None:
+                yc = flip_y(yc)
         if a.drop_hist > 0:
             own = own.copy()
             own[rng.random(len(own)) < a.drop_hist, HIST_LO:HIST_HI] = 0.0
         if a.hold:
             lg, hl = net.forward_hold(torch.from_numpy(own), torch.from_numpy(ents))
             loss = lossf(lg, torch.from_numpy(y)) + lossf(hl, torch.from_numpy(bt[4]))
+        elif yc is not None:
+            lg = net.forward_chunk(torch.from_numpy(own), torch.from_numpy(ents))
+            loss = lossf(lg.reshape(-1, net.n_actions), torch.from_numpy(yc.reshape(-1)))
         else:
             loss = lossf(net(torch.from_numpy(own), torch.from_numpy(ents)), torch.from_numpy(y))
         opt.zero_grad()

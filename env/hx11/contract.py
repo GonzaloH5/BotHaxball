@@ -65,8 +65,38 @@ PENALTY_DISC_TICKS = 76          # penal: la barrera (contra los compañeros del
                                  # disco del punto duran 76 ticks [medido en 1 penal; débil]
 GHOST_RESTORE_AFTER_KICK = 1     # masas y grupos vuelven en el tick siguiente a la patada [medido]
 BALL_RESTORE_AFTER_KICK = {CORNER: 1, GOAL_KICK: 1, FREE_KICK: 1, PENALTY: 1}  # masa de la pelota a 1,65
-BAD_LATERAL_TICKS = 120          # [supuesto] lateral que no entra a la cancha en 2 s: se repite para el rival
-PIECE_TIMEOUT = 600              # [supuesto] "¡SE ACABA EL TIEMPO…!" a ~510–600; cesión al rival "por hacer tiempo"
+# Lateral mal sacado (2026-10-09, banco de prueba y desarrollo + los 9 anuncios "COMO NO VAS A SABER SACAR UN LATERAL"
+# de la sala): la pelota no entra a la cancha (|y| < LATERAL_OUT_Y) después de la patada del lateral. Se repite para el
+# rival del ÚLTIMO que la tocó (si la tocó un rival afuera, vuelve a sacar el mismo equipo: 6 de 8 en el banco; si la
+# tocó un compañero y no entró, saca el otro equipo: 3 de 3).
+# * Los legales que nadie toca entran p50 4, p99 28 ticks después de la patada (6 de 2437 después de 45).
+# * Los que no entran y nadie toca: la sala los repite para el rival en el punto original, p50 51 ticks después de la
+#   patada (p10 41, p90 100) = 45 + LATERAL_DELAY.
+# * Llevar la pelota por la línea antes de patear es legal (122 px de mediana en el banco).
+BAD_LATERAL_TICKS = 45
+# Después de la patada, antes de que entre:
+# * si la toca un RIVAL afuera, la sala corta enseguida (2–29 ticks) y el lateral vuelve al equipo que sacaba, en el
+#   mismo punto (34 casos del banco);
+# * si la vuelve a tocar el que sacó, o un compañero, el lateral ya cuenta como sacado: la pelota puede seguir por la
+#   línea y entrar hasta 418 ticks después de la patada (el mismo: 370 casos, p50 106; compañero: 35, p50 129).
+#   Plazo largo de seguridad:
+BAD_LATERAL_TICKS_TOUCHED = 480
+# Lateral pateado con la pelota ya adentro (la metieron empujando sin patear): mal sacado, se repite para el rival en el
+# punto original. En el banco (6603 laterales, 2026-10-09): 36 de 37 laterales pateados con |y| < LATERAL_OUT_Y se
+# repitieron para el rival; meterla un poco y volver a sacarla antes de patear es legal (24 de 25), y llevarla por la
+# línea también (122 px de mediana).
+# Metida empujando y sin patear: mal sacado si queda adentro más de LATERAL_INSIDE_TICKS seguidos [usuario: "si la
+# empujan sin patear es mal sacado"; en el banco los humanos casi nunca lo hacen (2 casos), y los legales que entraron y
+# volvieron a salir antes de patear estuvieron adentro hasta 66 ticks seguidos].
+LATERAL_INSIDE_TICKS = 90
+# saque de arco: la sala saca a los rivales del área grande (|x| > 1050, |y| < 675) a |x| = 1035, con su misma y, un tick
+# después de la colocación (328 de 328 rivales en 30 partidos de prueba; 2026-10-09)
+BOX_X, BOX_Y = 1050.0, 675.0
+GK_CLEAR_X = 1035.0
+# "¡SE ACABA EL TIEMPO PARA SACAR EL …!" a los 600 ticks es solo un aviso: en ~10.600 pelotas paradas del banco
+# (2026-10-09) la primera patada fue siempre del equipo que sacaba, con esperas de hasta 1366 ticks (córner). No se
+# observó ninguna cesión; 1800 es una red de seguridad del simulador para que una pelota parada no quede trabada.
+PIECE_TIMEOUT = 1800
                                  # (7 + 5 + 4 casos en el banco): se entrega al rival en el mismo punto
 # saque de arco: los rivales quedan con cGroup = c0 (saca el rojo, zona x <= -1050) o c1 (saca el azul): no chocan con
 # nadie ni con la pelota y no pueden entrar a la zona [medido: 68/68]
