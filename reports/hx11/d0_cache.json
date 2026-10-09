@@ -1,0 +1,60 @@
+{
+ "estadio": "HaxEleven RSx11 [1800, 1200]",
+ "partidos": 399,
+ "horas": 88.4,
+ "por_parte": {
+  "dev": {
+   "partidos": 41,
+   "horas": 8.4,
+   "horas_11v11": 7.7,
+   "decisiones": 1785,
+   "patadas": 11554
+  },
+  "test": {
+   "partidos": 53,
+   "horas": 11.5,
+   "horas_11v11": 11.0,
+   "decisiones": 2412,
+   "patadas": 16382
+  },
+  "test_grupos": {
+   "partidos": 12,
+   "horas": 2.6,
+   "horas_11v11": 2.0,
+   "decisiones": 517,
+   "patadas": 3985
+  },
+  "train": {
+   "partidos": 293,
+   "horas": 65.9,
+   "horas_11v11": 61.2,
+   "decisiones": 14097,
+   "patadas": 92904
+  }
+ },
+ "fases": {
+  "juego abierto": 0.7337,
+  "salida pendiente": 0.0147,
+  "pelota parada": 0.1976,
+  "congelamiento": 0.001,
+  "gol": 0.0053,
+  "saque inicial": 0.0476
+ },
+ "once_contra_once": [
+  0.848,
+  0.988,
+  1.0
+ ],
+ "arquero_declarado": [
+  0.0,
+  0.0,
+  1.0
+ ],
+ "partidos_sin_gk_declarado": 149,
+ "arquero_conocido": [
+  1.0,
+  1.0,
+  1.0
+ ],
+ "inferido_vs_declarado": 0.9884
+}

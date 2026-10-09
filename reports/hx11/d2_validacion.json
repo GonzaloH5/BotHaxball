@@ -1,0 +1,37 @@
+{
+ "partidos": 394,
+ "identificabilidad": {
+  "aciertos": 23982,
+  "n": 31357,
+  "tasa": 0.7648
+ },
+ "deriva_px_p10_p50_p90": [
+  35.0,
+  99.4,
+  242.9
+ ],
+ "separacion_px_p10_p50_p90": [
+  99.6,
+  226.4,
+  353.8
+ ],
+ "deriva_sobre_separacion_p50": 0.447,
+ "rol_dominante_mitades": {
+  "n": 7763,
+  "acuerdo": 0.8342
+ },
+ "rol_dominante_vs_anclas": {
+  "n": 7847,
+  "acuerdo": 0.956
+ },
+ "desplazamiento_tick_px_p10_p50_p90": [
+  62.8,
+  173.0,
+  383.2
+ ],
+ "tiempo_por_tick": {
+  "en_su_rol": 0.6309,
+  "permuta_directa": 0.1138,
+  "otro": 0.2554
+ }
+}

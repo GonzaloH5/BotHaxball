@@ -9,7 +9,8 @@
 //     "players": [[id, equipo, input, patada activa (0/1), índice del disco], ...]
 //   * los adornos atados a la pelota con joints (invMass > 1e100) no repiten su posición; sus propiedades (el color
 //     del anillo de carga) sí van.
-// Los anuncios del host van como eventos (traen nombres: la salida es para data/, no se versiona).
+// Los anuncios del host y los nombres de los jugadores (header y eventos "join") van en la salida: es para data/, no se
+// versiona.
 //
 // Uso: node bridge/hx11_ticks.js <grabación.hbr2> --out data/hx11/ticks [--max-minutes 3] [--skip-minutes 0] [--stdout]
 //   --max-minutes 0: el partido entero. --stdout: escribe en la salida estándar (para encadenar con tools.hx11_npz).
@@ -129,6 +130,7 @@ reader = Replay.read(data, {
   // data1: [x, y, vx, vy, gx, gy, radius, bCoef, invMass, damping]; data2: [color, cMask, cGroup]
   onSetDiscProperties: (id, type, d1, d2) => ev("disc_props", { id, player: !!type, d1: plain(d1), d2: plain(d2) }),
   onPlayerTeamChange: (id, team) => ev("team_change", { id, team }),
+  onPlayerJoin: (p) => ev("join", { id: p.id, player: p.name }),
   onAnnouncement: (msg) => ev("announcement", { msg }),
   onGamePauseChange: (paused) => ev("pause", { paused }),
   onTimeIsUp: () => ev("time_up", {}),
@@ -140,7 +142,7 @@ reader = Replay.read(data, {
 
 const st = reader.state.stadium;
 write({ type: "header", source: path.basename(file), stadium: st.name, stadiumFile: saveStadium(st),
-        maxFrameNo: reader.maxFrameNo });
+        maxFrameNo: reader.maxFrameNo, players: reader.state.players.map((p) => ({ id: p.id, name: p.name })) });
 reader.setSpeed(1000);
 let lastF = -1, still = 0;
 setInterval(() => {

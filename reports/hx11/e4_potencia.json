@@ -1,0 +1,247 @@
+{
+ "partidos": 394,
+ "sigma_diferencia_gol": 1.327,
+ "partidos_por_brazo_goles": {
+  "0.1": 2179,
+  "0.2": 545,
+  "0.3": 243,
+  "0.5": 88
+ },
+ "lineas": {
+  "DEL": {
+   "con_pelota_10min": {
+    "n": 1486,
+    "p10": 8.389,
+    "p50": 16.879,
+    "p90": 28.241,
+    "sd_mismo_jugador": 6.3,
+    "jugadores_repetidos": 72,
+    "partidos_bot": 18
+   },
+   "pases_10min": {
+    "n": 1486,
+    "p10": 4.576,
+    "p50": 9.881,
+    "p90": 16.807,
+    "sd_mismo_jugador": 3.895,
+    "jugadores_repetidos": 72,
+    "partidos_bot": 18
+   },
+   "perdidas_10min": {
+    "n": 1486,
+    "p10": 0.0,
+    "p50": 2.929,
+    "p90": 7.55,
+    "sd_mismo_jugador": 2.726,
+    "jugadores_repetidos": 72,
+    "partidos_bot": 23
+   },
+   "patadas_min": {
+    "n": 1486,
+    "p10": 0.531,
+    "p50": 1.077,
+    "p90": 1.797,
+    "sd_mismo_jugador": 0.404,
+    "jugadores_repetidos": 72,
+    "partidos_bot": 18
+   },
+   "pase_completo": {
+    "n": 1314,
+    "p10": 0.2,
+    "p50": 0.429,
+    "p90": 0.667,
+    "sd_mismo_jugador": 0.159,
+    "jugadores_repetidos": 60,
+    "partidos_bot": 21
+   }
+  },
+  "DEF": {
+   "con_pelota_10min": {
+    "n": 2895,
+    "p10": 9.795,
+    "p50": 18.652,
+    "p90": 31.825,
+    "sd_mismo_jugador": 6.722,
+    "jugadores_repetidos": 125,
+    "partidos_bot": 17
+   },
+   "pases_10min": {
+    "n": 2895,
+    "p10": 6.549,
+    "p50": 12.565,
+    "p90": 20.954,
+    "sd_mismo_jugador": 4.376,
+    "jugadores_repetidos": 125,
+    "partidos_bot": 16
+   },
+   "perdidas_10min": {
+    "n": 2895,
+    "p10": 0.0,
+    "p50": 2.062,
+    "p90": 5.901,
+    "sd_mismo_jugador": 2.311,
+    "jugadores_repetidos": 125,
+    "partidos_bot": 27
+   },
+   "patadas_min": {
+    "n": 2895,
+    "p10": 0.742,
+    "p50": 1.398,
+    "p90": 2.33,
+    "sd_mismo_jugador": 0.504,
+    "jugadores_repetidos": 125,
+    "partidos_bot": 18
+   },
+   "pase_completo": {
+    "n": 2773,
+    "p10": 0.267,
+    "p50": 0.5,
+    "p90": 0.695,
+    "sd_mismo_jugador": 0.151,
+    "jugadores_repetidos": 122,
+    "partidos_bot": 22
+   }
+  },
+  "MED": {
+   "con_pelota_10min": {
+    "n": 2812,
+    "p10": 12.148,
+    "p50": 21.905,
+    "p90": 34.78,
+    "sd_mismo_jugador": 7.145,
+    "jugadores_repetidos": 119,
+    "partidos_bot": 18
+   },
+   "pases_10min": {
+    "n": 2812,
+    "p10": 7.391,
+    "p50": 13.84,
+    "p90": 22.442,
+    "sd_mismo_jugador": 4.708,
+    "jugadores_repetidos": 119,
+    "partidos_bot": 17
+   },
+   "perdidas_10min": {
+    "n": 2812,
+    "p10": 0.984,
+    "p50": 3.259,
+    "p90": 8.593,
+    "sd_mismo_jugador": 3.197,
+    "jugadores_repetidos": 119,
+    "partidos_bot": 31
+   },
+   "patadas_min": {
+    "n": 2812,
+    "p10": 0.794,
+    "p50": 1.469,
+    "p90": 2.364,
+    "sd_mismo_jugador": 0.484,
+    "jugadores_repetidos": 119,
+    "partidos_bot": 17
+   },
+   "pase_completo": {
+    "n": 2728,
+    "p10": 0.25,
+    "p50": 0.455,
+    "p90": 0.667,
+    "sd_mismo_jugador": 0.146,
+    "jugadores_repetidos": 117,
+    "partidos_bot": 22
+   }
+  },
+  "ARQ": {
+   "con_pelota_10min": {
+    "n": 775,
+    "p10": 8.709,
+    "p50": 15.143,
+    "p90": 23.327,
+    "sd_mismo_jugador": 5.226,
+    "jugadores_repetidos": 32,
+    "partidos_bot": 23
+   },
+   "pases_10min": {
+    "n": 775,
+    "p10": 4.21,
+    "p50": 7.967,
+    "p90": 12.829,
+    "sd_mismo_jugador": 3.093,
+    "jugadores_repetidos": 32,
+    "partidos_bot": 23
+   },
+   "perdidas_10min": {
+    "n": 775,
+    "p10": 0.0,
+    "p50": 0.0,
+    "p90": 2.195,
+    "sd_mismo_jugador": 0.994,
+    "jugadores_repetidos": 32,
+    "partidos_bot": 36
+   },
+   "patadas_min": {
+    "n": 775,
+    "p10": 0.698,
+    "p50": 1.191,
+    "p90": 1.805,
+    "sd_mismo_jugador": 0.402,
+    "jugadores_repetidos": 32,
+    "partidos_bot": 23
+   },
+   "pase_completo": {
+    "n": 657,
+    "p10": 0.333,
+    "p50": 0.588,
+    "p90": 0.833,
+    "sd_mismo_jugador": 0.186,
+    "jugadores_repetidos": 28,
+    "partidos_bot": 25
+   }
+  },
+  "MCD": {
+   "con_pelota_10min": {
+    "n": 488,
+    "p10": 14.051,
+    "p50": 24.219,
+    "p90": 37.825,
+    "sd_mismo_jugador": 7.176,
+    "jugadores_repetidos": 22,
+    "partidos_bot": 16
+   },
+   "pases_10min": {
+    "n": 488,
+    "p10": 9.053,
+    "p50": 16.464,
+    "p90": 24.931,
+    "sd_mismo_jugador": 5.598,
+    "jugadores_repetidos": 22,
+    "partidos_bot": 22
+   },
+   "perdidas_10min": {
+    "n": 488,
+    "p10": 1.064,
+    "p50": 3.579,
+    "p90": 8.682,
+    "sd_mismo_jugador": 2.617,
+    "jugadores_repetidos": 22,
+    "partidos_bot": 21
+   },
+   "patadas_min": {
+    "n": 488,
+    "p10": 0.949,
+    "p50": 1.68,
+    "p90": 2.585,
+    "sd_mismo_jugador": 0.526,
+    "jugadores_repetidos": 22,
+    "partidos_bot": 18
+   },
+   "pase_completo": {
+    "n": 477,
+    "p10": 0.3,
+    "p50": 0.5,
+    "p90": 0.667,
+    "sd_mismo_jugador": 0.11,
+    "jugadores_repetidos": 22,
+    "partidos_bot": 16
+   }
+  }
+ }
+}

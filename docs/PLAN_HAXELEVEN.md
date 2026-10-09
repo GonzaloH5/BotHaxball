@@ -2,6 +2,16 @@
 
 Borrador del 2026-10-07, pendiente de aprobación. Ese mismo día se revisó con las respuestas del usuario: reglas de falta y offside, penales, laterales, cómo se organizan los partidos, sala y script (§10). Es solo plan y diseño: no se corrió nada, no se usó el pod y no se procesaron las grabaciones. Sigue la regla de `docs/PLAN.md`: cada decisión cita trabajos publicados, y lo que es deducción nuestra va marcado **[inferencia]**.
 
+**Revisión del 2026-10-08 con la auditoría.** Incorpora [`AUDITORIA_PLAN_HAXELEVEN_2026-10-08.md`](AUDITORIA_PLAN_HAXELEVEN_2026-10-08.md), evaluada críticamente en [`REVISION_AUDITORIA_HAXELEVEN.md`](REVISION_AUDITORIA_HAXELEVEN.md) contra evidencia nueva (N1–N7).
+- Cada cambio lleva su identificador **(P1–P10)**, que remite a la tabla de §4 de esa revisión, con su evidencia.
+- **Regla nueva:** ninguna campaña larga de entrenamiento antes de pasar las puertas de §8.
+- **Prioridad:** capacidades futbolísticas reales y prototipos jugables tempranos, no sofisticación.
+- **Estado de D0–D3 (2026-10-08):**
+  - **D0–D2 hechos** sobre los 394 partidos aptos.
+  - **D3 hecho,** con validación (E3).
+  - **Modos por partido reconstruidos** (E2a).
+  - Detalle en [`TRASPASO_HAXELEVEN_D0_D3.md`](TRASPASO_HAXELEVEN_D0_D3.md).
+
 ## 0. Objetivo
 
 **Qué queremos (usuario, 2026-10-07):**
@@ -339,18 +349,46 @@ Los umbrales son propuestas, a fijar por el usuario antes de medir.
 - posiciones, velocidades y entradas de los 22 jugadores;
 - estado del script de S3;
 - marcador y reloj, solo para el crítico.
+- **Hecho (2026-10-08):**
+  - **Banco:** 399 partidos y 88,4 h.
+  - **Aptos (P1):** 394. Son los que tienen al menos 9 jugadores en el equipo más chico; quedan afuera 5 que no son 11v11.
+  - **Por parte:** 290 de entrenamiento, 40 de desarrollo y 64 de prueba (`data/hx11/d0/manifest.json`, `reports/hx11/d0_cache.md`).
+- **Modos por partido (E2a, P1):** `tools/hx11_modos.py` → `data/hx11/modos.json`, `reports/hx11/e2_modos.md`.
+  - **Powershot:** prendido en los 394 partidos.
+  - **Offside:** prendido en 313 y apagado en 4.
+  - **Faltas:** prendidas en 185, apagadas en 31 y desconocidas en 178.
+  - **Regla de la falta:** el umbral es estable (contacto p50 de 115 ticks antes del cobro). Lo que cambia es el modo.
+  - **Uso:** la imitación recibe el modo como observación; en la sala del usuario va "prendido".
 
 **D1. Eventos**, validados con una muestra que revisa el usuario, como los ejemplos de `x4_mechanics`:
 - pase, recepción, remate, powershot (con %), pase largo, centro y despeje;
 - conducción, intercepción y robo;
-- falta cometida y recibida, offside y saques.
+- falta cometida y recibida, offside y saques;
+- **lo propio de HaxBall (usuario, 2026-10-08: "las ventajas vienen de ganar la posición, usar al rival o apoyarse en un compañero para pasarlo"):** pared (A pasa a B, A pasa a un rival y B se la devuelve), usar (patada contra un rival que rebota a favor) y cuerpeo (proteger esperando apoyo), con las definiciones de `x4_mechanics`.
+- **Hecho (2026-10-08, 394 partidos aptos; `reports/hx11/d1_eventos.md`).** Controles contra la sala:
+  - goles: 642/642;
+  - powershot: 98,4% (se corrigió un anuncio que se pegaba a dos patadas);
+  - barra: 99,8%;
+  - faltas con contacto: 94,4%;
+  - offside: 99,6%.
+  - **Pendiente:** la muestra a ojo del usuario (`muestra_revision.md`), que ahora incluye pared, usar y cuerpeo.
 
 **D2. Puestos y formación.**
+- **Hecho y validado por dentro (2026-10-08; `reports/hx11/d2_puestos.md`, `d2_validacion.md`).**
+  - **Formaciones:** familia 4-3-3 (4-1-4-1, 4-3-3, 4-2-3-1) 63%, 3-4-3 20%, 4-4-2 7% y 3-5-2 5% (40 equipos).
+  - **Rol dominante del partido:** igual entre mitades en el 83%.
+  - **Rol por tick:** el jugador está en su rol el 63% del tiempo, en permuta directa el 11% y en otro el 25%.
+  - **Conclusión (P2):** el rol por tick no es el puesto asignado; mezcla permutas, coberturas y desplazamientos.
+  - **Qué recibe la imitación como condición:** el ancla medida del jugador en la mitad del partido y la línea de su rol dominante (§4). El etiquetador queda para el vocabulario de `--pos` y para los reportes.
+  - **Verdad humana:** sigue haciendo falta (E1 liviano, nivel 2), pero ya no está dentro del lazo de entrenamiento.
 - **Coordenadas relativas al equipo:** se normalizan por la dirección de ataque y se miden el centroide y la superficie del equipo (Frencken 2011, *Eur. J. Sport Sci.*).
 - **Asignación de rol por tick:** plantillas de rol con EM y Hungarian, por partición de mínima entropía (Bialkowski 2014, ICDM).
 - **Cambios de rol y de formación:** SoccerCPD (Kim 2022, KDD, 2206.10926) separa los cambios tácticos de los intercambios momentáneos. Contra expertos, acierta el 86,5% de las posiciones: hay que esperar ruido de ese orden.
 - **Clasificación de formación por situación:** 4-3-3, 4-4-2, 3-4-3, 3-5-2 u "otra" (Müller-Budack 2019, 1910.00412, "Does 4-4-2 exist?").
 - **Forma con y sin pelota por separado:** un 3-5-2 defiende como 5-3-2 (Shaw y Glickman 2019, Barça Sports Analytics Summit).
+- **Referencias y marcas (usuario, 2026-10-08).** La forma sola mide al equipo contra sí mismo, no contra el rival: una línea de 4 que se mantiene en su lugar mientras el 9 se ubica para que un pase deje al defensor detrás suyo es una jugada de gol fácil.
+  - **Quién marca a quién, por tick:** HMM sobre la asignación defensor → atacante, con la posición del defensor como combinación de la del atacante, la pelota y el arco propio (Franks, Miller, Bornn y Goldsberry 2015, *Ann. Appl. Stat.*, 1405.0231; hecho para básquet). Da marca personal o zonal, entregas de marca y referencia de cada puesto.
+  - **Del lado del arco:** si el defensor está entre su referencia y el arco, y con cuánto margen.
 - **Etiquetas de verdad para validar el etiquetador.** No hay alineaciones de liga, porque los partidos son casuales. Opciones, en orden:
   - si los técnicos publican la formación o la alineación en Discord (imagen o texto), se usa;
   - si los nombres o avatares declaran el puesto, se usan;
@@ -359,13 +397,33 @@ Los umbrales son propuestas, a fijar por el usuario antes de medir.
 **D3. Valor.**
 - **Valor de posesión de 11v11** (EPV: Fernández, Bornn y Cervone 2021, 2011.09426; VAEP: Decroos 2019, 1802.07127).
 - **Control del espacio** y oportunidad sin pelota (pitch control y OBSO: Spearman 2018, MIT Sloan; generación de espacio: Fernández y Bornn 2018, MIT Sloan).
+- **Espalda ganada y marca perdida.** En HaxBall todos tienen la misma velocidad y aceleración, y no hay regate ni físico distinto: una carrera a un espacio la gana quien sale mejor ubicado y antes. El tiempo de llegada del control del espacio es entonces física exacta, salvo la reacción.
+  - **Margen de cada defensor** con su referencia: su tiempo de llegada al espacio a su espalda menos el del atacante. Negativo es espalda ganada.
+  - **Peligro:** OBSO del atacante (P de que el pase llegue × P de controlarlo × P de gol desde ahí). Se le atribuye al defensor que tenía esa referencia, o a la línea si el que habilitó fue un defensor más atrasado (offside).
+  - **Evento "marca perdida"** con su resultado: pase a la espalda, remate o gol en 5 s.
+  - **Con la latencia de sala** (S6: 10–30 ticks), el bot reacciona tarde. A 2,86 px/tick, 25 ticks son unos 70 px de carrera perdida. Por eso tiene que defender con más margen que un humano o anticiparse.
 - **Usos:**
   - medir el valor agregado por jugador y por puesto;
   - shaping de potencial, de suma cero, como en X4 (Ng 1999).
+- **Hecho y validado (2026-10-08, E3; `reports/hx11/d3_valor.md` §4).** Se entrenan dos modelos independientes.
+  - **Modelo A** (MLP con contexto): candidato a shaping.
+  - **Modelo B** (logística sin contexto para VAEP; grilla de la pelota para el estado): juez.
+  - **Predicción (AUC):** VAEP 0,905 en A y 0,906 en B; estado 0,907 en A y 0,870 en B.
+  - **Calibración:** ECE ≤ 0,004, pero A sobreestima ~30% en el decil alto. Se calibra antes de usarlo (**P6**).
+  - **Valor por jugador entre partidos:** VAEP r = 0,20 en A y 0,28 en B, contra 0,50 del pase completo. El VAEP agregado por jugador **no mide habilidad**: no se usa para pesar demostraciones (**P4**).
+  - **Control del espacio:** σ en el borde de la grilla y sobreconfiado en la zona media. Hay que recalibrarlo antes de usar el "peligro" como objetivo (**P10**).
+  - **Regla (P6):** el modelo que da el shaping nunca es el juez. El juez es goles con potencia (§6), el modelo B y métricas de proceso.
+  - **Marcas a escala (N8, P14; `reports/hx11/d2_marcas.md`):**
+    - **El seguimiento βa sí se sostiene:** por equipo y partido, p50 0,28 (p10–p90 0,21–0,35). La marca es mayormente zonal.
+    - **La "marca perdida" no se sostiene:** 167.506 eventos y apenas × 1,3 de remates sobre el azar. No es métrica de evaluación hasta rediseñarla.
 
 ## 4. Diseño del bot
 
 ### Puesto como condición, no como casilla
+- **Revisión (P2, 2026-10-08):** el ancla de entrenamiento no es la del rol de plantilla de D2, sino la **medida del propio jugador** en la mitad del partido: su posición media relativa al centroide de los jugadores de campo, con y sin la pelota. Va junto con la línea de su rol dominante (ARQ, DEF, MCD, MED o DEL).
+  - **Por qué:** es un dato y no una etiqueta. No arrastra el ruido del etiquetador (rol por tick estable en 63%) y es lo que fija el usuario: un puesto por tramo.
+  - **En la sala:** `--pos LI` se traduce a la línea y al ancla típica de ese puesto. Se toma de los humanos de ese puesto en el banco y la valida el usuario (E1 liviano).
+  - Implementado en `learn/hx11_data.py`.
 - **El puesto se representa con un ancla continua,** aprendida en D2: la posición media del rol en coordenadas del equipo, con y sin pelota.
 - **Se le suma un token de línea:** arquero, defensa, medio o ataque.
 - **Así, puestos parecidos de formaciones distintas quedan vecinos.** Por ejemplo, "LI de 4-4-2" y "CRI de 3-5-2".
@@ -433,8 +491,32 @@ node deploy/hx11/join_bots.js --join <link> --pos LI
 - **Datos:** cada humano de cada partido aporta una trayectoria, 22 por partido. Son muchas más trayectorias de jugador que en X4 (8 por partido), a medir en S0.
 - **Pérdida:** NLL de las teclas, más las cabezas auxiliares de posición.
 - **Métricas:** separadas en cambios de tecla (copycat) y por contexto: abierto, saque propio o rival, con o sin pelota.
-- **Variante pre-registrada, no por defecto:** pesar las demostraciones por valor agregado (D3), o filtrar a los mejores jugadores del banco.
-  - Motivo: en una sala pública el humano promedio no es la vara de "competente".
+- ~~**Variante pre-registrada, no por defecto:** pesar las demostraciones por valor agregado (D3), o filtrar a los mejores jugadores del banco.~~ **Eliminada (P4):**
+  - el VAEP por jugador casi no se repite entre partidos (r 0,20–0,28);
+  - condicionar por el resultado falla en entornos estocásticos (Paster 2022).
+- **Condición (P1, P2):** ancla y línea del jugador; modo de faltas y offside; retardo.
+- **Puerta de L0 (P3), en lazo cerrado no reactivo:**
+  - **Montaje:** el bot controla a un jugador y los otros 21 juegan con sus teclas grabadas, durante 3–10 s, desde estados reales de prueba y con las trazas de latencia de S6.
+  - **Se mide contra el mismo humano en los mismos estados:**
+    - patadas y toques por minuto (la pasividad de X4);
+    - distancia a la pelota;
+    - tiempo en la zona del ancla;
+    - deriva respecto de la trayectoria humana.
+  - **Criterio propuesto:** cada métrica dentro del p10–p90 humano del mismo puesto.
+  - **El lazo abierto (NLL en cambios de tecla) es solo diagnóstico.**
+- **L0.5, opcional (P4):** mejora offline sobre los datos humanos.
+  - **Brazos:** habilidad estimada con métricas fiables entre partidos (pase completo, r 0,50), o ventaja por acción (AW-BC o IQL).
+  - **Cuándo:** solo si L0 falla en los escenarios críticos.
+  - **Cuándo se adopta:** solo si mejora a L0 en lazo cerrado sin salir del rango humano.
+- **Plan de cómputo:**
+  - **Primero, prototipo en CPU local** (L0-mini, subconjunto de partidos), para probar la tubería y el banco de lazo cerrado.
+  - **Después, el L0 completo en el pod,** con la aprobación del usuario.
+- **Lo que mostró L0-mini (2026-10-08, N10):**
+  - **(P11)** Se decide cada 3 ticks y se sostiene la acción, como X4.
+  - **(P12)** La historia propia de teclas produce copycat. Se quita o se entrena con dropout, según la comparación de brazos (`reports/hx11/l0_brazos.md`). Los rasgos explícitos de "voy yo" van como brazo.
+  - **La brecha que queda es tocar la pelota:** de 3,4 a 4,7 veces menos que el humano en todos los brazos.
+  - **La escala ayuda:** pasar de 30 a 60 partidos y más pasos multiplica las patadas por 2,6.
+  - **Por eso el L0 completo usa todos los partidos de entrenamiento.**
 
 ### L1. Población de compañeros y rivales humanos sintéticos
 - **La base es la BC jugando los otros 21 puestos** (Carroll 2019).
@@ -444,14 +526,44 @@ node deploy/hx11/join_bots.js --join <link> --pos LI
   - estados iniciales de equipos y formaciones reales;
   - compañeros sesgados (más individualistas, más defensivos, más directos), con un ajuste corto con recompensas sesgadas, como en HSP;
   - el equipo programado de §4.
+- **Rivales explotadores** (como los de la liga de AlphaStar, Vinyals et al. 2019, *Nature*): delanteros y medios ajustados con RL para ganarle la espalda al puesto del bot, desmarcarse en habilitación o atraerlo y pasar a su espalda.
+  - Sin ellos, una línea rígida podría no pagar en el simulador y sí en la sala, frente al 9 humano que la busca.
+  - **Revisión:** primero se usan como sonda de evaluación, no de entrenamiento. Un explotador entrenado en el simulador también explota los supuestos del simulador.
+- **Puerta de realismo (P5). Sin ella L1 no se usa para RL ni para el valor de reemplazo.**
+  - **Partidos:** ≥ 200 partidos sintéticos de L1.
+  - **Referencia:** los partidos humanos de prueba. El techo de cada distancia es humano de entrenamiento contra humano de prueba.
+  - **Familias de métricas:**
+    - colectivas: goles, remates, posesión, pases y pase completo, recuperaciones;
+    - tácticas: largo y ancho del bloque, distancia entre líneas, offsides, marcas perdidas, margen de espalda;
+    - temporales: duración de la posesión, vuelta a la forma, espera de los saques;
+    - mecánicas: powershot, faltas y cuerpeo, pared y usar.
+  - **Criterio propuesto:** ≥ 80% de las métricas dentro del techo, ninguna colectiva a más de 2 techos, y un clasificador real contra sintético (C2ST) sobre clips de 10 s con AUC ≤ 0,70.
+  - **Si no pasa:** se arregla el realismo (ajuste en lazo cerrado con discriminador, estructura programada); más diversidad no lo arregla.
+- **Diversidad anclada en datos (P5):** estilos de jugadores reales, no sesgos inventados. Los compañeros "malos" realistas (AFK, que no vuelven, novatos) van como prueba de robustez.
+- **Medido (P13, N10): la población de L0 tal cual no sirve como L1.**
+  - **Qué pasa:** con los 22 imitando, nadie va a la pelota. El más cercano queda a 260–296 px (humanos 57), la velocidad es de 0,8–1,8 px por tick (humanos 2,26) y hay 0,02–0,05 patadas por jugador y minuto (humanos 0,72).
+  - **Qué hace falta:** un arreglo estructural antes de cualquier L1, por ejemplo un ajuste en lazo cerrado con discriminador o una estructura programada para quién va a la pelota.
+  - **Mientras tanto,** el bot se evalúa entre humanos: el lazo no reactivo y la sala (C0).
 
 ### L2. RL "de puesto"
 Se hace solo si L0 no alcanza el criterio de competencia (§6 B).
-- **Quién aprende:** 1 a 3 puestos por equipo, con roles distintos; el resto son de L1.
+- **Revisión (P7). No hay campaña larga hasta que L0 pase su puerta y L1 la de realismo.** Primero va un piloto corto con:
+  - **E14:** señal/ruido del gradiente y ΔΦ atribuible al bot. Si no hay señal, se prueba la recompensa contrafáctica o se descarta L2.
+  - **Un solo protagonista por partido,** en un puesto sorteado, rodeado de compañeros diversos de L1.
+  - **Reglas aleatorizadas:**
+    - umbral y cobro de la falta: la sala cobra el 78,5% de los contactos de ≥ 110 ticks, con el umbral cerca de 115;
+    - errores del offside;
+    - plazos de saque.
+  - **Fidelidad de ubicación medida aparte del KL;** la restricción sobre la distribución de estados va como brazo.
+  - **Ablación de los arranques reales:** 0, 40 u 80%, o estados críticos.
+  - **Auditoría de exploits en los bordes de las reglas:** contacto de 100–114 ticks (288 casos humanos en todo el banco), espera cerca del plazo y línea de offside.
+  - **Juez:** goles con potencia, el valor B y métricas de proceso. Nunca el valor del shaping (**P6**).
+- ~~**Quién aprende:** 1 a 3 puestos por equipo, con roles distintos; el resto son de L1.~~ Reemplazado por un protagonista (P7).
 - **Recompensa:** gol ±1 de equipo, más el shaping de potencial con el EPV de 11v11, de suma cero.
 - **Ancla KL a la imitación condicionada por el puesto** (HR-PPO; piKL). λ se elige con un barrido corto pre-registrado.
   - El ancla es lo que mantiene el puesto.
   - Si en la evaluación el bot se sale del puesto, se activa el brazo B: una restricción lagrangiana sobre la distancia al ancla **[inferencia, pre-registrado]**.
+  - La restricción es sobre la zona del puesto (el etiquetador de D2), con la tolerancia de los humanos de ese puesto, no sobre el punto exacto del ancla. Seguir la referencia y cerrar la espalda tiene prioridad sobre quedarse en la casilla.
 - **Como en X4:**
   - 40% de arranques desde estados humanos;
   - latencia aleatoria con la distribución de S6;
@@ -465,6 +577,13 @@ Se hace solo si L0 no alcanza el criterio de competencia (§6 B).
 ## 6. Evaluación: ¿ocupa bien el puesto? ¿es competente? ¿es una carga?
 
 Todo se mide con la latencia de sala y con criterios fijados antes de medir.
+
+**Revisión (P3, P8, P9):**
+- **Lazo abierto (A):** queda como diagnóstico. La puerta es el lazo cerrado (B), primero no reactivo con las grabaciones y después reactivo con L1.
+- **Antes de afirmar que algo es mejor:** tabla de potencia (E4). Con σ = 1,36 goles de diferencia por partido, la no-inferioridad por goles exige cientos o miles de partidos por celda. En la sala se mide con métricas de proceso.
+- **Piloto en sala (C0):** apenas L0 pase su puerta, antes de L1 y L2.
+- **El protocolo de cinco niveles de la auditoría (§9.3) reemplaza los niveles de C.**
+- **Regla:** ninguna métrica usada para entrenar (shaping, KL, ghosting) es métrica principal sin un par independiente.
 
 ### A. Lazo abierto, sobre las grabaciones de prueba (sin simulador)
 - **Error de ghosting:** posición del bot a +1, +2 y +5 s contra el humano de ese puesto, por puesto (Le 2017).
@@ -481,6 +600,8 @@ Todo se mide con la latencia de sala y con criterios fijados antes de medir.
   - mapa de calor (W1) contra los humanos de ese puesto;
   - distancia a los compañeros de línea;
   - offsides cometidos, en atacantes, y provocados, en defensores;
+  - marcas perdidas y peligro concedido a la espalda (OBSO atribuido, D3) cada 10 min, en defensores y medios; espaldas ganadas, en atacantes;
+  - el mismo partido contra los rivales explotadores de L1;
   - faltas cometidas y recibidas;
   - uso y resultado del powershot;
   - ejecución de saques.
@@ -553,6 +674,18 @@ Cada fundamento se mide primero en los humanos, por puesto (D1–D3). Así queda
 
 No se avanza por presupuesto agotado sin una decisión explícita del usuario.
 
+**Revisión (2026-10-08): puertas en orden.** Detalle y niveles de prioridad en [`REVISION_AUDITORIA_HAXELEVEN.md`](REVISION_AUDITORIA_HAXELEVEN.md) §5.
+
+| Puerta | Qué tiene que demostrar | Estado |
+|---|---|---|
+| G0 | Datos aptos, modos por partido, condición de puesto estable, valor validado e independiente | **hecha** (N1–N6), salvo la tabla de potencia (E4) |
+| L0-mini | La tubería de imitación y el banco de lazo cerrado funcionan en CPU | siguiente |
+| L0 | Lazo cerrado no reactivo dentro del rango humano por puesto (P3) | pendiente; el entrenamiento completo pide GPU (aprobación) |
+| C0 | Piloto en sala: sin fallas graves fuera del p10–p90 humano | pendiente; lo organiza el usuario |
+| L1 | Puerta de realismo (P5) | pendiente |
+| L0.5 | Mejora a L0 en escenarios críticos sin salir del rango humano | opcional |
+| L2 | Piloto corto: señal (E14), sin exploits (E16), mejora con juez independiente y con potencia | opcional |
+
 ## 9. Riesgos
 
 - **Compañeros sintéticos más débiles que los humanos.** El valor de reemplazo en el simulador sobreestima, y el bot puede explotar sus defectos (Carroll 2019). Mitigaciones: el ancla KL, la diversidad de L1 y la prueba C, que es la única que certifica.
@@ -583,7 +716,8 @@ No se avanza por presupuesto agotado sin una decisión explícita del usuario.
 
 ### Abierto
 
-1. ¿Los técnicos publican la formación o la alineación en Discord? Si no, ¿el usuario puede etiquetar unos 20 partidos? (D2)
+1. ¿Los técnicos publican la formación o la alineación en Discord? Si no: **E1 liviano**, alrededor de 1 h, que no bloquea el entrenamiento (P2). Consiste en validar el vocabulario de `--pos` → ancla y unos 10 equipos-partido.
+0. **Aprobaciones pendientes (2026-10-08):** GPU del pod para el L0 completo, el piloto en sala C0 y el E1 liviano.
 2. ¿El arquero tiene alguna mecánica especial?
 3. ¿Qué son las `CustomHaxEleven`?
 4. ¿Un admin puede arrancar partidos para las pruebas de S5 en la sala del bot?

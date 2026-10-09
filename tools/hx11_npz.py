@@ -53,7 +53,9 @@ class _Blocks:
         return {k: np.concatenate(self.parts[k] + [self.cur[k][:self.j]]) for k in self.specs}
 
 
-def convert(lines, out_base: Path, max_players=96):
+def convert(lines, out_base: Path | None, max_players=96, return_arrays=False):
+    """JSONL de bridge/hx11_ticks.js -> arreglos. Guarda `<out_base>.npz` y `.events.json` si out_base no es None.
+    Devuelve (ticks, jugadores), o (arreglos, eventos, header) con return_arrays."""
     f32 = np.float32
     D, P = len(DISC_IDS), max_players
     specs = dict(frame=((), np.int32, 0), state=((), np.int8, 0), score=((2,), np.int16, 0), time=((), f32, 0),
@@ -130,10 +132,13 @@ def convert(lines, out_base: Path, max_players=96):
             arr[k] = arr[k][:, :n]
     arr["pid"] = np.array(pid, np.int32)
     arr["disc_ids"] = np.array(DISC_IDS, np.int16)
-    out_base.parent.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(str(out_base) + ".npz", **arr)
-    Path(str(out_base) + ".events.json").write_text(
-        json.dumps(dict(header=header, events=events)), encoding="utf-8")  # ascii: hay nombres con surrogates sueltos
+    if out_base is not None:
+        out_base.parent.mkdir(parents=True, exist_ok=True)
+        np.savez_compressed(str(out_base) + ".npz", **arr)
+        Path(str(out_base) + ".events.json").write_text(
+            json.dumps(dict(header=header, events=events)), encoding="utf-8")  # ascii: hay nombres con surrogates sueltos
+    if return_arrays:
+        return arr, events, header
     return blk.n, n
 
 

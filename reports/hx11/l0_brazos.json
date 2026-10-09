@@ -1,0 +1,1037 @@
+{
+ "conhist": {
+  "config": {
+   "hidden": 256,
+   "ent_hidden": 128,
+   "n_actions": 18,
+   "sin_historia": false
+  },
+  "args": {
+   "train": 30,
+   "steps": 6000,
+   "drop_hist": null,
+   "sin_historia": false,
+   "extra": null
+  },
+  "no_reactivo": {
+   "cambios_s_bot": {
+    "media": 3.759,
+    "p10": 2.2,
+    "p50": 3.8,
+    "p90": 5.316
+   },
+   "cambios_s_humano": {
+    "media": 3.726,
+    "p10": 1.4,
+    "p50": 3.4,
+    "p90": 6.4
+   },
+   "desvio_1s": {
+    "media": 66.007,
+    "p10": 14.606,
+    "p50": 61.057,
+    "p90": 125.305
+   },
+   "desvio_3s": {
+    "media": 221.548,
+    "p10": 75.233,
+    "p50": 208.13,
+    "p90": 395.214
+   },
+   "desvio_5s": {
+    "media": 301.31,
+    "p10": 109.581,
+    "p50": 277.859,
+    "p90": 531.292
+   },
+   "dist_ancla_bot": {
+    "media": 250.874,
+    "p10": 106.259,
+    "p50": 229.499,
+    "p90": 413.395
+   },
+   "dist_ancla_humano": {
+    "media": 214.566,
+    "p10": 83.819,
+    "p50": 184.62,
+    "p90": 379.37
+   },
+   "dist_pelota_bot": {
+    "media": 291.908,
+    "p10": 106.723,
+    "p50": 260.61,
+    "p90": 513.253
+   },
+   "dist_pelota_humano": {
+    "media": 283.025,
+    "p10": 100.366,
+    "p50": 267.199,
+    "p90": 471.6
+   },
+   "patadas_min_bot": {
+    "media": 0.999,
+    "p10": 0.0,
+    "p50": 0.0,
+    "p90": 0.0
+   },
+   "patadas_min_humano": {
+    "media": 5.672,
+    "p10": 0.0,
+    "p50": 0.0,
+    "p90": 12.0
+   },
+   "ticks": {
+    "media": 289.411,
+    "p10": 300.0,
+    "p50": 300.0,
+    "p90": 300.0
+   },
+   "toques_min_bot": {
+    "media": 1.883,
+    "p10": 0.0,
+    "p50": 0.0,
+    "p90": 5.813
+   },
+   "toques_min_humano": {
+    "media": 6.286,
+    "p10": 0.0,
+    "p50": 0.4,
+    "p90": 22.46
+   },
+   "vel_bot": {
+    "media": 2.16,
+    "p10": 1.699,
+    "p50": 2.19,
+    "p90": 2.601
+   },
+   "vel_humano": {
+    "media": 2.327,
+    "p10": 1.825,
+    "p50": 2.391,
+    "p90": 2.752
+   }
+  },
+  "reactivo": {
+   "patadas_jugador_min": {
+    "media": 0.011,
+    "p10": 0.0,
+    "p90": 0.045
+   },
+   "toques_jugador_min": {
+    "media": 0.036,
+    "p10": 0.006,
+    "p90": 0.072
+   },
+   "cambios_posesion_min": {
+    "media": 1.375,
+    "p10": 0.0,
+    "p90": 3.001
+   },
+   "goles_10min": {
+    "media": 0.0,
+    "p10": 0.0,
+    "p90": 0.0
+   },
+   "largo_equipo": {
+    "media": 970.419,
+    "p10": 817.917,
+    "p90": 1157.643
+   },
+   "ancho_equipo": {
+    "media": 1046.138,
+    "p10": 851.872,
+    "p90": 1297.346
+   },
+   "juego_abierto": {
+    "media": 0.965,
+    "p10": 0.877,
+    "p90": 1.0
+   },
+   "vel_media": {
+    "media": 1.586,
+    "p10": 1.455,
+    "p90": 1.681
+   },
+   "mas_cercano_pelota_p50": {
+    "media": 225.16,
+    "p10": 104.412,
+    "p90": 479.297
+   }
+  },
+  "reactivo_humano": {
+   "patadas_jugador_min": {
+    "media": 0.65,
+    "p10": 0.473,
+    "p90": 0.759
+   },
+   "toques_jugador_min": {
+    "media": 0.628,
+    "p10": 0.473,
+    "p90": 0.761
+   },
+   "cambios_posesion_min": {
+    "media": 10.753,
+    "p10": 6.402,
+    "p90": 15.004
+   },
+   "goles_10min": {
+    "media": 2.501,
+    "p10": 0.0,
+    "p90": 10.003
+   },
+   "largo_equipo": {
+    "media": 885.778,
+    "p10": 819.058,
+    "p90": 971.562
+   },
+   "ancho_equipo": {
+    "media": 937.619,
+    "p10": 815.351,
+    "p90": 1054.264
+   },
+   "juego_abierto": {
+    "media": 0.753,
+    "p10": 0.667,
+    "p90": 0.815
+   },
+   "vel_media": {
+    "media": 2.03,
+    "p10": 1.854,
+    "p90": 2.185
+   },
+   "mas_cercano_pelota_p50": {
+    "media": 56.012,
+    "p10": 45.002,
+    "p90": 70.489
+   }
+  }
+ },
+ "sinhist": {
+  "config": {
+   "hidden": 256,
+   "ent_hidden": 128,
+   "n_actions": 18,
+   "sin_historia": true
+  },
+  "args": {
+   "train": 30,
+   "steps": 6000,
+   "drop_hist": null,
+   "sin_historia": true,
+   "extra": null
+  },
+  "no_reactivo": {
+   "cambios_s_bot": {
+    "media": 14.802,
+    "p10": 11.2,
+    "p50": 15.4,
+    "p90": 17.2
+   },
+   "cambios_s_humano": {
+    "media": 3.73,
+    "p10": 1.4,
+    "p50": 3.4,
+    "p90": 6.4
+   },
+   "desvio_1s": {
+    "media": 55.092,
+    "p10": 16.973,
+    "p50": 51.07,
+    "p90": 97.288
+   },
+   "desvio_3s": {
+    "media": 168.008,
+    "p10": 56.968,
+    "p50": 155.174,
+    "p90": 296.746
+   },
+   "desvio_5s": {
+    "media": 243.843,
+    "p10": 82.705,
+    "p50": 222.177,
+    "p90": 432.619
+   },
+   "dist_ancla_bot": {
+    "media": 220.442,
+    "p10": 91.868,
+    "p50": 197.45,
+    "p90": 373.505
+   },
+   "dist_ancla_humano": {
+    "media": 215.403,
+    "p10": 84.313,
+    "p50": 185.857,
+    "p90": 380.19
+   },
+   "dist_pelota_bot": {
+    "media": 271.575,
+    "p10": 85.315,
+    "p50": 245.865,
+    "p90": 485.527
+   },
+   "dist_pelota_humano": {
+    "media": 279.335,
+    "p10": 88.768,
+    "p50": 264.033,
+    "p90": 471.61
+   },
+   "patadas_min_bot": {
+    "media": 2.483,
+    "p10": 0.0,
+    "p50": 0.0,
+    "p90": 12.0
+   },
+   "patadas_min_humano": {
+    "media": 5.901,
+    "p10": 0.0,
+    "p50": 0.0,
+    "p90": 12.0
+   },
+   "ticks": {
+    "media": 285.564,
+    "p10": 299.8,
+    "p50": 300.0,
+    "p90": 300.0
+   },
+   "toques_min_bot": {
+    "media": 1.497,
+    "p10": 0.0,
+    "p50": 0.0,
+    "p90": 4.22
+   },
+   "toques_min_humano": {
+    "media": 6.659,
+    "p10": 0.0,
+    "p50": 0.4,
+    "p90": 23.44
+   },
+   "vel_bot": {
+    "media": 1.691,
+    "p10": 1.057,
+    "p50": 1.645,
+    "p90": 2.395
+   },
+   "vel_humano": {
+    "media": 2.328,
+    "p10": 1.825,
+    "p50": 2.394,
+    "p90": 2.753
+   }
+  },
+  "reactivo": {
+   "patadas_jugador_min": {
+    "media": 0.034,
+    "p10": 0.0,
+    "p90": 0.105
+   },
+   "toques_jugador_min": {
+    "media": 0.013,
+    "p10": 0.0,
+    "p90": 0.028
+   },
+   "cambios_posesion_min": {
+    "media": 0.375,
+    "p10": 0.0,
+    "p90": 1.3
+   },
+   "goles_10min": {
+    "media": 0.0,
+    "p10": 0.0,
+    "p90": 0.0
+   },
+   "largo_equipo": {
+    "media": 659.07,
+    "p10": 555.336,
+    "p90": 829.278
+   },
+   "ancho_equipo": {
+    "media": 847.768,
+    "p10": 714.626,
+    "p90": 974.895
+   },
+   "juego_abierto": {
+    "media": 0.812,
+    "p10": 0.343,
+    "p90": 1.0
+   },
+   "vel_media": {
+    "media": 0.655,
+    "p10": 0.498,
+    "p90": 0.848
+   },
+   "mas_cercano_pelota_p50": {
+    "media": 217.066,
+    "p10": 73.445,
+    "p90": 441.871
+   }
+  },
+  "reactivo_humano": {
+   "patadas_jugador_min": {
+    "media": 0.65,
+    "p10": 0.473,
+    "p90": 0.759
+   },
+   "toques_jugador_min": {
+    "media": 0.628,
+    "p10": 0.473,
+    "p90": 0.761
+   },
+   "cambios_posesion_min": {
+    "media": 10.753,
+    "p10": 6.402,
+    "p90": 15.004
+   },
+   "goles_10min": {
+    "media": 2.501,
+    "p10": 0.0,
+    "p90": 10.003
+   },
+   "largo_equipo": {
+    "media": 885.778,
+    "p10": 819.058,
+    "p90": 971.562
+   },
+   "ancho_equipo": {
+    "media": 937.619,
+    "p10": 815.351,
+    "p90": 1054.264
+   },
+   "juego_abierto": {
+    "media": 0.753,
+    "p10": 0.667,
+    "p90": 0.815
+   },
+   "vel_media": {
+    "media": 2.03,
+    "p10": 1.854,
+    "p90": 2.185
+   },
+   "mas_cercano_pelota_p50": {
+    "media": 56.012,
+    "p10": 45.002,
+    "p90": 70.489
+   }
+  }
+ },
+ "drophist": {
+  "config": {
+   "hidden": 256,
+   "ent_hidden": 128,
+   "n_actions": 18,
+   "sin_historia": false
+  },
+  "args": {
+   "train": 30,
+   "steps": 6000,
+   "drop_hist": 0.5,
+   "sin_historia": false,
+   "extra": null
+  },
+  "no_reactivo": {
+   "cambios_s_bot": {
+    "media": 3.908,
+    "p10": 2.4,
+    "p50": 3.8,
+    "p90": 5.6
+   },
+   "cambios_s_humano": {
+    "media": 3.708,
+    "p10": 1.4,
+    "p50": 3.4,
+    "p90": 6.4
+   },
+   "desvio_1s": {
+    "media": 62.701,
+    "p10": 14.758,
+    "p50": 55.433,
+    "p90": 124.201
+   },
+   "desvio_3s": {
+    "media": 220.884,
+    "p10": 77.426,
+    "p50": 205.071,
+    "p90": 391.232
+   },
+   "desvio_5s": {
+    "media": 323.406,
+    "p10": 123.103,
+    "p50": 296.367,
+    "p90": 554.728
+   },
+   "dist_ancla_bot": {
+    "media": 256.407,
+    "p10": 115.003,
+    "p50": 233.838,
+    "p90": 421.699
+   },
+   "dist_ancla_humano": {
+    "media": 214.769,
+    "p10": 83.871,
+    "p50": 184.605,
+    "p90": 379.37
+   },
+   "dist_pelota_bot": {
+    "media": 288.261,
+    "p10": 110.89,
+    "p50": 245.809,
+    "p90": 526.939
+   },
+   "dist_pelota_humano": {
+    "media": 282.154,
+    "p10": 100.027,
+    "p50": 266.263,
+    "p90": 471.61
+   },
+   "patadas_min_bot": {
+    "media": 0.575,
+    "p10": 0.0,
+    "p50": 0.0,
+    "p90": 0.0
+   },
+   "patadas_min_humano": {
+    "media": 5.623,
+    "p10": 0.0,
+    "p50": 0.0,
+    "p90": 12.0
+   },
+   "ticks": {
+    "media": 289.914,
+    "p10": 300.0,
+    "p50": 300.0,
+    "p90": 300.0
+   },
+   "toques_min_bot": {
+    "media": 1.711,
+    "p10": 0.0,
+    "p50": 0.0,
+    "p90": 5.22
+   },
+   "toques_min_humano": {
+    "media": 6.364,
+    "p10": 0.0,
+    "p50": 0.4,
+    "p90": 22.46
+   },
+   "vel_bot": {
+    "media": 2.202,
+    "p10": 1.776,
+    "p50": 2.225,
+    "p90": 2.612
+   },
+   "vel_humano": {
+    "media": 2.327,
+    "p10": 1.83,
+    "p50": 2.387,
+    "p90": 2.752
+   }
+  },
+  "reactivo": {
+   "patadas_jugador_min": {
+    "media": 0.011,
+    "p10": 0.0,
+    "p90": 0.046
+   },
+   "toques_jugador_min": {
+    "media": 0.01,
+    "p10": 0.0,
+    "p90": 0.024
+   },
+   "cambios_posesion_min": {
+    "media": 0.5,
+    "p10": 0.0,
+    "p90": 1.0
+   },
+   "goles_10min": {
+    "media": 0.0,
+    "p10": 0.0,
+    "p90": 0.0
+   },
+   "largo_equipo": {
+    "media": 1002.579,
+    "p10": 902.337,
+    "p90": 1099.24
+   },
+   "ancho_equipo": {
+    "media": 1066.696,
+    "p10": 942.645,
+    "p90": 1206.331
+   },
+   "juego_abierto": {
+    "media": 0.808,
+    "p10": 0.328,
+    "p90": 1.0
+   },
+   "vel_media": {
+    "media": 1.856,
+    "p10": 1.742,
+    "p90": 1.94
+   },
+   "mas_cercano_pelota_p50": {
+    "media": 278.913,
+    "p10": 147.593,
+    "p90": 411.423
+   }
+  },
+  "reactivo_humano": {
+   "patadas_jugador_min": {
+    "media": 0.65,
+    "p10": 0.473,
+    "p90": 0.759
+   },
+   "toques_jugador_min": {
+    "media": 0.628,
+    "p10": 0.473,
+    "p90": 0.761
+   },
+   "cambios_posesion_min": {
+    "media": 10.753,
+    "p10": 6.402,
+    "p90": 15.004
+   },
+   "goles_10min": {
+    "media": 2.501,
+    "p10": 0.0,
+    "p90": 10.003
+   },
+   "largo_equipo": {
+    "media": 885.778,
+    "p10": 819.058,
+    "p90": 971.562
+   },
+   "ancho_equipo": {
+    "media": 937.619,
+    "p10": 815.351,
+    "p90": 1054.264
+   },
+   "juego_abierto": {
+    "media": 0.753,
+    "p10": 0.667,
+    "p90": 0.815
+   },
+   "vel_media": {
+    "media": 2.03,
+    "p10": 1.854,
+    "p90": 2.185
+   },
+   "mas_cercano_pelota_p50": {
+    "media": 56.012,
+    "p10": 45.002,
+    "p90": 70.489
+   }
+  }
+ },
+ "v2drop": {
+  "config": {
+   "hidden": 256,
+   "ent_hidden": 128,
+   "n_actions": 18,
+   "sin_historia": false,
+   "extra": true
+  },
+  "args": {
+   "train": 30,
+   "steps": 6000,
+   "drop_hist": 0.5,
+   "sin_historia": false,
+   "extra": true
+  },
+  "no_reactivo": {
+   "cambios_s_bot": {
+    "media": 3.802,
+    "p10": 2.2,
+    "p50": 3.8,
+    "p90": 5.405
+   },
+   "cambios_s_humano": {
+    "media": 3.724,
+    "p10": 1.4,
+    "p50": 3.4,
+    "p90": 6.4
+   },
+   "desvio_1s": {
+    "media": 66.099,
+    "p10": 13.476,
+    "p50": 60.744,
+    "p90": 130.878
+   },
+   "desvio_3s": {
+    "media": 226.921,
+    "p10": 68.659,
+    "p50": 207.387,
+    "p90": 412.303
+   },
+   "desvio_5s": {
+    "media": 326.776,
+    "p10": 105.679,
+    "p50": 306.457,
+    "p90": 570.606
+   },
+   "dist_ancla_bot": {
+    "media": 260.88,
+    "p10": 122.465,
+    "p50": 241.72,
+    "p90": 421.526
+   },
+   "dist_ancla_humano": {
+    "media": 214.514,
+    "p10": 84.013,
+    "p50": 185.857,
+    "p90": 379.37
+   },
+   "dist_pelota_bot": {
+    "media": 294.368,
+    "p10": 109.555,
+    "p50": 259.531,
+    "p90": 536.226
+   },
+   "dist_pelota_humano": {
+    "media": 281.56,
+    "p10": 99.491,
+    "p50": 267.272,
+    "p90": 469.527
+   },
+   "patadas_min_bot": {
+    "media": 1.073,
+    "p10": 0.0,
+    "p50": 0.0,
+    "p90": 0.0
+   },
+   "patadas_min_humano": {
+    "media": 5.764,
+    "p10": 0.0,
+    "p50": 0.0,
+    "p90": 12.0
+   },
+   "ticks": {
+    "media": 289.538,
+    "p10": 300.0,
+    "p50": 300.0,
+    "p90": 300.0
+   },
+   "toques_min_bot": {
+    "media": 1.905,
+    "p10": 0.0,
+    "p50": 0.0,
+    "p90": 5.8
+   },
+   "toques_min_humano": {
+    "media": 6.377,
+    "p10": 0.0,
+    "p50": 0.4,
+    "p90": 23.02
+   },
+   "vel_bot": {
+    "media": 2.247,
+    "p10": 1.795,
+    "p50": 2.259,
+    "p90": 2.672
+   },
+   "vel_humano": {
+    "media": 2.328,
+    "p10": 1.825,
+    "p50": 2.383,
+    "p90": 2.752
+   }
+  },
+  "reactivo": {
+   "patadas_jugador_min": {
+    "media": 0.029,
+    "p10": 0.0,
+    "p90": 0.06
+   },
+   "toques_jugador_min": {
+    "media": 0.034,
+    "p10": 0.004,
+    "p90": 0.074
+   },
+   "cambios_posesion_min": {
+    "media": 0.75,
+    "p10": 0.0,
+    "p90": 2.001
+   },
+   "goles_10min": {
+    "media": 0.0,
+    "p10": 0.0,
+    "p90": 0.0
+   },
+   "largo_equipo": {
+    "media": 955.085,
+    "p10": 870.153,
+    "p90": 1049.863
+   },
+   "ancho_equipo": {
+    "media": 1070.522,
+    "p10": 960.991,
+    "p90": 1202.939
+   },
+   "juego_abierto": {
+    "media": 0.855,
+    "p10": 0.593,
+    "p90": 1.0
+   },
+   "vel_media": {
+    "media": 1.864,
+    "p10": 1.745,
+    "p90": 1.946
+   },
+   "mas_cercano_pelota_p50": {
+    "media": 189.287,
+    "p10": 104.454,
+    "p90": 319.72
+   }
+  },
+  "reactivo_humano": {
+   "patadas_jugador_min": {
+    "media": 0.65,
+    "p10": 0.473,
+    "p90": 0.759
+   },
+   "toques_jugador_min": {
+    "media": 0.628,
+    "p10": 0.473,
+    "p90": 0.761
+   },
+   "cambios_posesion_min": {
+    "media": 10.753,
+    "p10": 6.402,
+    "p90": 15.004
+   },
+   "goles_10min": {
+    "media": 2.501,
+    "p10": 0.0,
+    "p90": 10.003
+   },
+   "largo_equipo": {
+    "media": 885.778,
+    "p10": 819.058,
+    "p90": 971.562
+   },
+   "ancho_equipo": {
+    "media": 937.619,
+    "p10": 815.351,
+    "p90": 1054.264
+   },
+   "juego_abierto": {
+    "media": 0.753,
+    "p10": 0.667,
+    "p90": 0.815
+   },
+   "vel_media": {
+    "media": 2.03,
+    "p10": 1.854,
+    "p90": 2.185
+   },
+   "mas_cercano_pelota_p50": {
+    "media": 56.012,
+    "p10": 45.002,
+    "p90": 70.489
+   }
+  }
+ },
+ "mini": {
+  "config": {
+   "hidden": 256,
+   "ent_hidden": 128,
+   "n_actions": 18
+  },
+  "args": {
+   "train": 60,
+   "steps": 15000,
+   "drop_hist": null,
+   "sin_historia": null,
+   "extra": null
+  },
+  "no_reactivo": {
+   "cambios_s_bot": {
+    "media": 3.86,
+    "p10": 2.2,
+    "p50": 3.8,
+    "p90": 5.6
+   },
+   "cambios_s_humano": {
+    "media": 3.725,
+    "p10": 1.4,
+    "p50": 3.4,
+    "p90": 6.4
+   },
+   "desvio_1s": {
+    "media": 64.581,
+    "p10": 16.017,
+    "p50": 59.069,
+    "p90": 122.818
+   },
+   "desvio_3s": {
+    "media": 216.603,
+    "p10": 73.526,
+    "p50": 203.272,
+    "p90": 381.956
+   },
+   "desvio_5s": {
+    "media": 306.952,
+    "p10": 107.574,
+    "p50": 290.46,
+    "p90": 528.81
+   },
+   "dist_ancla_bot": {
+    "media": 250.719,
+    "p10": 117.027,
+    "p50": 223.674,
+    "p90": 416.899
+   },
+   "dist_ancla_humano": {
+    "media": 215.033,
+    "p10": 83.52,
+    "p50": 185.857,
+    "p90": 380.19
+   },
+   "dist_pelota_bot": {
+    "media": 287.777,
+    "p10": 106.7,
+    "p50": 244.247,
+    "p90": 519.368
+   },
+   "dist_pelota_humano": {
+    "media": 278.904,
+    "p10": 88.878,
+    "p50": 264.033,
+    "p90": 471.61
+   },
+   "patadas_min_bot": {
+    "media": 1.681,
+    "p10": 0.0,
+    "p50": 0.0,
+    "p90": 0.0
+   },
+   "patadas_min_humano": {
+    "media": 5.679,
+    "p10": 0.0,
+    "p50": 0.0,
+    "p90": 12.0
+   },
+   "ticks": {
+    "media": 285.383,
+    "p10": 293.8,
+    "p50": 300.0,
+    "p90": 300.0
+   },
+   "toques_min_bot": {
+    "media": 1.98,
+    "p10": 0.0,
+    "p50": 0.0,
+    "p90": 6.607
+   },
+   "toques_min_humano": {
+    "media": 6.532,
+    "p10": 0.0,
+    "p50": 0.4,
+    "p90": 23.44
+   },
+   "vel_bot": {
+    "media": 2.168,
+    "p10": 1.696,
+    "p50": 2.179,
+    "p90": 2.636
+   },
+   "vel_humano": {
+    "media": 2.328,
+    "p10": 1.821,
+    "p50": 2.398,
+    "p90": 2.752
+   }
+  },
+  "reactivo": {
+   "patadas_jugador_min": {
+    "media": 0.023,
+    "p10": 0.0,
+    "p90": 0.091
+   },
+   "toques_jugador_min": {
+    "media": 0.022,
+    "p10": 0.002,
+    "p90": 0.038
+   },
+   "cambios_posesion_min": {
+    "media": 0.625,
+    "p10": 0.0,
+    "p90": 2.001
+   },
+   "goles_10min": {
+    "media": 0.0,
+    "p10": 0.0,
+    "p90": 0.0
+   },
+   "largo_equipo": {
+    "media": 1019.68,
+    "p10": 937.43,
+    "p90": 1113.755
+   },
+   "ancho_equipo": {
+    "media": 1192.357,
+    "p10": 1013.715,
+    "p90": 1406.279
+   },
+   "juego_abierto": {
+    "media": 0.836,
+    "p10": 0.482,
+    "p90": 1.0
+   },
+   "vel_media": {
+    "media": 1.361,
+    "p10": 1.032,
+    "p90": 1.531
+   },
+   "mas_cercano_pelota_p50": {
+    "media": 190.638,
+    "p10": 143.964,
+    "p90": 256.818
+   }
+  },
+  "reactivo_humano": {
+   "patadas_jugador_min": {
+    "media": 0.65,
+    "p10": 0.473,
+    "p90": 0.759
+   },
+   "toques_jugador_min": {
+    "media": 0.628,
+    "p10": 0.473,
+    "p90": 0.761
+   },
+   "cambios_posesion_min": {
+    "media": 10.753,
+    "p10": 6.402,
+    "p90": 15.004
+   },
+   "goles_10min": {
+    "media": 2.501,
+    "p10": 0.0,
+    "p90": 10.003
+   },
+   "largo_equipo": {
+    "media": 885.778,
+    "p10": 819.058,
+    "p90": 971.562
+   },
+   "ancho_equipo": {
+    "media": 937.619,
+    "p10": 815.351,
+    "p90": 1054.264
+   },
+   "juego_abierto": {
+    "media": 0.753,
+    "p10": 0.667,
+    "p90": 0.815
+   },
+   "vel_media": {
+    "media": 2.03,
+    "p10": 1.854,
+    "p90": 2.185
+   },
+   "mas_cercano_pelota_p50": {
+    "media": 56.012,
+    "p10": 45.002,
+    "p90": 70.489
+   }
+  }
+ }
+}

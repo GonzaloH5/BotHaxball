@@ -1,0 +1,196 @@
+{
+ "partidos": 394,
+ "modos": {
+  "faltas": {
+   "indeterminado": 201,
+   "prendido": 185,
+   "apagado": 8
+  },
+  "offside": {
+   "indeterminado": 77,
+   "prendido": 313,
+   "apagado": 4
+  },
+  "powershot": {
+   "prendido": 394
+  },
+  "faltas_l0": {
+   "desconocido": 178,
+   "prendido": 185,
+   "apagado": 31
+  }
+ },
+ "contradicciones": {
+  "faltas": 2,
+  "offside": 2,
+  "powershot": 0,
+  "faltas_l0": 0
+ },
+ "por_mes": {
+  "2026-01": {
+   "partidos": 8,
+   "faltas_indeterminado": 5,
+   "offside_indeterminado": 4,
+   "powershot_prendido": 8,
+   "gk": 4,
+   "anuncia_modos": 0,
+   "offside_prendido": 4,
+   "faltas_prendido": 3
+  },
+  "2026-02": {
+   "partidos": 7,
+   "faltas_prendido": 1,
+   "offside_indeterminado": 4,
+   "powershot_prendido": 7,
+   "gk": 6,
+   "anuncia_modos": 0,
+   "faltas_indeterminado": 5,
+   "offside_prendido": 3,
+   "faltas_apagado": 1
+  },
+  "2026-03": {
+   "partidos": 1,
+   "faltas_indeterminado": 1,
+   "offside_prendido": 1,
+   "powershot_prendido": 1,
+   "gk": 0,
+   "anuncia_modos": 0
+  },
+  "2026-04": {
+   "partidos": 6,
+   "faltas_indeterminado": 4,
+   "offside_indeterminado": 3,
+   "powershot_prendido": 6,
+   "gk": 3,
+   "anuncia_modos": 0,
+   "faltas_prendido": 1,
+   "offside_prendido": 3,
+   "faltas_apagado": 1
+  },
+  "2026-05": {
+   "partidos": 12,
+   "faltas_indeterminado": 7,
+   "offside_indeterminado": 4,
+   "powershot_prendido": 12,
+   "gk": 8,
+   "anuncia_modos": 0,
+   "offside_prendido": 8,
+   "faltas_prendido": 4,
+   "faltas_apagado": 1
+  },
+  "2026-07": {
+   "partidos": 9,
+   "faltas_prendido": 2,
+   "offside_prendido": 7,
+   "powershot_prendido": 9,
+   "gk": 7,
+   "anuncia_modos": 1,
+   "faltas_indeterminado": 7,
+   "offside_indeterminado": 2
+  },
+  "2026-08": {
+   "partidos": 62,
+   "faltas_indeterminado": 30,
+   "offside_prendido": 59,
+   "powershot_prendido": 62,
+   "gk": 44,
+   "anuncia_modos": 11,
+   "faltas_prendido": 31,
+   "faltas_apagado": 1,
+   "offside_indeterminado": 3
+  },
+  "2026-09": {
+   "partidos": 267,
+   "faltas_indeterminado": 136,
+   "offside_indeterminado": 57,
+   "powershot_prendido": 267,
+   "gk": 162,
+   "anuncia_modos": 36,
+   "faltas_prendido": 127,
+   "offside_prendido": 206,
+   "faltas_apagado": 4,
+   "offside_apagado": 4
+  },
+  "2026-10": {
+   "partidos": 22,
+   "faltas_indeterminado": 6,
+   "offside_prendido": 22,
+   "powershot_prendido": 22,
+   "gk": 16,
+   "anuncia_modos": 2,
+   "faltas_prendido": 16
+  }
+ },
+ "faltas_cobradas_sobre_oportunidades_si_prendido": 0.928,
+ "contacto_entre_100_y_115_ticks": 288,
+ "partidos_con_cambio_de_modo": 9,
+ "versiones": {
+  "barra + gk + powershot_pct": 192,
+  "barra + powershot_pct": 123,
+  "anuncia_modos + barra + gk + powershot_pct": 36,
+  "barra + gambeta + gk + powershot_pct": 18,
+  "barra + gambeta + powershot_pct": 11,
+  "anuncia_modos + barra + powershot_pct": 8,
+  "anuncia_modos + barra + gambeta + gk + powershot_pct": 4,
+  "anuncia_modos + barra + gambeta + powershot_pct": 2
+ },
+ "por_parte": {
+  "dev": {
+   "faltas": {
+    "indeterminado": 22,
+    "prendido": 16,
+    "apagado": 2
+   },
+   "offside": {
+    "prendido": 33,
+    "indeterminado": 6,
+    "apagado": 1
+   },
+   "powershot": {
+    "prendido": 40
+   }
+  },
+  "test": {
+   "faltas": {
+    "indeterminado": 30,
+    "prendido": 22
+   },
+   "offside": {
+    "prendido": 42,
+    "indeterminado": 10
+   },
+   "powershot": {
+    "prendido": 52
+   }
+  },
+  "test_grupos": {
+   "faltas": {
+    "indeterminado": 11,
+    "prendido": 1
+   },
+   "offside": {
+    "prendido": 7,
+    "indeterminado": 5
+   },
+   "powershot": {
+    "prendido": 12
+   }
+  },
+  "train": {
+   "faltas": {
+    "indeterminado": 138,
+    "prendido": 146,
+    "apagado": 6
+   },
+   "offside": {
+    "indeterminado": 56,
+    "prendido": 231,
+    "apagado": 3
+   },
+   "powershot": {
+    "prendido": 290
+   }
+  }
+ },
+ "faltas_sin_cobro_si_prendido": 0.215
+}

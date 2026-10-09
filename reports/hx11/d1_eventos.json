@@ -1,0 +1,281 @@
+{
+ "partidos": 394,
+ "minutos_juego": 3848.7,
+ "control": {
+  "minutos_juego": 3848.7000000000016,
+  "goles_marcador": 642,
+  "goles_detectados": 642,
+  "powershot_anuncios": 9091,
+  "powershot_en_patada": 8950,
+  "barra_anuncios": 6503,
+  "barra_en_saque": 6491,
+  "faltas": 233,
+  "faltas_contacto_60": 220,
+  "offsides": 964,
+  "offsides_por_toque": 960,
+  "offsides_con_pasador": 961
+ },
+ "por_minuto": {
+  "pase": 28.186,
+  "recepcion": 14.862,
+  "intercepcion": 9.018,
+  "perdida": 7.289,
+  "bloqueo": 5.414,
+  "conduccion": 4.521,
+  "saque": 4.32,
+  "robo": 4.081,
+  "despeje": 3.304,
+  "usar": 2.284,
+  "recuperacion": 2.277,
+  "cuerpeo": 0.867,
+  "remate": 0.849,
+  "pared": 0.619,
+  "centro": 0.606,
+  "atajada": 0.284,
+  "offside": 0.25,
+  "gol": 0.167,
+  "falta": 0.061,
+  "falta_recibida": 0.061
+ },
+ "totales": {
+  "pase": 108479,
+  "recepcion": 57200,
+  "despeje": 12715,
+  "pared": 2382,
+  "intercepcion": 34707,
+  "conduccion": 17400,
+  "saque": 16628,
+  "centro": 2334,
+  "perdida": 28053,
+  "bloqueo": 20836,
+  "robo": 15708,
+  "usar": 8791,
+  "recuperacion": 8762,
+  "cuerpeo": 3335,
+  "remate": 3268,
+  "atajada": 1094,
+  "offside": 964,
+  "gol": 642,
+  "falta": 233,
+  "falta_recibida": 233
+ },
+ "resultados": {
+  "pase": {
+   "completo": 51252,
+   "rival": 46460,
+   "salida": 9983,
+   "fin": 149,
+   "offside": 543,
+   "gol_en_contra": 87,
+   "falta": 5
+  },
+  "despeje": {
+   "completo": 5353,
+   "rival": 6289,
+   "salida": 1032,
+   "fin": 34,
+   "gol_en_contra": 1,
+   "offside": 6
+  },
+  "pase_largo": {
+   "rival": 5960,
+   "salida": 2871,
+   "completo": 662,
+   "fin": 44,
+   "offside": 59,
+   "gol_en_contra": 37
+  },
+  "centro": {
+   "rival": 1481,
+   "completo": 595,
+   "salida": 249,
+   "offside": 9
+  },
+  "perdida": {
+   "salida": 3583,
+   "rival": 24470
+  },
+  "usar": {
+   "rival": 3195,
+   "rebote_companero": 2694,
+   "salida_a_favor": 2150,
+   "rebote_propio": 554,
+   "salida_en_contra": 96,
+   "gol": 6,
+   "offside_en_contra": 57,
+   "fin": 38,
+   "falta_en_contra": 1
+  },
+  "cuerpeo": {
+   "nada": 535,
+   "patea": 1394,
+   "rival": 633,
+   "apoyo": 471,
+   "falta_a_favor": 169,
+   "parada": 133
+  },
+  "remate": {
+   "rival": 2407,
+   "salida": 332,
+   "gol": 520,
+   "completo": 9
+  }
+ },
+ "atributos": {
+  "pase": {
+   "corto": 98846,
+   "patada": 101765,
+   "cuerpo": 6714,
+   "largo": 9633
+  },
+  "recepcion": {
+   "de_primera": 20771,
+   "controla": 36429
+  },
+  "saque_corner": {
+   "ejecutado": 2865,
+   "pierde_3s": 2423,
+   "gol_15s": 178,
+   "conserva_3s": 442
+  },
+  "saque_lateral": {
+   "ejecutado": 10061,
+   "pierde_3s": 6702,
+   "gol_15s": 130,
+   "conserva_3s": 3359,
+   "no_ejecutado": 54
+  },
+  "saque_saque_arco": {
+   "ejecutado": 1896,
+   "conserva_3s": 703,
+   "gol_15s": 18,
+   "pierde_3s": 1193
+  },
+  "remate": {
+   "al_arco": 2489,
+   "afuera": 779
+  },
+  "saque_tiro_libre": {
+   "ejecutado": 1746,
+   "conserva_3s": 517,
+   "gol_15s": 41,
+   "pierde_3s": 1229
+  },
+  "gol": {
+   "a_favor": 520,
+   "con_asistencia": 331,
+   "en_contra": 122
+  },
+  "falta": {
+   "penal": 4
+  },
+  "saque_penal": {
+   "ejecutado": 6,
+   "pierde_3s": 4,
+   "gol_15s": 3,
+   "conserva_3s": 2
+  }
+ },
+ "powershot": {
+  "0-24%": {
+   "remate:rival": 97,
+   "pase:completo": 508,
+   "pase:rival": 731,
+   "despeje:rival": 119,
+   "despeje:completo": 46,
+   "pase:salida": 56,
+   "centro:salida": 5,
+   "centro:rival": 19,
+   "despeje:salida": 17,
+   "pase:offside": 6,
+   "remate:gol": 12,
+   "centro:completo": 6,
+   "remate:salida": 7,
+   "pase:fin": 1
+  },
+  "100%": {
+   "pase:rival": 146,
+   "pase:completo": 28,
+   "centro:salida": 6,
+   "pase:salida": 38,
+   "remate:rival": 21,
+   "remate:salida": 8,
+   "remate:gol": 12,
+   "despeje:rival": 4,
+   "centro:rival": 1,
+   "pase:gol_en_contra": 1,
+   "centro:offside": 1,
+   "despeje:completo": 1,
+   "despeje:salida": 1
+  },
+  "25-49%": {
+   "pase:rival": 2793,
+   "despeje:completo": 208,
+   "pase:completo": 1782,
+   "pase:salida": 291,
+   "despeje:rival": 424,
+   "remate:rival": 570,
+   "centro:rival": 96,
+   "remate:salida": 88,
+   "centro:salida": 52,
+   "remate:gol": 73,
+   "despeje:salida": 68,
+   "pase:fin": 9,
+   "centro:completo": 36,
+   "pase:offside": 31,
+   "despeje:fin": 1,
+   "centro:offside": 3
+  },
+  "50-74%": {
+   "pase:rival": 189,
+   "remate:rival": 111,
+   "remate:gol": 26,
+   "despeje:rival": 28,
+   "pase:salida": 23,
+   "pase:completo": 59,
+   "centro:salida": 21,
+   "remate:salida": 29,
+   "despeje:completo": 11,
+   "centro:rival": 6,
+   "despeje:salida": 6,
+   "centro:completo": 3,
+   "pase:fin": 1
+  },
+  "75-99%": {
+   "remate:rival": 2,
+   "pase:salida": 1,
+   "despeje:rival": 4,
+   "pase:rival": 2,
+   "remate:salida": 2,
+   "despeje:salida": 1,
+   "pase:completo": 2
+  }
+ },
+ "espera_saque": {
+  "corner": [
+   157,
+   274,
+   463
+  ],
+  "lateral": [
+   88,
+   163,
+   290
+  ],
+  "saque_arco": [
+   173,
+   272,
+   423
+  ],
+  "tiro_libre": [
+   136,
+   256,
+   404
+  ],
+  "penal": [
+   132,
+   186,
+   338
+  ]
+ }
+}

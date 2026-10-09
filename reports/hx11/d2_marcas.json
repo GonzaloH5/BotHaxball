@@ -1,0 +1,537 @@
+{
+ "partidos": 394,
+ "muestras": 2309232,
+ "reaccion": 15.0,
+ "sigma": 4.0,
+ "xg": {
+  "w": [
+   1.6486,
+   2.4116,
+   -1.239,
+   -2.4248
+  ],
+  "remates": 2463,
+  "tasa_gol": 0.1567
+ },
+ "seguimiento": {
+  "DEL": {
+   "ventanas": 174167,
+   "beta_atacante": 0.284,
+   "beta_pelota": 0.004,
+   "beta_jugador_p10_p50_p90": [
+    0.113,
+    0.286,
+    0.471
+   ],
+   "jugadores": 1512,
+   "referencia_movida": 71317,
+   "sigue": 0.242,
+   "entrega": 0.217,
+   "libre": 0.54
+  },
+  "MED": {
+   "ventanas": 330107,
+   "beta_atacante": 0.251,
+   "beta_pelota": 0.015,
+   "beta_jugador_p10_p50_p90": [
+    0.083,
+    0.241,
+    0.432
+   ],
+   "jugadores": 2854,
+   "referencia_movida": 130392,
+   "sigue": 0.211,
+   "entrega": 0.29,
+   "libre": 0.499
+  },
+  "DEF": {
+   "ventanas": 338770,
+   "beta_atacante": 0.309,
+   "beta_pelota": -0.016,
+   "beta_jugador_p10_p50_p90": [
+    0.135,
+    0.305,
+    0.481
+   ],
+   "jugadores": 2944,
+   "referencia_movida": 129652,
+   "sigue": 0.248,
+   "entrega": 0.336,
+   "libre": 0.416
+  },
+  "MCD": {
+   "ventanas": 56604,
+   "beta_atacante": 0.223,
+   "beta_pelota": 0.027,
+   "beta_jugador_p10_p50_p90": [
+    0.073,
+    0.205,
+    0.407
+   ],
+   "jugadores": 494,
+   "referencia_movida": 19980,
+   "sigue": 0.19,
+   "entrega": 0.41,
+   "libre": 0.4
+  },
+  "ARQ": {
+   "ventanas": 1503,
+   "beta_atacante": 0.197,
+   "beta_pelota": -0.004,
+   "beta_jugador_p10_p50_p90": [
+    -0.078,
+    0.166,
+    0.478
+   ],
+   "jugadores": 18,
+   "referencia_movida": 745,
+   "sigue": 0.138,
+   "entrega": 0.353,
+   "libre": 0.509
+  },
+  "R0": {
+   "ventanas": 637,
+   "beta_atacante": 0.193,
+   "beta_pelota": -0.003,
+   "beta_jugador_p10_p50_p90": [
+    0.154,
+    0.167,
+    0.291
+   ],
+   "jugadores": 5,
+   "referencia_movida": 335,
+   "sigue": 0.179,
+   "entrega": 0.236,
+   "libre": 0.585
+  },
+  "R1": {
+   "ventanas": 859,
+   "beta_atacante": 0.244,
+   "beta_pelota": 0.027,
+   "beta_jugador_p10_p50_p90": [
+    0.155,
+    0.229,
+    0.401
+   ],
+   "jugadores": 7,
+   "referencia_movida": 469,
+   "sigue": 0.179,
+   "entrega": 0.267,
+   "libre": 0.554
+  },
+  "R4": {
+   "ventanas": 716,
+   "beta_atacante": 0.272,
+   "beta_pelota": 0.014,
+   "beta_jugador_p10_p50_p90": [
+    0.096,
+    0.286,
+    0.389
+   ],
+   "jugadores": 6,
+   "referencia_movida": 374,
+   "sigue": 0.187,
+   "entrega": 0.251,
+   "libre": 0.561
+  },
+  "R5": {
+   "ventanas": 660,
+   "beta_atacante": 0.187,
+   "beta_pelota": 0.037,
+   "beta_jugador_p10_p50_p90": [
+    0.061,
+    0.146,
+    0.323
+   ],
+   "jugadores": 6,
+   "referencia_movida": 332,
+   "sigue": 0.163,
+   "entrega": 0.286,
+   "libre": 0.551
+  },
+  "R7": {
+   "ventanas": 714,
+   "beta_atacante": 0.254,
+   "beta_pelota": 0.025,
+   "beta_jugador_p10_p50_p90": [
+    0.131,
+    0.207,
+    0.483
+   ],
+   "jugadores": 7,
+   "referencia_movida": 351,
+   "sigue": 0.154,
+   "entrega": 0.333,
+   "libre": 0.513
+  },
+  "R8": {
+   "ventanas": 615,
+   "beta_atacante": 0.461,
+   "beta_pelota": -0.028,
+   "beta_jugador_p10_p50_p90": [
+    0.307,
+    0.44,
+    0.556
+   ],
+   "jugadores": 6,
+   "referencia_movida": 335,
+   "sigue": 0.131,
+   "entrega": 0.236,
+   "libre": 0.633
+  },
+  "R2": {
+   "ventanas": 720,
+   "beta_atacante": 0.212,
+   "beta_pelota": -0.014,
+   "beta_jugador_p10_p50_p90": [
+    0.123,
+    0.285,
+    0.367
+   ],
+   "jugadores": 6,
+   "referencia_movida": 364,
+   "sigue": 0.181,
+   "entrega": 0.264,
+   "libre": 0.555
+  },
+  "R3": {
+   "ventanas": 709,
+   "beta_atacante": 0.263,
+   "beta_pelota": -0.001,
+   "beta_jugador_p10_p50_p90": [
+    0.139,
+    0.202,
+    0.412
+   ],
+   "jugadores": 6,
+   "referencia_movida": 381,
+   "sigue": 0.163,
+   "entrega": 0.281,
+   "libre": 0.556
+  },
+  "R6": {
+   "ventanas": 566,
+   "beta_atacante": 0.291,
+   "beta_pelota": 0.032,
+   "beta_jugador_p10_p50_p90": [
+    0.086,
+    0.303,
+    0.372
+   ],
+   "jugadores": 5,
+   "referencia_movida": 301,
+   "sigue": 0.209,
+   "entrega": 0.259,
+   "libre": 0.532
+  },
+  "R9": {
+   "ventanas": 267,
+   "beta_atacante": 0.334,
+   "beta_pelota": -0.044,
+   "beta_jugador_p10_p50_p90": null,
+   "jugadores": 3,
+   "referencia_movida": 122,
+   "sigue": 0.164,
+   "entrega": 0.246,
+   "libre": 0.59
+  }
+ },
+ "seguimiento_equipo": {
+  "n": 788,
+  "p10_p50_p90": [
+   0.211,
+   0.283,
+   0.351
+  ]
+ },
+ "gamma": {
+  "p10": [
+   0.883,
+   -0.074,
+   0.05
+  ],
+  "p50": [
+   0.945,
+   -0.009,
+   0.066
+  ],
+  "p90": [
+   1.009,
+   0.049,
+   0.082
+  ]
+ },
+ "por_linea": {
+  "DEL": {
+   "minutos_defendiendo": 7325.3,
+   "del_lado_del_arco": 0.665,
+   "espalda_ganada": 0.4572,
+   "marcas_perdidas_10min": 56.585,
+   "margen_p10_p50": [
+    -68.2,
+    5.3
+   ],
+   "misma_marca_s": 5.1
+  },
+  "MED": {
+   "minutos_defendiendo": 13912.7,
+   "del_lado_del_arco": 0.794,
+   "espalda_ganada": 0.2966,
+   "marcas_perdidas_10min": 42.08,
+   "margen_p10_p50": [
+    -44.7,
+    27.2
+   ],
+   "misma_marca_s": 4.4
+  },
+  "DEF": {
+   "minutos_defendiendo": 14297.8,
+   "del_lado_del_arco": 0.865,
+   "espalda_ganada": 0.1939,
+   "marcas_perdidas_10min": 41.007,
+   "margen_p10_p50": [
+    -20.5,
+    35.5
+   ],
+   "misma_marca_s": 4.3
+  },
+  "MCD": {
+   "minutos_defendiendo": 2408.6,
+   "del_lado_del_arco": 0.882,
+   "espalda_ganada": 0.1772,
+   "marcas_perdidas_10min": 31.615,
+   "margen_p10_p50": [
+    -17.6,
+    44.0
+   ],
+   "misma_marca_s": 3.7
+  },
+  "ARQ": {
+   "minutos_defendiendo": 58.1,
+   "del_lado_del_arco": 0.804,
+   "espalda_ganada": 0.277,
+   "marcas_perdidas_10min": 34.763,
+   "margen_p10_p50": [
+    -47.4,
+    33.6
+   ],
+   "misma_marca_s": 3.9
+  },
+  "R0": {
+   "minutos_defendiendo": 23.6,
+   "del_lado_del_arco": 0.733,
+   "espalda_ganada": 0.3691,
+   "marcas_perdidas_10min": 61.755,
+   "margen_p10_p50": [
+    -69.4,
+    20.8
+   ],
+   "misma_marca_s": 3.7
+  },
+  "R1": {
+   "minutos_defendiendo": 32.3,
+   "del_lado_del_arco": 0.794,
+   "espalda_ganada": 0.3156,
+   "marcas_perdidas_10min": 31.248,
+   "margen_p10_p50": [
+    -77.1,
+    29.9
+   ],
+   "misma_marca_s": 4.4
+  },
+  "R4": {
+   "minutos_defendiendo": 27.0,
+   "del_lado_del_arco": 0.709,
+   "espalda_ganada": 0.4066,
+   "marcas_perdidas_10min": 35.512,
+   "margen_p10_p50": [
+    -75.7,
+    11.6
+   ],
+   "misma_marca_s": 4.5
+  },
+  "R5": {
+   "minutos_defendiendo": 25.4,
+   "del_lado_del_arco": 0.623,
+   "espalda_ganada": 0.4889,
+   "marcas_perdidas_10min": 41.404,
+   "margen_p10_p50": [
+    -94.3,
+    0.9
+   ],
+   "misma_marca_s": 4.7
+  },
+  "R7": {
+   "minutos_defendiendo": 27.5,
+   "del_lado_del_arco": 0.806,
+   "espalda_ganada": 0.2806,
+   "marcas_perdidas_10min": 30.898,
+   "margen_p10_p50": [
+    -55.4,
+    32.4
+   ],
+   "misma_marca_s": 4.2
+  },
+  "R8": {
+   "minutos_defendiendo": 24.2,
+   "del_lado_del_arco": 0.712,
+   "espalda_ganada": 0.3754,
+   "marcas_perdidas_10min": 37.18,
+   "margen_p10_p50": [
+    -81.5,
+    15.0
+   ],
+   "misma_marca_s": 4.4
+  },
+  "R2": {
+   "minutos_defendiendo": 27.4,
+   "del_lado_del_arco": 0.742,
+   "espalda_ganada": 0.3517,
+   "marcas_perdidas_10min": 38.707,
+   "margen_p10_p50": [
+    -71.6,
+    24.3
+   ],
+   "misma_marca_s": 4.3
+  },
+  "R3": {
+   "minutos_defendiendo": 26.5,
+   "del_lado_del_arco": 0.717,
+   "espalda_ganada": 0.3842,
+   "marcas_perdidas_10min": 46.722,
+   "margen_p10_p50": [
+    -68.3,
+    18.0
+   ],
+   "misma_marca_s": 4.2
+  },
+  "R6": {
+   "minutos_defendiendo": 22.1,
+   "del_lado_del_arco": 0.769,
+   "espalda_ganada": 0.3096,
+   "marcas_perdidas_10min": 49.661,
+   "margen_p10_p50": [
+    -50.5,
+    22.3
+   ],
+   "misma_marca_s": 4.1
+  },
+  "R9": {
+   "minutos_defendiendo": 11.5,
+   "del_lado_del_arco": 0.752,
+   "espalda_ganada": 0.366,
+   "marcas_perdidas_10min": 86.806,
+   "margen_p10_p50": [
+    -64.2,
+    22.9
+   ],
+   "misma_marca_s": 3.8
+  }
+ },
+ "marca_perdida": {
+  "n": 167506,
+  "recibe_a_la_espalda": 0.0335,
+  "nada": 0.9042,
+  "remate": 0.0482,
+  "gol": 0.0141,
+  "la_linea_habilita": 153772,
+  "el_mismo_habilita": 13734
+ },
+ "marca_perdida_por_linea": {
+  "DEL": {
+   "recibe_a_la_espalda": 872,
+   "nada": 38758,
+   "remate": 1415,
+   "gol": 405
+  },
+  "MED": {
+   "nada": 53081,
+   "recibe_a_la_espalda": 1843,
+   "remate": 2809,
+   "gol": 812
+  },
+  "DEF": {
+   "nada": 51837,
+   "recibe_a_la_espalda": 2600,
+   "remate": 3245,
+   "gol": 949
+  },
+  "MCD": {
+   "nada": 6741,
+   "recibe_a_la_espalda": 262,
+   "remate": 475,
+   "gol": 137
+  },
+  "ARQ": {
+   "remate": 27,
+   "nada": 155,
+   "recibe_a_la_espalda": 7,
+   "gol": 13
+  },
+  "R0": {
+   "nada": 120,
+   "recibe_a_la_espalda": 5,
+   "remate": 12,
+   "gol": 9
+  },
+  "R1": {
+   "nada": 79,
+   "remate": 15,
+   "recibe_a_la_espalda": 5,
+   "gol": 2
+  },
+  "R7": {
+   "remate": 9,
+   "nada": 71,
+   "gol": 3,
+   "recibe_a_la_espalda": 2
+  },
+  "R4": {
+   "nada": 75,
+   "remate": 10,
+   "gol": 9,
+   "recibe_a_la_espalda": 2
+  },
+  "R5": {
+   "nada": 90,
+   "remate": 7,
+   "gol": 5,
+   "recibe_a_la_espalda": 3
+  },
+  "R6": {
+   "nada": 93,
+   "recibe_a_la_espalda": 4,
+   "remate": 11,
+   "gol": 2
+  },
+  "R8": {
+   "gol": 3,
+   "nada": 76,
+   "recibe_a_la_espalda": 2,
+   "remate": 9
+  },
+  "R9": {
+   "recibe_a_la_espalda": 5,
+   "nada": 74,
+   "gol": 8,
+   "remate": 13
+  },
+  "R2": {
+   "nada": 93,
+   "remate": 6,
+   "gol": 7
+  },
+  "R3": {
+   "nada": 109,
+   "gol": 4,
+   "recibe_a_la_espalda": 2,
+   "remate": 9
+  }
+ },
+ "azar": {
+  "n": 31520,
+  "nada": 0.9527,
+  "remate": 0.0367,
+  "gol": 0.0107
+ }
+}

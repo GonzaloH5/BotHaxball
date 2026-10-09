@@ -34,9 +34,15 @@ PS_ANN = re.compile(r"Powershot utilizado\. (\d+)%")
 
 
 class Match:
-    def __init__(self, base):
-        self.name = Path(str(base).removesuffix(".npz")).name
-        self.z, self.events, self.header = load(base)
+    def __init__(self, base=None, arrays=None, name=None):
+        """Partido de `tools.hx11_npz`: desde el archivo (`base`) o desde arreglos en memoria
+        (`arrays` = (arreglos, eventos, header), lo que devuelve `convert(..., return_arrays=True)`)."""
+        if arrays is not None:
+            self.name = name or "partido"
+            self.z, self.events, self.header = arrays
+        else:
+            self.name = Path(str(base).removesuffix(".npz")).name
+            self.z, self.events, self.header = load(base)
         z = self.z
         self.frame = z["frame"]
         self.T = len(self.frame)
