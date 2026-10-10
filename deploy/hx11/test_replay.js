@@ -33,6 +33,7 @@ const MOVE = (b) => [((b >> 3) & 1) - ((b >> 2) & 1), ((b >> 1) & 1) - (b & 1)];
 let ready = false;
 const cer = startCerebro({
   model, pos, temp: 0.7, renovarPatada: 0.33, sinSaques: "corner,tiro_libre,saque_arco",
+  reglaJuego: argv.includes("--regla-juego"),
   onReady: () => { ready = true; },
   onDecision: (msg) => {
     decisions++;

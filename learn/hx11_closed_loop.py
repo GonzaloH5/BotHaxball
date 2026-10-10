@@ -370,12 +370,13 @@ def kick_outcomes(arr: Match, s, js, k0, end, horizon=120):
     team = 0 if s < 11 else 1
     att = 1.0 if team == 0 else -1.0
     last = k0 + end
-    c = dict(patadas_atras_propio=0, regaladas=0, afuera=0, a_companero=0)
+    c = dict(patadas_atras_propio=0, regaladas=0, afuera=0, a_companero=0, atras_a_companero=0, atras_mal=0)
     for j in js:
         kk = k0 + 1 + int(j)
         b0 = arr.ball[kk].astype(np.float64) / 10
         b3 = arr.ball[min(kk + 3, last)].astype(np.float64) / 10
-        if b0[0] * att < 0 and (b3[0] - b0[0]) * att < -4.5:
+        back = b0[0] * att < 0 and (b3[0] - b0[0]) * att < -4.5
+        if back:
             c["patadas_atras_propio"] += 1
         res = None
         for t in range(kk + 2, min(kk + horizon, last) + 1):
@@ -390,6 +391,10 @@ def kick_outcomes(arr: Match, s, js, k0, end, horizon=120):
                 break
         if res:
             c[res] += 1
+        if back and res == "a_companero":
+            c["atras_a_companero"] += 1          # pase atrás
+        elif back and res in ("regaladas", "afuera"):
+            c["atras_mal"] += 1                  # el error: a un rival o afuera
     return c
 
 

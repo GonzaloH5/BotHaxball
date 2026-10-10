@@ -48,6 +48,9 @@ const cer = startCerebro({
   model, pos, temp, ens: Number(arg("--ens", "0")), ensM: parseFloat(arg("--ens-m", "0")),
   renovarPatada: parseFloat(arg("--renovar-patada", "0.33")),   // patada persistente en juego abierto (puerta P3)
   reglaSaques: args.includes("--regla-saques"),   // si saca córners/tiros libres: desde atrás y con la barra alta
+  // juego abierto: no patea hacia afuera pegado a la banda ni atrás en campo propio sin compañero (los dos errores del
+  // partido real del 2026-10-09; puerta P3 completa con la regla). --sin-regla-juego la apaga
+  reglaJuego: !args.includes("--sin-regla-juego"),
   renovar: parseFloat(arg("--renovar", "0.33")),   // dirección persistente lejos de la pelota: 10 → 4,7 cambios de tecla/s (puerta P3 pasa)
   // con humanos: el bot no patea córners, tiros libres ni saques de arco de su equipo (los saca un humano); "ninguno"
   // para que patee todo
