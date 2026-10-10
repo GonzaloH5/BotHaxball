@@ -110,13 +110,18 @@ def game_metrics(w: Match, k0, k1):
         shape.append((np.nanmax(xs, 1) - np.nanmin(xs, 1), np.nanmax(ys, 1) - np.nanmin(ys, 1)))
     pos_m = positioning(w, ks, pos, ball, on, poss)
     open_frac = float((w.phase[ks] == OPEN).mean())
+    # faltas y offsides: los dos congelan el juego (fase 3) antes del tiro libre; por 10 min de juego abierto
+    ph = w.phase[ks].astype(np.int64)
+    freezes = int(((ph[1:] == 3) & (ph[:-1] != 3)).sum())
+    open_min = max(float((ph == OPEN).sum()) / 3600, 1e-6)
     sp = np.hypot(*np.diff(pos, axis=0).transpose(2, 0, 1))[on[1:] & on[:-1]]
     sp = sp[sp < 10]
     nearest = np.where(on, np.hypot(*(pos - ball[:, None]).transpose(2, 0, 1)), np.inf).min(1)
     return dict(patadas_jugador_min=float(kicks / n_on / mins), toques_jugador_min=float(touch.sum() / 60 / n_on / mins),
                 cambios_posesion_min=changes / mins, goles_10min=goals / mins * 10, largo_equipo=float(np.nanmean([s[0] for s in shape])),
                 ancho_equipo=float(np.nanmean([s[1] for s in shape])), juego_abierto=open_frac,
-                vel_media=float(sp.mean()), mas_cercano_pelota_p50=float(np.median(nearest)), **pos_m)
+                vel_media=float(sp.mean()), mas_cercano_pelota_p50=float(np.median(nearest)),
+                faltas_offsides_10min=freezes / open_min * 10, **pos_m)
 
 
 def positioning(w: Match, ks, pos, ball, on, poss):
@@ -204,6 +209,8 @@ def play(policy, matches, n_games, H, seed=0, n_env=8, every=FRAME_SKIP, temp_mo
         n = len(chunk)
         acts = np.zeros((n_env, 22), np.int64)
         prev = np.full((n_env, 22), -1, np.int64)       # última acción en coordenadas del equipo (histéresis)
+        fouls = np.zeros(n_env, np.int64)
+        offs = np.zeros(n_env, np.int64)
         next_dec = np.zeros((n_env, 22), np.int64)
         use_hold = getattr(policy, "hold", False)
         for k in range(H):
@@ -244,13 +251,21 @@ def play(policy, matches, n_games, H, seed=0, n_env=8, every=FRAME_SKIP, temp_mo
                     acts[i, s] = a
                     W[i].inp[kk, s] = bits_of_action(np.array([a]))[0]
                     next_dec[i, s] = k + (int(HOLD_REP[hc[j]]) if use_hold else every)
-            env.step(acts, frames=1)
+            ev = env.step(acts, frames=1)
+            for i in range(len(W)):
+                e = int(ev[i, 0])
+                if e == K.EV_FOUL:
+                    fouls[i] += 1
+                elif e == K.EV_OFFSIDE:
+                    offs[i] += 1
             for i, w in enumerate(W):
                 store_all(env, i, w, kk + 1)
                 w.score[kk + 1] = env.ri[i, [K.RI_SCORE0, K.RI_SCORE1]]
         for i, (mi, t0) in enumerate(chunk):
             r = game_metrics(W[i], MAX_BACK + 1, MAX_BACK + H)
             r.update(partido=matches[mi].name, t0=t0, inicio="saque" if matches[mi].phase[t0] == KICKOFF else "abierto")
+            om = max(float((W[i].phase[MAX_BACK + 1:MAX_BACK + H] == OPEN).sum()) / 3600, 1e-6)
+            r.update(faltas_10min=float(fouls[i] / om * 10), offsides_10min=float(offs[i] / om * 10))
             res.append(r)
             traj.append(dict(pos=W[i].pos[MAX_BACK:].tolist(), ball=W[i].ball[MAX_BACK:].tolist(),
                              pid=(W[i].pid[MAX_BACK] >= 0).tolist(), phase=W[i].phase[MAX_BACK:].tolist(),

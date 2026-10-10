@@ -100,8 +100,8 @@ def main():
     ap.add_argument("--chunk", type=int, default=0, help="acciones en bloque: cuántas decisiones predice (ACT)")
     ap.add_argument("--init", default=None, help="arranca con los pesos de este modelo (ajuste corto)")
     ap.add_argument("--extra-data", default=None,
-                    help="npz con own/ents/y (p. ej. learn.hx11_ajuste_lateral): se mezcla en cada lote")
-    ap.add_argument("--extra-frac", type=float, default=0.0, help="fracción de cada lote que sale de --extra-data")
+                    help="npz con own/ents/y (p. ej. learn.hx11_corner humanos); varios separados por coma")
+    ap.add_argument("--extra-frac", default="0", help="fracción de cada lote que sale de cada --extra-data (por coma)")
     ap.add_argument("--out", default="runs/hx11_l0/mini")
     ap.add_argument("--reanudar", action="store_true",
                     help="si hay out/ultimo.pt con el optimizador, sigue desde ese paso (para PCs que se apagan)")
@@ -136,12 +136,16 @@ def main():
     opt = torch.optim.AdamW(net.parameters(), lr=a.lr, weight_decay=1e-4)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, a.steps)
     lossf = nn.CrossEntropyLoss(ignore_index=-100)
-    extra = None
-    if a.extra_data and a.extra_frac > 0:
-        assert net.chunk == 1 and not a.hold, "--extra-data solo con la cabeza de una acción"
-        z = np.load(a.extra_data)
-        extra = (z["own"], z["ents"], z["y"].astype(np.int64))
-        print(f"datos extra: {len(extra[2])} muestras de {a.extra_data}, {a.extra_frac:.0%} de cada lote", flush=True)
+    extras = []
+    if a.extra_data:
+        fracs = [float(x) for x in str(a.extra_frac).split(",")]
+        for path, fr in zip(a.extra_data.split(","), fracs):
+            if fr <= 0:
+                continue
+            assert net.chunk == 1 and not a.hold, "--extra-data solo con la cabeza de una acción"
+            z = np.load(path)
+            extras.append((z["own"], z["ents"], z["y"].astype(np.int64), fr))
+            print(f"datos extra: {len(extras[-1][2])} muestras de {path}, {fr:.0%} de cada lote", flush=True)
     ci = 4 + int(a.hold)             # índice de las acciones en bloque en el lote
     hist = []
     best = 1e9
@@ -169,12 +173,17 @@ def main():
     for step in range(first, a.steps + 1):
         bt = tr.batch(a.batch)
         own, ents, y = bt[0], bt[1], bt[2]
-        if extra is not None:
-            ne = int(round(len(y) * a.extra_frac))
-            j = rng.integers(0, len(extra[2]), ne)
-            own = np.concatenate([own[ne:], extra[0][j]])
-            ents = np.concatenate([ents[ne:], extra[1][j]])
-            y = np.concatenate([y[ne:], extra[2][j]])
+        if extras:
+            B0 = len(y)
+            parts_o, parts_e, parts_y, used = [], [], [], 0
+            for eo, ee, ey, fr in extras:
+                ne = int(round(B0 * fr))
+                j = rng.integers(0, len(ey), ne)
+                parts_o.append(eo[j]); parts_e.append(ee[j]); parts_y.append(ey[j])
+                used += ne
+            own = np.concatenate([own[used:]] + parts_o)
+            ents = np.concatenate([ents[used:]] + parts_e)
+            y = np.concatenate([y[used:]] + parts_y)
         yc = bt[ci] if net.chunk > 1 else None
         if rng.random() < 0.5:
             own, ents, y = mirror(own, ents, y)

@@ -334,6 +334,14 @@ def metrics(w: Match, log: Match, s, end, acts, m: Match, t0, owner):
         runs = edges[1::2] - edges[::2]
         out[f"control_min_{who}"] = float(ctl.sum()) / 60 / mins
         out[f"control_largo_min_{who}"] = float(runs[runs >= 90].sum()) / 60 / mins
+        # contacto real (borde a <= TOUCH): el powershot empieza a cargar a los 90 ticks de contacto seguido (S2)
+        con = gap <= TOUCH
+        e2 = np.flatnonzero(np.diff(np.r_[0, con.astype(np.int8), 0]))
+        cr = e2[1::2] - e2[::2]
+        out[f"contacto_largo_min_{who}"] = float(cr[cr >= 90].sum()) / 60 / mins
+        out[f"rachas_carga_min_{who}"] = float((cr >= 114).sum()) / mins       # llegan al primer nivel de carga
+        # distancia de borde mientras controla (<= 4 px): pegado (0) o conduciendo a distancia
+        out[f"borde_control_{who}"] = float(np.median(gap[ctl])) if ctl.any() else None
         out[f"patadas_cargadas_min_{who}"] = float((kf & (arr.binv[ks].astype(np.float64) >= 2.4)).sum()) / mins
     out["cambios_s_bot"] = float((np.diff(acts) != 0).sum()) / (end / 60)
     ha = action_of_bits(log.inp[ks, s])

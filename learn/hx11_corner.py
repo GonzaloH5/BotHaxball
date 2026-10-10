@@ -333,14 +333,52 @@ def human_takers(names, kind=C.CORNER, stride=3, seed=0, modos=None):
 def main_humanos():
     ap = argparse.ArgumentParser(description="decisiones de los humanos que sacaron córners (para un ajuste corto)")
     ap.add_argument("--split-file", default="runs/hx11_l0/split.json")
-    ap.add_argument("--tipo", default="corner", choices=["corner", "lateral"])
+    ap.add_argument("--tipo", default="corner", choices=["corner", "lateral", "conduccion"])
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     sp = json.loads((ROOT / a.split_file).read_text(encoding="utf-8"))
     modos = json.loads((ROOT / "data" / "hx11" / "modos.json").read_text(encoding="utf-8"))
-    data = human_takers(sp["train"], C.CORNER if a.tipo == "corner" else C.LATERAL, modos=modos)
+    data = (human_carry(sp["train"], modos=modos) if a.tipo == "conduccion"
+            else human_takers(sp["train"], C.CORNER if a.tipo == "corner" else C.LATERAL, modos=modos))
     np.savez_compressed(a.out, **data)
     print(json.dumps(dict(muestras=int(len(data["y"])), patadas=int((data["y"] >= 9).sum()), out=a.out)))
+
+
+def human_carry(names, min_run=60, after=30, stride=3, per_match=1500, seed=0, modos=None):
+    """Decisiones de humanos llevando la pelota pegada (contacto seguido >= `min_run` ticks en juego abierto) y hasta
+    `after` ticks después (la patada, a menudo cargada). Para un ajuste corto: el bot controla la pelota tanto como el
+    humano pero corta el contacto más seguido y carga el powershot la mitad de veces (2026-10-09)."""
+    from tools.hx11_d0 import OPEN
+    rng = np.random.default_rng(seed)
+    keep_o, keep_e, keep_y = [], [], []
+    for nm in names:
+        m = load_match(nm, modos)
+        pos = m.pos.astype(np.float64) / 10
+        ball = m.ball.astype(np.float64) / 10
+        gap = np.hypot(*(pos - ball[:, None]).transpose(2, 0, 1)) - C.PLAYER_R - C.BALL_R
+        ts_all, ss_all = [], []
+        for s in range(22):
+            con = (gap[:, s] <= 0.6) & (m.phase == OPEN) & (m.pid[:, s] >= 0)
+            e = np.flatnonzero(np.diff(np.r_[0, con.astype(np.int8), 0]))
+            for a, b in zip(e[::2], e[1::2]):
+                if b - a < min_run:
+                    continue
+                ts = np.arange(a, min(b + after, m.T - 1), stride)
+                ts = ts[(ts >= MAX_BACK) & (m.pid[ts, s] == m.pid[a, s]) & (m.inp[ts, s] >= 0)
+                        & (m.pid[np.maximum(ts - MAX_BACK, 0), s] == m.pid[a, s])]
+                ts_all.append(ts)
+                ss_all.append(np.full(len(ts), s))
+        if not ts_all:
+            continue
+        ts, ss = np.concatenate(ts_all), np.concatenate(ss_all)
+        if len(ts) > per_match:
+            j = rng.choice(len(ts), per_match, replace=False)
+            ts, ss = ts[j], ss[j]
+        d = rng.integers(D_MIN, D_MAX + 1, len(ts))
+        o, e_, y, _ = build(m, ts, ss, d, False)
+        keep_o.append(o); keep_e.append(e_); keep_y.append(y)
+    return dict(own=np.concatenate(keep_o).astype(np.float32), ents=np.concatenate(keep_e).astype(np.float32),
+                y=np.concatenate(keep_y).astype(np.int64))
 
 
 if __name__ == "__main__":
