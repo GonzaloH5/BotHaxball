@@ -1,7 +1,7 @@
 // Bot de HaxEleven X11 en una sala real, como cliente (docs/PLAN_HAXELEVEN.md §4; piloto C0).
 //
 //   node deploy/hx11/bot.js --join <id o link de la sala> --pos LI [--name HX-Bot] [--password x]
-//        [--model runs/hx11_l0/l0_sinhist_ancho/model_final.pt] [--temp 0.7] [--renovar-patada 0.33]
+//        [--model runs/hx11_l0/l0_ajuste_corner_h2/model_final.pt] [--temp 0.7] [--renovar-patada 0.33]
 //        [--sin-saques corner,tiro_libre,saque_arco | ninguno] [--flag uy --lat -34.9 --lon -56.17] [--avatar x]
 //
 // * El puesto lo elige SOLO el usuario con --pos (o escribiendo "pos MC" en esta consola). Nada del chat lo cambia.
@@ -30,7 +30,7 @@ if (!joinArg || !pos) {
   process.exit(1);
 }
 const joinId = joinArg.includes("?c=") ? joinArg.split("?c=")[1].split("&")[0] : joinArg;
-const model = arg("--model", "runs/hx11_l0/l0_sinhist_ancho/model_final.pt");
+const model = arg("--model", "runs/hx11_l0/l0_ajuste_corner_h2/model_final.pt");
 const temp = parseFloat(arg("--temp", "0.7"));
 const D_MIN = 8, D_MAX = 36;
 
@@ -47,6 +47,7 @@ const echo = () => {
 const cer = startCerebro({
   model, pos, temp, ens: Number(arg("--ens", "0")), ensM: parseFloat(arg("--ens-m", "0")),
   renovarPatada: parseFloat(arg("--renovar-patada", "0.33")),   // patada persistente en juego abierto (puerta P3)
+  reglaSaques: args.includes("--regla-saques"),   // si saca córners/tiros libres: desde atrás y con la barra alta
   renovar: parseFloat(arg("--renovar", "0.33")),   // dirección persistente lejos de la pelota: 10 → 4,7 cambios de tecla/s (puerta P3 pasa)
   // con humanos: el bot no patea córners, tiros libres ni saques de arco de su equipo (los saca un humano); "ninguno"
   // para que patee todo

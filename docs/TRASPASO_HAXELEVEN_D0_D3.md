@@ -533,6 +533,17 @@ El usuario las vio en los partidos simulados (visor `learn/hx11_replay_html.py`,
   - **En curso:** ajuste fuerte h2 (30% del lote, 6000 pasos, `runs/hx11_l0/l0_ajuste_corner_h2`). Después: córners con y sin regla, laterales, retención (`C:/hxpod/runs/ajuste_corner/eval_h2_driver.py`) y la puerta P3 en la PC del usuario (la PC prestada no tiene los partidos de prueba).
 - **Comba:** toda comba queda entera 6 ticks y después ×0,981 por tick. Coeficientes ajustados; error del powershot −38%. Falta la comba de patadas sin carga en juego abierto.
 
+### Ajuste fuerte del córner (h2) y reglas de patada (2026-10-09, noche)
+
+- **h2:** 6000 pasos con el 30% del lote de decisiones de humanos que sacan córners (`runs/hx11_l0/l0_ajuste_corner_h2/model_final.pt`). Es el **modelo por defecto del bot**.
+  - Puerta P3 con la configuración de sala: **pasan los 5 puestos** (MCD: patadas 0,67, toques 1,08, ubicación 1,06). `reports/hx11/l0_puerta_h2_sala.md`.
+  - Laterales en desarrollo: 91,5% bien. Retención: 0,79 / 0,93 / 0,84.
+- **Regla de patada en pelotas paradas con barra** (`learn/hx11_corner.py --regla --regla-barra`; en el cerebro, `--regla-saques`, apagada por defecto): solo se patea desde atrás de la pelota respecto de adónde va, y con la barra alta (masa ≥ 2,8, o pasados 10 s).
+  - **Córner, h2 + reglas:** 84% sacados, italiano 0%, llega al área 41%, sale por otro lado 30%, remate 10%, velocidad p50 19,1 (humanos: 100%, 3,5%, 92%, —, 40%, 20,0).
+  - **Tiro libre, h2 + reglas:** sale de la cancha 28% (base 37%, humanos 6%), avance 610 px (base 166, humanos 882), potencia igual a la humana.
+  - Siguen por debajo del humano en puntería, así que con humanos esas pelotas paradas las sacan ellos (`--sin-saques`).
+- **Temblor:** dirección persistente solo lejos de la pelota (`--renovar 0.33`, por defecto en el bot de sala). Cambios de tecla al azar 10,1 → 4,7 por segundo (humano 3,0); cerca de la pelota el juego no cambia.
+
 ### Lo que sigue, en orden
 
 1. **Puerta P3 con la patada mixta** (`reports/hx11/l0_puerta_ancho_patada033_mixta.md`). Si pasa, es la configuración por defecto del bot de sala.

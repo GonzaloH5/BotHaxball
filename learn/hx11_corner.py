@@ -41,10 +41,33 @@ ROOT = Path(__file__).resolve().parent.parent
 BOX_X, BOX_Y = C.BOX_X, C.BOX_Y
 
 
-def behind(me, ball):
-    """El jugador está detrás de la pelota del córner: del lado de la línea de fondo (95% de los humanos al patear)."""
-    side = 1.0 if ball[0] > 0 else -1.0
-    return (me[0] - ball[0]) * side > 0.0
+def behind(me, ball, kind=C.CORNER, team=0):
+    """El que saca está detrás de la pelota respecto de adónde va: en el córner, del lado de la línea de fondo (95% de
+    los humanos al patear); en el tiro libre y el saque de arco, del lado de su propio arco (patea hacia adelante)."""
+    if kind == C.CORNER:
+        side = 1.0 if ball[0] > 0 else -1.0
+        return (me[0] - ball[0]) * side > 0.0
+    attack = 1.0 if team == 0 else -1.0
+    return (me[0] - ball[0]) * attack < 0.0
+
+
+BAR_MIN = 2.8            # masa inversa mínima de la pelota para patear (barra alta; p10 humano: córner 3,3, tiro libre 2,8)
+BAR_WAIT = 600           # pasados estos ticks de espera, se patea con cualquier barra (no trabarse)
+
+
+def kick_allowed(env, i, s, rule, bar_rule):
+    """Regla de patada en una pelota parada propia con barra (córner, tiro libre, saque de arco)."""
+    ri = env.ri[i]
+    if ri[K.RI_MODE] != K.PIECE or ri[K.RI_KIND] not in (C.CORNER, C.FREE_KICK, C.GOAL_KICK):
+        return True
+    team = int(ri[K.RI_TEAM])
+    if (s >= 11) != (team == 1):
+        return True
+    if rule and not behind(env.pos[i, env.fp + s], env.pos[i, 0], int(ri[K.RI_KIND]), team):
+        return False
+    if bar_rule and env.inv[i, 0] < BAR_MIN and ri[K.RI_TICKS] < BAR_WAIT:
+        return False
+    return True
 
 
 KIND = C.CORNER          # tipo de pelota parada que se evalúa (--tipo): córner, tiro libre o saque de arco
@@ -143,7 +166,7 @@ def good(r):
 
 
 def bots(policy, matches, starts, H=900, n_env=16, seed=0, temp=0.7, renew_kick=0.33, every=FRAME_SKIP,
-         collect=False, near_px=500.0, rule=False):
+         collect=False, near_px=500.0, rule=False, bar_rule=False):
     """`rule`: en su propio córner el bot solo patea si está detrás de la pelota (regla de patada, 2026-10-09)."""
     rng = np.random.default_rng(seed)
     env = HX11Env(n_env, seed=seed)
@@ -195,10 +218,8 @@ def bots(policy, matches, starts, H=900, n_env=16, seed=0, temp=0.7, renew_kick=
                     if collect and env.ri[i, K.RI_MODE] == K.PIECE and (s >= 11) == (teams[i] == 1) and \
                             np.hypot(*(env.pos[i, 0] - env.pos[i, env.fp + s])) <= near_px:
                         buf[i][s].append((ot[j], et[j], a))     # acción en coordenadas del equipo
-                    if rule and a >= 9 and env.ri[i, K.RI_MODE] == K.PIECE and env.ri[i, K.RI_KIND] == C.CORNER and \
-                            (s >= 11) == (env.ri[i, K.RI_TEAM] == 1) and \
-                            not behind(env.pos[i, env.fp + s], env.pos[i, 0]):
-                        a -= 9                                  # regla: sin patada desde el lado de la cancha
+                    if (rule or bar_rule) and a >= 9 and not kick_allowed(env, i, s, rule, bar_rule):
+                        a -= 9                                  # regla de patada de la pelota parada
                     if s >= 11:
                         a = int(ROT_MOVE[a % 9] + 9 * (a // 9))
                     acts[i, s] = a
@@ -241,6 +262,7 @@ def main():
     ap.add_argument("--sin-humanos", action="store_true")
     ap.add_argument("--regla", action="store_true", help="en su propio córner, solo patea desde atrás de la pelota")
     ap.add_argument("--tipo", default="corner", choices=list(TIPOS), help="pelota parada que se evalúa")
+    ap.add_argument("--regla-barra", action="store_true", help="solo patea con la barra alta (o tras 10 s de espera)")
     a = ap.parse_args()
     global KIND
     KIND = TIPOS[a.tipo]
@@ -262,7 +284,7 @@ def main():
     policy.eval()
     t0 = time.time()
     out = bots(policy, matches, starts, n_env=a.n_env, seed=a.seed, temp=a.temp, renew_kick=a.renovar_patada,
-               collect=bool(a.colectar), rule=a.regla)
+               collect=bool(a.colectar), rule=a.regla, bar_rule=a.regla_barra)
     bot, data = out if a.colectar else (out, None)
     res = dict(modelo=a.model, split=a.split, partidos=len(names), bots=summarize(bot),
                humanos=summarize(hum) if hum else None, segundos=round(time.time() - t0))

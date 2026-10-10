@@ -46,7 +46,7 @@ def lookup(vocab, key):
 
 class Cerebro:
     def __init__(self, model, pos, vocab, temp=1.0, every=3, hyst=0.0, ens_k=0, ens_m=0.0, renew=1.0, renew_kick=1.0,
-                 sin_saques=()):
+                 sin_saques=(), regla_saques=False):
         ck = torch.load(model, map_location="cpu", weights_only=False)
         self.net = SetPolicy(**ck["config"])
         self.net.load_state_dict(ck["state"])
@@ -56,6 +56,7 @@ class Cerebro:
         self.prev = {}                          # id -> última acción (coordenadas del equipo), para la histéresis
         # acciones en bloque (ACT): ensamble temporal por jugador, si el modelo predice varias decisiones
         self.sin_saques = set(int(k) for k in sin_saques)   # tipos de pelota parada propia que el bot no patea
+        self.regla_saques = bool(regla_saques)              # regla de patada (dirección y barra) en las que sí saca
         # ruido persistente (dirección y tecla de patear), por jugador
         self.renew, self.renew_kick = renew, renew_kick
         self.noise = StickyNoise(renew, 0, renew_kick) if (renew < 1.0 or renew_kick < 1.0) else None
@@ -159,6 +160,26 @@ class Cerebro:
                     kick_u=self.noise.get_kick(ids, piece_rows([self.w.phase[self.n - 1]] * len(ids)))
                     if self.renew_kick < 1.0 else None)
 
+    def _kick_blocked(self, s):
+        """Regla de patada en las pelotas paradas propias con barra (córner, tiro libre, saque de arco), si está
+        activada: solo desde atrás de la pelota respecto de adónde va y con la barra alta (o pasados 10 s de espera).
+        Medida en el simulador (learn/hx11_corner.py, 2026-10-09): sin córners italianos y con la potencia humana."""
+        if not self.regla_saques or self.n < 1:
+            return False
+        L = self.n - 1
+        team = 1 if s >= 11 else 0
+        kind = int(self.w.pkind[L])
+        if int(self.w.phase[L]) != 2 or int(self.w.pteam[L]) != team or kind not in (2, 3, 4):
+            return False
+        me = self.w.pos[L, s].astype(np.float64) / 10
+        ball = self.w.ball[L].astype(np.float64) / 10
+        if kind == 2:
+            ok_dir = (me[0] - ball[0]) * (1.0 if ball[0] > 0 else -1.0) > 0.0
+        else:
+            ok_dir = (me[0] - ball[0]) * (1.0 if team == 0 else -1.0) < 0.0
+        ok_bar = float(self.w.binv[L]) >= 2.8 or int(self.w.pticks[L]) >= 600
+        return not (ok_dir and ok_bar)
+
     def _no_kick(self, s):
         """True si el bot del lugar s no debe patear ahora: pelota parada de su equipo de un tipo en `self.sin_saques`
         (piloto con humanos, 2026-10-09: los córners del bot salían por la línea de fondo en el 55%; que los saquen los
@@ -202,7 +223,7 @@ class Cerebro:
             self.prev[me] = a
             if s >= 11:
                 a = int(ROT_MOVE[a % 9] + 9 * (a // 9))
-            out[me] = int(bits_of_action(np.array([a]))[0]) & (~16 if self._no_kick(s) else ~0)
+            out[me] = int(bits_of_action(np.array([a]))[0]) & (~16 if (self._no_kick(s) or self._kick_blocked(s)) else ~0)
         return out
 
     def decide(self, me, delay):
@@ -238,8 +259,8 @@ class Cerebro:
         if s >= 11:
             a = int(ROT_MOVE[a % 9] + 9 * (a // 9))
         bits = int(bits_of_action(np.array([a]))[0])
-        if self._no_kick(s):
-            bits &= ~16                      # pelota parada que saca un humano: el bot no patea
+        if self._no_kick(s) or self._kick_blocked(s):
+            bits &= ~16                      # pelota parada que saca un humano, o regla de patada
         self.pending = [(tk, b) for tk, b in self.pending if tk > last_abs - 2] + [(last_abs + d + 1, bits)]
         return bits
 
@@ -257,6 +278,8 @@ def main():
     ap.add_argument("--renovar", type=float, default=1.0, help="ruido persistente de la dirección (1 = no)")
     ap.add_argument("--renovar-patada", type=float, default=1.0,
                     help="ruido persistente de la tecla de patear (1 = sorteo independiente)")
+    ap.add_argument("--regla-saques", action="store_true",
+                    help="en córner, tiro libre y saque de arco propios: patea solo desde atrás y con la barra alta")
     ap.add_argument("--sin-saques", default="",
                     help="pelotas paradas de su equipo que el bot no patea: corner,tiro_libre,saque_arco,lateral,penal")
     a = ap.parse_args()
@@ -266,7 +289,8 @@ def main():
         sys.exit(f"puesto desconocido {a.pos}; opciones: {', '.join(k for k in vocab if k != 'roles')}")
     kinds = {"lateral": 1, "corner": 2, "saque_arco": 3, "tiro_libre": 4, "penal": 5}
     sin = [kinds[k.strip()] for k in a.sin_saques.split(",") if k.strip()]
-    c = Cerebro(a.model, a.pos, vocab, a.temp, a.every, a.hyst, a.ens, a.ens_m, a.renovar, a.renovar_patada, sin)
+    c = Cerebro(a.model, a.pos, vocab, a.temp, a.every, a.hyst, a.ens, a.ens_m, a.renovar, a.renovar_patada, sin,
+                a.regla_saques)
     print(json.dumps({"listo": True, "pos": a.pos, "linea": LINES[c.line]}), flush=True)
     for line in sys.stdin:
         if not line.strip():

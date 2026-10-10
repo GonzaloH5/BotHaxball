@@ -2,7 +2,7 @@
 // cerebro (learn/hx11_cerebro.py en modo de varios bots, en el proceso principal) que decide por los 22 en un lote.
 //
 //   node deploy/hx11/partido.js --join <id o link> [--rojo 4-3-3] [--azul 4-4-2] [--temp 0.7] [--cada-ticks 3]
-//        [--procesos 6] [--model runs/hx11_l0/l0_sinhist_ancho/model_final.pt] [--cada-ms 8000] [--reintento-ms 12000]
+//        [--procesos 6] [--model runs/hx11_l0/l0_ajuste_corner_h2/model_final.pt] [--cada-ms 8000] [--reintento-ms 12000]
 //        [--password x]
 //
 // Lo que se aprendió en la sala del usuario (2026-10-09; docs/TRASPASO_HAXELEVEN_D0_D3.md):
@@ -66,7 +66,7 @@ function parent() {
   let nFrames = 0, nDec = 0;
 
   const cer = startCerebro({
-    model: arg("--model", "runs/hx11_l0/l0_sinhist_ancho/model_final.pt"), pos: null, temp: parseFloat(arg("--temp", "0.7")),
+    model: arg("--model", "runs/hx11_l0/l0_ajuste_corner_h2/model_final.pt"), pos: null, temp: parseFloat(arg("--temp", "0.7")),
     every: Number(arg("--cada-ticks", "3")), ens: Number(arg("--ens", "0")), ensM: parseFloat(arg("--ens-m", "0")),
     renovarPatada: parseFloat(arg("--renovar-patada", "0.33")),
     onReady: () => { ready = true; console.log("cerebro listo (varios bots)"); },
