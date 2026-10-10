@@ -2,6 +2,7 @@
 //
 //   node deploy/hx11/bot.js --join <id o link de la sala> --pos LI [--name HX-Bot] [--password x]
 //        [--model runs/hx11_l0/l0_sinhist_ancho/model_final.pt] [--temp 0.7] [--renovar-patada 0.33]
+//        [--sin-saques corner,tiro_libre,saque_arco | ninguno]
 //
 // * El puesto lo elige SOLO el usuario con --pos (o escribiendo "pos MC" en esta consola). Nada del chat lo cambia.
 // * No elige equipo: lo pone el admin de la sala. Mientras no esté en un equipo, no juega.
@@ -46,6 +47,9 @@ const echo = () => {
 const cer = startCerebro({
   model, pos, temp, ens: Number(arg("--ens", "0")), ensM: parseFloat(arg("--ens-m", "0")),
   renovarPatada: parseFloat(arg("--renovar-patada", "0.33")),   // patada persistente en juego abierto (puerta P3)
+  // con humanos: el bot no patea córners, tiros libres ni saques de arco de su equipo (los saca un humano); "ninguno"
+  // para que patee todo
+  sinSaques: arg("--sin-saques", "corner,tiro_libre,saque_arco") === "ninguno" ? "" : arg("--sin-saques", "corner,tiro_libre,saque_arco"),
   onReady: (m) => { ready = true; console.log(`cerebro listo: puesto ${m.pos} (línea ${m.linea})`); },
   onDecision: (msg) => {
     if (!room || paused) return;

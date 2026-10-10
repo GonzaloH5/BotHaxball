@@ -493,16 +493,18 @@ def referee(pos, vel, mask, group, radius, inv, grav, ri, rf, fs, fl, kicked, kv
             ri[RI_LAT_THROWER] = kicker
             ri[RI_LAT_TOUCHED] = 0
             ri[RI_EVENT] = EV_PIECE_KICK
-            # comba de la pelota parada [aproximado]
+            # comba de la pelota parada (ajustada al banco, 2026-10-09)
             vx = kvel[kicker, 0]
             vy = kvel[kicker, 1]
             if kind == C.CORNER:
-                rf[RF_GX] = -C.CORNER_CURVE_KX * vx
-                rf[RF_GY] = C.CORNER_CURVE_Y if rf[RF_SPOT_Y] < 0 else -C.CORNER_CURVE_Y
+                sx = 1.0 if rf[RF_SPOT_X] > 0 else -1.0
+                sy = 1.0 if rf[RF_SPOT_Y] > 0 else -1.0
+                rf[RF_GX] = -C.CORNER_CURVE_KX * vx + C.CORNER_CURVE_KY * sx * sy * vy - C.CORNER_CURVE_X0 * sx
+                rf[RF_GY] = -C.CORNER_CURVE_Y * sy
                 ri[RI_CURVE] = C.PS_CURVE_TICKS
             elif kind == C.FREE_KICK or kind == C.GOAL_KICK:
                 rf[RF_GX] = 0.0
-                rf[RF_GY] = -C.SP_CURVE_K * vy
+                rf[RF_GY] = -(C.FK_CURVE_K if kind == C.FREE_KICK else C.GK_CURVE_K) * vy
                 ri[RI_CURVE] = C.PS_CURVE_TICKS
             _offside_kick(pos, ri, kicker, fp, P, n_red)
             for q in range(P):
@@ -572,8 +574,10 @@ def referee(pos, vel, mask, group, radius, inv, grav, ri, rf, fs, fl, kicked, kv
     if ri[RI_CURVE] > 0:
         grav[0] = rf[RF_GX]
         grav[1] = rf[RF_GY]
-        rf[RF_GX] *= C.PS_CURVE_DECAY
-        rf[RF_GY] *= C.PS_CURVE_DECAY
+        # entera los primeros CURVE_HOLD_TICKS ticks, después se atenúa
+        if C.PS_CURVE_TICKS - ri[RI_CURVE] >= C.CURVE_HOLD_TICKS:
+            rf[RF_GX] *= C.PS_CURVE_DECAY
+            rf[RF_GY] *= C.PS_CURVE_DECAY
     else:
         grav[0] = 0.0
         grav[1] = 0.0

@@ -127,12 +127,21 @@ PS_RESET_AFTER_KICK = 1    # la masa vuelve a 1,65 en el tick siguiente a la pat
 # comba de la patada cargada: gravedad en y = -0,0171 × velocidad vertical del jugador, desde el tick siguiente, ×0,982
 # por tick, hasta 150 ticks [medido: 894 patadas]
 PS_CURVE_K = 0.0171
-PS_CURVE_DECAY = 0.982
+# Perfil de toda comba (powershot, córner, tiro libre, saque de arco; 2026-10-09, 7.800 patadas del banco): entera los
+# primeros CURVE_HOLD_TICKS ticks y después ×0,981 por tick (+8: 0,961; +10: 0,923; +20: 0,767; +40: 0,52 en los cuatro).
+CURVE_HOLD_TICKS = 6
+PS_CURVE_DECAY = 0.981
 PS_CURVE_TICKS = 150
 # comba de la pelota parada [aproximado: falta la regresión de S2]: tiro libre y saque de arco igual que el powershot
 # con k = 0,024; córner con gravedad en x = -0,021 × vx del jugador y 0,01 en y hacia la cancha
-SP_CURVE_K = 0.024
-CORNER_CURVE_KX = 0.021
+SP_CURVE_K = 0.024              # (antes, para los dos) tiro libre y saque de arco: ver FK/GK
+FK_CURVE_K = 0.0215             # tiro libre: gy = −0,0215 · vy del que patea (698 tiros libres, 2026-10-09)
+GK_CURVE_K = 0.025              # saque de arco: gy = −0,025 · vy (766)
+# córner (2465, 2026-10-09; marco normalizado con la esquina en (+x, +y)): gx = −0,0241·vx + 0,0015·vy − 0,0044
+# (R² 0,94) y gy = −0,01 fija hacia la cancha. vx, vy: velocidad del que patea.
+CORNER_CURVE_KX = 0.0241
+CORNER_CURVE_KY = 0.0015
+CORNER_CURVE_X0 = 0.0044
 CORNER_CURVE_Y = 0.01
 
 # ----------------------------------------------------------------------------- saque inicial y gol (S3)

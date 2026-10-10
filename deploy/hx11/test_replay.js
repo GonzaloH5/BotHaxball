@@ -32,7 +32,7 @@ const MOVE = (b) => [((b >> 3) & 1) - ((b >> 2) & 1), ((b >> 1) & 1) - (b & 1)];
 
 let ready = false;
 const cer = startCerebro({
-  model, pos, temp: 0.7,
+  model, pos, temp: 0.7, renovarPatada: 0.33, sinSaques: "corner,tiro_libre,saque_arco",
   onReady: () => { ready = true; },
   onDecision: (msg) => {
     decisions++;
@@ -64,6 +64,7 @@ function tick() {
   if (!fr) return;
   sent.set(t, Date.now());
   cer.send(fr);
+  if (opt("--volcar", null)) fs.appendFileSync(opt("--volcar"), JSON.stringify(fr) + "\n");   // ticks para perfilar
   frames++;
   if (frames >= minutes * 3600) finish();
 }
