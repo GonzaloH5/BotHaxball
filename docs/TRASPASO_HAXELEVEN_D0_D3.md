@@ -544,6 +544,23 @@ El usuario las vio en los partidos simulados (visor `learn/hx11_replay_html.py`,
   - Siguen por debajo del humano en puntería, así que con humanos esas pelotas paradas las sacan ellos (`--sin-saques`).
 - **Temblor:** dirección persistente solo lejos de la pelota (`--renovar 0.33`, por defecto en el bot de sala). Cambios de tecla al azar 10,1 → 4,7 por segundo (humano 3,0); cerca de la pelota el juego no cambia.
 
+### Conducción y powershot, faltas y offsides (2026-10-09/10, madrugada)
+
+- **Diagnóstico** (lazo no reactivo con h2; métricas nuevas en `learn/hx11_closed_loop.py`):
+  - El bot controla la pelota como el humano (≤ 4 px: 1,07), pero **corta el contacto**: contacto seguido ≥ 90 ticks 0,57, rachas que llegan al primer nivel de carga 0,51, patadas cargadas 0,43.
+- **Ajuste c1** (desde h2, 4000 pasos, 10% córner + 20% decisiones de humanos llevando la pelota pegada, `learn/hx11_corner.py humanos --tipo conduccion`): **se pasa**.
+  - Contacto largo 1,30, rachas de carga 1,15, toques 1,41.
+  - Patadas 0,58 y patadas cargadas solo 0,56.
+  - Falla la puerta (MCD: patadas 0,49, toques 1,89). **Descartado.**
+  - Promedios de pesos h2/c1 al 35% y 60%: las patadas caen y las cargadas no suben (0,28 / 0,37).
+  - **Lectura:** copiar la conducción enseña a retener, no cuándo patear cargado. Es material para un ajuste que mire el resultado (RL/L2).
+- **Acciones en bloque (ACT) evaluadas y descartadas** (`l0_ancho_bloque`, retención en desarrollo con la configuración de sala):
+  - sin ensamble: patadas 0,67 y toques 0,93 (h2: 0,77 y 0,93);
+  - con ensamble de 8: toques 0,72 y contacto largo 0,26;
+  - el temblor no baja (~7 cambios/s).
+  La dirección persistente lejos de la pelota resolvió mejor lo mismo.
+- **Faltas y offsides** (lazo reactivo de 22 bots, por 10 min de juego abierto): **0 faltas**; **5,5 offsides** contra ~1,7 humanos (estimado con la proporción de la sala, 138 offsides y 49 faltas en 31 partidos). Pesa para un bot delantero; el MCD casi no queda en offside.
+
 ### Lo que sigue, en orden
 
 1. **Puerta P3 con la patada mixta** (`reports/hx11/l0_puerta_ancho_patada033_mixta.md`). Si pasa, es la configuración por defecto del bot de sala.
