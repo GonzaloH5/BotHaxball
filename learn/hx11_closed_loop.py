@@ -35,7 +35,7 @@ from env.hx11 import kernel as K
 from env.hx11.core import HX11Env
 from learn.hx11_data import (D_MAX, D_MIN, HOLD_REP, MAX_BACK, MOVE_DX, MOVE_DY, ROT_MOVE, Match, build, l0_split,
                              load_match, move_of_input)
-from learn.hx11_policy import Ensemble, SetPolicy, StickyNoise, piece_rows, policy_logits, sample
+from learn.hx11_policy import Ensemble, SetPolicy, StickyNoise, near_rows, piece_rows, policy_logits, sample
 from tools.hx11_d0 import OPEN
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -220,7 +220,10 @@ def rollout(policy, matches, owners, starts_list, n_env=64, seed=0, human=False,
                     prev_team = [int(held[i]) if W[i][2] < 11 else int(ROT_MOVE[held[i] % 9] + 9 * (held[i] // 9))
                                  for i in deciding]
                     a_team = sample(lg, temp_move, prev=prev_team if k > 0 else None, hyst=hyst,
-                                    gumbel=noise.get([(b0, i) for i in deciding]) if noise and renew < 1.0 else None,
+                                    gumbel=noise.get([(b0, i) for i in deciding],
+                                                     near_rows([env.pos[i, env.fp + W[i][2]] for i in deciding],
+                                                               [env.pos[i, 0] for i in deciding]))
+                                    if noise and renew < 1.0 else None,
                                     kick_u=noise.get_kick([(b0, i) for i in deciding],
                                                           piece_rows([env.ri[i, K.RI_MODE] for i in deciding]))
                                     if noise and renew_kick < 1.0 else None)

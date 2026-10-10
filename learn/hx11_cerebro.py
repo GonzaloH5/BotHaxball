@@ -31,7 +31,7 @@ import torch
 from learn.hx11_closed_loop import bits_of_action
 from learn.hx11_data import D_MAX, D_MIN, FAULT_MODES, LINES, MAX_BACK, ROT_MOVE, Match, build
 from learn.hx11_fase import Fase
-from learn.hx11_policy import Ensemble, SetPolicy, StickyNoise, piece_rows, policy_logits, sample
+from learn.hx11_policy import Ensemble, SetPolicy, StickyNoise, near_rows, piece_rows, policy_logits, sample
 
 ROOT = Path(__file__).resolve().parent.parent
 CAP = 4096
@@ -145,11 +145,17 @@ class Cerebro:
         self.n += 1
         self.ticks += 1
 
-    def _noise(self, ids):
-        """Tiradas persistentes para `sample` (vacío si no hay ruido persistente)."""
+    def _noise(self, ids, slots=None):
+        """Tiradas persistentes para `sample` (vacío si no hay ruido persistente). La dirección va con sorteo
+        independiente cerca de la pelota (último tick visto)."""
         if self.noise is None:
             return {}
-        return dict(gumbel=self.noise.get(ids) if self.renew < 1.0 else None,
+        fresh = None
+        if self.renew < 1.0 and slots is not None and self.n >= 1:
+            L = self.n - 1
+            fresh = near_rows([self.w.pos[L, s].astype(np.float64) / 10 for s in slots],
+                              [self.w.ball[L].astype(np.float64) / 10 for _ in slots])
+        return dict(gumbel=self.noise.get(ids, fresh) if self.renew < 1.0 else None,
                     kick_u=self.noise.get_kick(ids, piece_rows([self.w.phase[self.n - 1]] * len(ids)))
                     if self.renew_kick < 1.0 else None)
 
@@ -189,7 +195,7 @@ class Cerebro:
                                [me for me, _, _ in rows], [self.ticks] * len(rows))
             ids = [me for me, _, _ in rows]
             acts = sample(lg, self.temp, prev=np.array([self.prev.get(me, -1) for me in ids]), hyst=self.hyst,
-                          **self._noise(ids))
+                          **self._noise(ids, [s for _, s, _ in rows]))
         out = {}
         for (me, s, d), a in zip(rows, acts):
             a = int(a)
@@ -227,7 +233,7 @@ class Cerebro:
         with torch.no_grad():
             lg = policy_logits(self.net, torch.from_numpy(own), torch.from_numpy(ents), self.ens, [int(me)], [self.ticks])
             a = int(sample(lg, self.temp, prev=np.array([self.prev.get(int(me), -1)]), hyst=self.hyst,
-                           **self._noise([int(me)]))[0])
+                           **self._noise([int(me)], [s]))[0])
         self.prev[int(me)] = a
         if s >= 11:
             a = int(ROT_MOVE[a % 9] + 9 * (a // 9))

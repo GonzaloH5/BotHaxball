@@ -30,7 +30,7 @@ from env.hx11 import kernel as K
 from env.hx11.core import HX11Env
 from learn.hx11_closed_loop import FRAME_SKIP, bits_of_action, load_state
 from learn.hx11_data import D_MAX, D_MIN, HOLD_REP, MAX_BACK, ROT_MOVE, Match, build, l0_split, load_match
-from learn.hx11_policy import Ensemble, SetPolicy, StickyNoise, piece_rows, policy_logits, sample
+from learn.hx11_policy import Ensemble, SetPolicy, StickyNoise, near_rows, piece_rows, policy_logits, sample
 from tools.hx11_d0 import KICKOFF, OPEN
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -229,7 +229,10 @@ def play(policy, matches, n_games, H, seed=0, n_env=8, every=FRAME_SKIP, temp_mo
                     else:
                         lg = policy_logits(policy, ot, et, ens, [(b0, i, s) for i, s in who], [k] * len(who))
                     act = sample(lg, temp_move, prev=np.array([prev[i, s] for i, s in who]), hyst=hyst,
-                                 gumbel=noise.get([(b0, i, s) for i, s in who]) if noise and renew < 1.0 else None,
+                                 gumbel=noise.get([(b0, i, s) for i, s in who],
+                                                  near_rows([env.pos[i, env.fp + s] for i, s in who],
+                                                            [env.pos[i, 0] for i, s in who]))
+                                 if noise and renew < 1.0 else None,
                                     kick_u=noise.get_kick([(b0, i, s) for i, s in who],
                                                           piece_rows([env.ri[i, K.RI_MODE] for i, s in who]))
                                     if noise and renew_kick < 1.0 else None)

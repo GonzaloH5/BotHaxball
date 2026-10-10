@@ -153,15 +153,27 @@ class StickyNoise:
             out[b] = u
         return out
 
-    def get(self, keys):
+    def get(self, keys, fresh=None):
+        """`fresh` (máscara por fila): tirada nueva (sorteo independiente). Va cerca de la pelota (`near_rows`): la
+        dirección persistente bajaba el temblor a nivel humano (4,5 cambios/s) pero cerca de la pelota le quitaba
+        reacción (patadas 0,66, toques 0,78 en desarrollo, 2026-10-09)."""
         out = np.empty((len(keys), 9))
         for b, k in enumerate(keys):
             g = self.g.get(k)
-            if g is None or self.rng.random() < self.renew:
+            if g is None or self.rng.random() < self.renew or (fresh is not None and fresh[b]):
                 g = self.rng.gumbel(size=9)
                 self.g[k] = g
             out[b] = g
         return out
+
+
+NEAR_DIR_PX = 100.0    # distancia de borde a borde jugador–pelota bajo la cual la dirección va con sorteo independiente
+
+
+def near_rows(me, ball, near=NEAR_DIR_PX):
+    """Filas con el jugador a <= `near` px (borde a borde) de la pelota. me, ball: (B, 2) en px."""
+    d = np.hypot(*(np.asarray(me, np.float64) - np.asarray(ball, np.float64)).T) - 15.0 - 8.0
+    return d <= near
 
 
 def piece_rows(phases):

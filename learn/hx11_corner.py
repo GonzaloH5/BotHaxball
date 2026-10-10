@@ -41,12 +41,23 @@ ROOT = Path(__file__).resolve().parent.parent
 BOX_X, BOX_Y = C.BOX_X, C.BOX_Y
 
 
-def corner_metrics(pos, ball, inp, kick, phase, score, team, t0):
+def behind(me, ball):
+    """El jugador está detrás de la pelota del córner: del lado de la línea de fondo (95% de los humanos al patear)."""
+    side = 1.0 if ball[0] > 0 else -1.0
+    return (me[0] - ball[0]) * side > 0.0
+
+
+KIND = C.CORNER          # tipo de pelota parada que se evalúa (--tipo): córner, tiro libre o saque de arco
+TIPOS = {"corner": C.CORNER, "tiro_libre": C.FREE_KICK, "saque_arco": C.GOAL_KICK}
+
+
+def corner_metrics(pos, ball, inp, kick, phase, score, team, t0, binv=None, bvel=None):
     """Métricas de un córner a partir de la colocación t0 (arreglos por tick: pos (T, 22, 2) px, ball (T, 2) px,
     inp (T, 22) teclas, kick (T, 22) patada efectiva o None, phase (T,), score (T, 2))."""
     T = len(ball)
     sl = np.arange(11) if team == 0 else np.arange(11, 22)
-    side = 1.0 if ball[min(t0 + 10, T - 1), 0] > 0 else -1.0          # arco atacado
+    # arco atacado: en el córner, el de la esquina; en las demás, el del rival (el rojo ataca hacia +x)
+    side = (1.0 if ball[min(t0 + 10, T - 1), 0] > 0 else -1.0) if KIND == C.CORNER else (1.0 if team == 0 else -1.0)
     if kick is None:
         g = np.hypot(*(pos - ball[:, None]).transpose(2, 0, 1)) - C.PLAYER_R - C.BALL_R
         kb = (np.maximum(inp.astype(np.int64), 0) >> 4) & 1
@@ -61,13 +72,20 @@ def corner_metrics(pos, ball, inp, kick, phase, score, team, t0):
     v = (ball[min(tk + 2, T - 1)] - ball[tk]) * [side, sy]
     out = dict(sacado=True, espera=int(tk - t0), italiano=False, al_area=False, primer_toque="nadie", remate=False,
                gol=False, pateador=[round(float(rel[0]), 1), round(float(rel[1]), 1)], pateador_lugar=int(kicker),
-               direccion=round(float(np.degrees(np.arctan2(v[1], v[0]))), 1))
+               masa_inv=round(float(binv[tk]), 3) if binv is not None else None,
+               rapidez=round(float(np.hypot(*bvel[min(tk + 2, T - 1)])), 2) if bvel is not None else None,
+               direccion=round(float(np.degrees(np.arctan2(v[1], v[0]))), 1), afuera=False,
+               avance=round(float((ball[min(tk + 120, T - 1), 0] - ball[tk, 0]) * side), 1))
     gap = np.hypot(*(pos - ball[:, None]).transpose(2, 0, 1)) - C.PLAYER_R - C.BALL_R
     for j in range(2, min(180, T - tk)):
         q = tk + j
         bx, by = ball[q]
         if abs(bx) > C.LINE_W + C.BALL_R and abs(by) > C.GOAL_HALF_H:
-            out["italiano"] = True
+            out["italiano"] = KIND == C.CORNER
+            out["afuera"] = True
+            break
+        if abs(by) > C.LATERAL_OUT_Y:
+            out["afuera"] = True
             break
         if bx * side > BOX_X and abs(by) < BOX_Y:
             out["al_area"] = True
@@ -94,8 +112,14 @@ def summarize(rows):
     pk = np.array([r["pateador"] for r in rr]) if rr else np.zeros((0, 2))
     return dict(corners=len(rows), sacados=len(rr), espera_p50=float(np.median([r["espera"] for r in rr])) if rr else None,
                 pateador_detras=round(float(np.mean(pk[:, 0] > 0)), 3) if len(pk) else None,
+                masa_inv_p10_p50_p90=[round(float(np.percentile([r["masa_inv"] for r in rr], q)), 3) for q in (10, 50, 90)]
+                if rr and rr[0].get("masa_inv") is not None else None,
+                rapidez_p10_p50_p90=[round(float(np.percentile([r["rapidez"] for r in rr], q)), 2) for q in (10, 50, 90)]
+                if rr and rr[0].get("rapidez") is not None else None,
                 direccion_p50=float(np.median([r["direccion"] for r in rr])) if rr else None,
                 italiano=round(sum(r["italiano"] for r in rr) / n, 3), al_area=round(sum(r["al_area"] for r in rr) / n, 3),
+                afuera=round(sum(r.get("afuera", False) for r in rr) / n, 3),
+                avance_p50=float(np.median([r["avance"] for r in rr])) if rr and "avance" in rr[0] else None,
                 primer_toque_atacante=round(c["atacante"] / n, 3), primer_toque_defensor=round(c["defensor"] / n, 3),
                 remate=round(sum(r["remate"] for r in rr) / n, 3), gol=round(sum(r["gol"] for r in rr) / n, 3))
 
@@ -103,12 +127,13 @@ def summarize(rows):
 def human(matches):
     rows = []
     for m in matches:
-        st = np.flatnonzero((m.phase == PIECE) & (np.r_[-1, m.phase[:-1]] != PIECE) & (m.pkind == C.CORNER))
+        st = np.flatnonzero((m.phase == PIECE) & (np.r_[-1, m.phase[:-1]] != PIECE) & (m.pkind == KIND))
         for t in st:
             if m.pteam[t] < 0 or t + 900 >= m.T:
                 continue
             rows.append(corner_metrics(m.pos.astype(np.float64) / 10, m.ball.astype(np.float64) / 10, m.inp,
-                                       m.kick.astype(bool), m.phase, m.score, int(m.pteam[t]), t))
+                                       m.kick.astype(bool), m.phase, m.score, int(m.pteam[t]), t,
+                                       m.binv.astype(np.float64), m.bvel.astype(np.float64) / 1000))
     return rows
 
 
@@ -118,7 +143,8 @@ def good(r):
 
 
 def bots(policy, matches, starts, H=900, n_env=16, seed=0, temp=0.7, renew_kick=0.33, every=FRAME_SKIP,
-         collect=False, near_px=500.0):
+         collect=False, near_px=500.0, rule=False):
+    """`rule`: en su propio córner el bot solo patea si está detrás de la pelota (regla de patada, 2026-10-09)."""
     rng = np.random.default_rng(seed)
     env = HX11Env(n_env, seed=seed)
     noise = StickyNoise(1.0, seed, renew_kick) if renew_kick < 1.0 else None
@@ -136,7 +162,7 @@ def bots(policy, matches, starts, H=900, n_env=16, seed=0, temp=0.7, renew_kick=
             team = int(m.pteam[tp])
             sx, sy = (m.spot[tp].astype(np.float64) / 10).tolist()
             K._place(env.pos[i], env.vel[i], env.inv[i], env.mask[i], env.group[i], env.radius[i], env.grav[i],
-                     env.ri[i], env.rf[i], C.CORNER, team, sx, sy, env.fp, env.P, env.n_red, env.home, env.hold,
+                     env.ri[i], env.rf[i], KIND, team, sx, sy, env.fp, env.P, env.n_red, env.home, env.hold,
                      env.hold_cdf)
             store_all(env, i, w, MAX_BACK)
             W.append(w)
@@ -169,6 +195,10 @@ def bots(policy, matches, starts, H=900, n_env=16, seed=0, temp=0.7, renew_kick=
                     if collect and env.ri[i, K.RI_MODE] == K.PIECE and (s >= 11) == (teams[i] == 1) and \
                             np.hypot(*(env.pos[i, 0] - env.pos[i, env.fp + s])) <= near_px:
                         buf[i][s].append((ot[j], et[j], a))     # acción en coordenadas del equipo
+                    if rule and a >= 9 and env.ri[i, K.RI_MODE] == K.PIECE and env.ri[i, K.RI_KIND] == C.CORNER and \
+                            (s >= 11) == (env.ri[i, K.RI_TEAM] == 1) and \
+                            not behind(env.pos[i, env.fp + s], env.pos[i, 0]):
+                        a -= 9                                  # regla: sin patada desde el lado de la cancha
                     if s >= 11:
                         a = int(ROT_MOVE[a % 9] + 9 * (a // 9))
                     acts[i, s] = a
@@ -180,7 +210,8 @@ def bots(policy, matches, starts, H=900, n_env=16, seed=0, temp=0.7, renew_kick=
         for i in range(n):
             w = W[i]
             r = corner_metrics(w.pos.astype(np.float64) / 10, w.ball.astype(np.float64) / 10, w.inp, None,
-                               w.phase, w.score, teams[i], MAX_BACK)
+                               w.phase, w.score, teams[i], MAX_BACK, w.binv.astype(np.float64),
+                               w.bvel.astype(np.float64) / 1000)
             rows.append(r)
             if collect and good(r) and buf[i].get(r["pateador_lugar"]):
                 b = buf[i][r["pateador_lugar"]]
@@ -208,7 +239,11 @@ def main():
     ap.add_argument("--out", default=None)
     ap.add_argument("--colectar", default=None, help="npz con las decisiones del que patea en los córners buenos")
     ap.add_argument("--sin-humanos", action="store_true")
+    ap.add_argument("--regla", action="store_true", help="en su propio córner, solo patea desde atrás de la pelota")
+    ap.add_argument("--tipo", default="corner", choices=list(TIPOS), help="pelota parada que se evalúa")
     a = ap.parse_args()
+    global KIND
+    KIND = TIPOS[a.tipo]
     torch.set_num_threads(a.threads)
     rng = np.random.default_rng(a.seed)
     names = sorted(rng.permutation(l0_split()[a.split])[:a.partidos].tolist())
@@ -217,7 +252,7 @@ def main():
     hum = [] if a.sin_humanos else human(matches)
     starts = []
     for mi, m in enumerate(matches):
-        st = np.flatnonzero((m.phase == PIECE) & (np.r_[-1, m.phase[:-1]] != PIECE) & (m.pkind == C.CORNER))
+        st = np.flatnonzero((m.phase == PIECE) & (np.r_[-1, m.phase[:-1]] != PIECE) & (m.pkind == KIND))
         starts += [(mi, int(t)) for t in st if MAX_BACK + 1 <= t < m.T - 901 and m.pteam[t] >= 0]
     rng.shuffle(starts)
     starts = starts[:a.corners]
@@ -227,7 +262,7 @@ def main():
     policy.eval()
     t0 = time.time()
     out = bots(policy, matches, starts, n_env=a.n_env, seed=a.seed, temp=a.temp, renew_kick=a.renovar_patada,
-               collect=bool(a.colectar))
+               collect=bool(a.colectar), rule=a.regla)
     bot, data = out if a.colectar else (out, None)
     res = dict(modelo=a.model, split=a.split, partidos=len(names), bots=summarize(bot),
                humanos=summarize(hum) if hum else None, segundos=round(time.time() - t0))

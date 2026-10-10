@@ -509,6 +509,30 @@ El usuario las vio en los partidos simulados (visor `learn/hx11_replay_html.py`,
   - Con 22 bots, el lateral sigue mal (61%): el compañero más cercano está a 140–830 px al colocar. Es el fallo de coordinación, no la patada.
 - **Simulador final contra la sala** (árbitro en sombra v4, `runs/hx11_l0/s4_arbitro_v4.json`): colocaciones 1509 aciertos, 43 de más y 30 no vistas (original 1490, 53 y 49). Precisión 96,0% y recall 96,8%, **mejor que el original en todo**. El lateral, refinado con los toques: si lo vuelve a tocar el que sacó o un compañero, cuenta como sacado (370 + 35 casos del banco).
 
+### Primer partido real con humanos y córners (2026-10-09, noche)
+
+- **Piloto C0:** bot `GonzaloH4` (avatar 5, bandera uy), puesto **MCD**, en una sala ajena ("[H11] BOV vs ???").
+  - Configuración: red ancha final, patada persistente solo en juego abierto, `--sin-saques corner,tiro_libre,saque_arco`.
+  - Entró bien, con eco de 8 ticks. A las 22:16 **lo baneó un admin ("ST")**; motivo desconocido.
+  - El usuario notó mucho temblor: el bot cambia de tecla ~11 veces por segundo contra 3,8 del humano, y los clientes lo extrapolan. Puede haber sido la causa del ban.
+  - **No se lo volvió a meter:** sería saltarse el ban. Luego el usuario pidió no meterlo más.
+  - **Pendiente:** la rec, si el usuario la tiene, y bajar el temblor (dirección persistente `--renovar 0.33`, a validar con la patada persistente).
+- **Bot de sala:** `--flag/--lat/--lon/--avatar` en `bot.js`. Con la PC del usuario ocupada (mediciones, el vigilante bajando modelos), el cerebro llegó a p95 de 1,2 s; libre, 8–9 ms. **Durante un partido no se corre nada pesado en esa PC.**
+- **Córners de los bots** (`learn/hx11_corner.py`, 254 córners de desarrollo, en la PC prestada):
+
+  | Variante | Desde atrás | Italiano | Al área | 1.er toque atacante | Remate | Gol | Sacados |
+  |---|---|---|---|---|---|---|---|
+  | Base | 38% | 50% | 18% | 7% | 2% | 2% | 94% |
+  | Ajuste h1 (humanos que sacan córners, 10% del lote, 2000 pasos) | 48% | 45% | 28% | 13% | 8% | 2% | 95% |
+  | Base + regla (solo patea desde atrás) | 99% | 0% | 27% | 12% | 5% | 3,5% | **68%** |
+  | h1 + regla | 98% | 0,6% | 41% | 31% | 8% | 4,5% | **70%** |
+  | Humanos | 95% | 3,5% | 92% | 36% | 40% | 4,3% | 100% |
+
+  - **Potencia:** el bot patea con la barra baja en el 10% de los córners (masa p10 1,15 contra 3,30 humana; la pelota sale a 5 px/tick contra 16). El humano espera la barra alta. La barra **sí** está en el simulador y en la observación (la masa de la pelota).
+  - **Lectura:** la regla arregla el "hacia dónde", pero el bot no aprendió a **rodear la pelota**: 30% sin sacar.
+  - **En curso:** ajuste fuerte h2 (30% del lote, 6000 pasos, `runs/hx11_l0/l0_ajuste_corner_h2`). Después: córners con y sin regla, laterales, retención (`C:/hxpod/runs/ajuste_corner/eval_h2_driver.py`) y la puerta P3 en la PC del usuario (la PC prestada no tiene los partidos de prueba).
+- **Comba:** toda comba queda entera 6 ticks y después ×0,981 por tick. Coeficientes ajustados; error del powershot −38%. Falta la comba de patadas sin carga en juego abierto.
+
 ### Lo que sigue, en orden
 
 1. **Puerta P3 con la patada mixta** (`reports/hx11/l0_puerta_ancho_patada033_mixta.md`). Si pasa, es la configuración por defecto del bot de sala.

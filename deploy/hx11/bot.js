@@ -2,7 +2,7 @@
 //
 //   node deploy/hx11/bot.js --join <id o link de la sala> --pos LI [--name HX-Bot] [--password x]
 //        [--model runs/hx11_l0/l0_sinhist_ancho/model_final.pt] [--temp 0.7] [--renovar-patada 0.33]
-//        [--sin-saques corner,tiro_libre,saque_arco | ninguno]
+//        [--sin-saques corner,tiro_libre,saque_arco | ninguno] [--flag uy --lat -34.9 --lon -56.17] [--avatar x]
 //
 // * El puesto lo elige SOLO el usuario con --pos (o escribiendo "pos MC" en esta consola). Nada del chat lo cambia.
 // * No elige equipo: lo pone el admin de la sala. Mientras no esté en un equipo, no juega.
@@ -47,6 +47,7 @@ const echo = () => {
 const cer = startCerebro({
   model, pos, temp, ens: Number(arg("--ens", "0")), ensM: parseFloat(arg("--ens-m", "0")),
   renovarPatada: parseFloat(arg("--renovar-patada", "0.33")),   // patada persistente en juego abierto (puerta P3)
+  renovar: parseFloat(arg("--renovar", "0.33")),   // dirección persistente lejos de la pelota: 10 → 4,7 cambios de tecla/s (puerta P3 pasa)
   // con humanos: el bot no patea córners, tiros libres ni saques de arco de su equipo (los saca un humano); "ninguno"
   // para que patee todo
   sinSaques: arg("--sin-saques", "corner,tiro_libre,saque_arco") === "ninguno" ? "" : arg("--sin-saques", "corner,tiro_libre,saque_arco"),
@@ -108,7 +109,8 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
   if (API.ready) await API.ready;
   const [, authObj] = await Utils.generateAuth();
   Room.join({ id: joinId, authObj, password: arg("--password", undefined) }, {
-    storage: { player_name: arg("--name", "HX-Bot"), avatar: arg("--avatar", "🤖"), geo: { lat: -34.6, lon: -58.4, flag: "ar" } },
+    storage: { player_name: arg("--name", "HX-Bot"), avatar: arg("--avatar", "🤖"),
+               geo: { lat: parseFloat(arg("--lat", "-34.6")), lon: parseFloat(arg("--lon", "-58.4")), flag: arg("--flag", "ar") } },
     plugins: [plugin],
     onOpen: (r) => { room = r; console.log(`conectado a "${r.name}" como ${arg("--name", "HX-Bot")}; puesto ${pos}`); },
     onClose: (e) => { console.log("salió de la sala", e ? String(e) : ""); cer.stop(); process.exit(0); },
