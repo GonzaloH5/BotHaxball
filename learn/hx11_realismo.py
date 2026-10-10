@@ -239,9 +239,9 @@ def save_clips(path, clips, meta):
 
 def load_clips(path):
     z = np.load(path, allow_pickle=False)
-    keys = [k for k in z.files if k not in ("nombres", "meta")]
-    n = len(z["nombres"])
-    return [(str(z["nombres"][i]), {k: z[k][i] for k in keys}) for i in range(n)], json.loads(str(z["meta"]))
+    arr = {k: z[k] for k in z.files if k not in ("nombres", "meta")}     # cada arreglo se descomprime una sola vez
+    names = z["nombres"]
+    return [(str(names[i]), {k: v[i] for k, v in arr.items()}) for i in range(len(names))], json.loads(str(z["meta"]))
 
 
 # ----------------------------------------------------------------------------- C2ST
@@ -317,11 +317,12 @@ def cmd_sinteticos(a):
     t0 = time.time()
     _, _, traj = play(policy, matches, a.juegos, a.segundos * 60, seed=a.seed, n_env=a.n_env, temp_move=a.temp,
                       delay=a.delay, renew=a.renovar, renew_kick=a.renovar_patada, rule=a.regla_saques,
-                      rule_lateral=a.regla_lateral)
+                      rule_lateral=a.regla_lateral, rule_open=a.regla_juego)
     out = Path(a.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     meta = dict(modelo=a.model, juegos=len(traj), segundos=a.segundos, temp=a.temp, renovar=a.renovar,
                 renovar_patada=a.renovar_patada, regla_saques=a.regla_saques, regla_lateral=a.regla_lateral,
+                regla_juego=a.regla_juego,
                 retardo=a.delay, segundos_reloj=round(time.time() - t0))
     save_clips(out, [(f"juego{i}", c) for i, c in enumerate(traj)], meta)
     print(json.dumps(meta), flush=True)
@@ -424,6 +425,7 @@ def main():
     s.add_argument("--delay", type=int, default=None)
     s.add_argument("--regla-saques", action="store_true")
     s.add_argument("--regla-lateral", action="store_true")
+    s.add_argument("--regla-juego", action="store_true")
     s.add_argument("--seed", type=int, default=0)
     s.add_argument("--threads", type=int, default=4)
     s.add_argument("--out", required=True)

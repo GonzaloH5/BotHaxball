@@ -52,3 +52,17 @@ def test_seen_now_lleva_la_posicion_al_momento_de_la_decision():
     W.vel[0, 3] = [0, 2000]           # 2 px/tick hacia afuera
     me, ball = seen_now(W, 0, 3, 14)
     assert np.allclose(me, [-50.0, 1230.0]) and np.allclose(ball, [10.0, 1230.0])
+
+
+def test_juego_abierto_atras_y_banda():
+    from learn.hx11_policy import open_kick_ok
+    me, ball = np.array([-480.0, 0.0]), np.array([-500.0, 0.0])     # rojo en campo propio, patada hacia atrás
+    assert not open_kick_ok(me, ball, 0, np.zeros((0, 2)))
+    assert open_kick_ok(me, ball, 0, np.array([[-800.0, 10.0]]), np.array([[0.0, 500.0]]))       # compañero libre
+    assert not open_kick_ok(me, ball, 0, np.array([[-800.0, 10.0]]), np.array([[-820.0, 40.0]]))  # marcado
+    assert not open_kick_ok(me, ball, 0, np.array([[-800.0, 10.0]]), np.array([[-650.0, 20.0]]))  # rival en la línea
+    assert open_kick_ok(np.array([-520.0, 0.0]), ball, 0, np.zeros((0, 2)))                       # hacia adelante
+    # pegado a la banda, hacia afuera
+    assert not open_kick_ok(np.array([300.0, 1080.0]), np.array([300.0, 1100.0]), 0, np.zeros((0, 2)))
+    # en campo rival, hacia atrás: libre
+    assert open_kick_ok(np.array([520.0, 0.0]), np.array([500.0, 0.0]), 0, np.zeros((0, 2)))

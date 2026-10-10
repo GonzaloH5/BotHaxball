@@ -215,18 +215,26 @@ def seen_now(w, L, s, d):
 
 
 SIDE_Y = 1000.0           # juego abierto: pelota pegada a la banda
-BACK_CONE = 35.0          # pase atrás válido: un compañero a menos de 35° de la dirección de la patada…
-BACK_DIST = 700.0         # …y a menos de 700 px de la pelota
+# Constantes de la variante dura (v3, 2026-10-10), elegidas en el lazo cerrado entre humanos con unos 310 min de juego
+# cerca de la pelota por variante (h2). Patadas atrás que terminan en un rival o afuera, por minuto: sin regla 0,228,
+# primera regla (−0,5, 35°, 700 px, sin mirar rivales) 0,146, v3 0,087 (humano 0,049). Afuera: 0,79 → 0,55. Patadas
+# efectivas: 5,31 → 4,81 (humano 6,50).
+BACK_DX = 0.0             # "hacia atrás": componente x de la dirección (coordenadas del equipo) menor que esto
+BACK_CONE = 25.0          # pase atrás válido: un compañero a menos de BACK_CONE° de la dirección de la patada…
+BACK_DIST = 500.0         # …a menos de BACK_DIST px de la pelota…
+LANE_PX = 45.0            # …sin un rival a menos de LANE_PX px de la línea del pase (0: no se mira)…
+MARK_PX = 70.0            # …ni a menos de MARK_PX px del compañero (0: no se mira)
 
 
-def open_kick_ok(me, ball, team, mates):
+def open_kick_ok(me, ball, team, mates, rivals=None):
     """Regla de patada en juego abierto (la dirección de la patada es la de jugador → pelota). Bloquea:
     * pegado a la banda (|y| > 1000), patear hacia afuera (|dy| > 0,7 hacia la línea): en el banco el 56% sale;
-    * en campo propio, patear hacia atrás (dx < −0,5 en coordenadas del equipo) sin un compañero en esa dirección
-      (a menos de 35° y 700 px). Los humanos lo hacen en el 6% de sus patadas, casi siempre como pase atrás (42% llega
-      a un compañero); el bot lo hacía el doble, y en el partido real del 2026-10-09 la pateó para atrás por la banda
-      (lateral del rival en campo propio) y lo echaron.
-    me, ball: (2,) px; mates: (k, 2) px de los compañeros de campo y el arquero (sin él)."""
+    * en campo propio, patear hacia atrás (dx < BACK_DX en coordenadas del equipo) sin un compañero libre en esa
+      dirección (cono, distancia, línea de pase y marca: constantes de arriba). Los humanos patean hacia atrás en el 6%
+      de sus patadas, casi siempre como pase (0,24 por minuto llegan a un compañero, 0,04 a un rival o afuera); el bot,
+      sin la regla, 0,08 y 0,43. En el partido real del 2026-10-09 la pateó para atrás por la banda (lateral del rival
+      en campo propio) y lo echaron.
+    me, ball: (2,) px; mates: (k, 2) px de los compañeros (sin él); rivals: (r, 2) px."""
     v = np.asarray(ball, np.float64) - np.asarray(me, np.float64)
     n = np.hypot(*v)
     if n < 1e-6:
@@ -235,13 +243,25 @@ def open_kick_ok(me, ball, team, mates):
     if abs(ball[1]) > SIDE_Y and v[1] * np.sign(ball[1]) > 0.7:
         return False
     att = 1.0 if team == 0 else -1.0
-    if ball[0] * att < 0 and v[0] * att < -0.5:
-        if len(mates):
-            w = np.asarray(mates, np.float64) - np.asarray(ball, np.float64)
-            dist = np.hypot(*w.T)
-            cos = (w @ v) / np.maximum(dist, 1e-6)
-            if ((dist < BACK_DIST) & (cos > np.cos(np.radians(BACK_CONE)))).any():
-                return True
+    if ball[0] * att < 0 and v[0] * att < BACK_DX:
+        if not len(mates):
+            return False
+        b = np.asarray(ball, np.float64)
+        w = np.asarray(mates, np.float64) - b
+        dist = np.hypot(*w.T)
+        cos = (w @ v) / np.maximum(dist, 1e-6)
+        cand = np.nonzero((dist < BACK_DIST) & (cos > np.cos(np.radians(BACK_CONE))))[0]
+        rv = np.asarray(rivals, np.float64).reshape(-1, 2) - b if rivals is not None else np.zeros((0, 2))
+        for j in cand:
+            if len(rv) and LANE_PX > 0:
+                u = w[j] / max(dist[j], 1e-6)
+                along = rv @ u
+                perp = np.abs(rv[:, 0] * u[1] - rv[:, 1] * u[0])
+                if ((along > 0) & (along < dist[j]) & (perp < LANE_PX)).any():
+                    continue
+            if len(rv) and MARK_PX > 0 and (np.hypot(*(rv - w[j]).T) < MARK_PX).any():
+                continue
+            return True
         return False
     return True
 
@@ -252,9 +272,12 @@ def open_kick_blocked(w, L, s, d):
         return False
     team = 1 if s >= 11 else 0
     me, ball = seen_now(w, L, s, d)
-    sl = range(11 * team, 11 * team + 11)
-    mates = [w.pos[L, q].astype(np.float64) / 10 for q in sl if q != s and w.pid[L, q] >= 0]
-    return not open_kick_ok(me, ball, team, np.array(mates).reshape(-1, 2))
+    k = d + 1
+    pos = w.pos[L].astype(np.float64) / 10 + w.vel[L].astype(np.float64) / 1000 * k
+    on = w.pid[L] >= 0
+    mates = [pos[q] for q in range(11 * team, 11 * team + 11) if q != s and on[q]]
+    rivals = [pos[q] for q in range(11 * (1 - team), 11 * (1 - team) + 11) if on[q]]
+    return not open_kick_ok(me, ball, team, np.array(mates).reshape(-1, 2), np.array(rivals).reshape(-1, 2))
 
 
 def piece_rows(phases):

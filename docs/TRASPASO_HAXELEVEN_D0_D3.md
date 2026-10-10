@@ -634,12 +634,28 @@ El usuario eligió la opción A (quién va + refuerzo). Mediciones en el lazo re
 - **Regla de patada en juego abierto** (`open_kick_ok` en `learn/hx11_policy.py`; `--regla-juego` en el lazo cerrado y la puerta). No patea:
   - **pegado a la banda hacia afuera:** en el banco, el 3% de las patadas humanas, y el 56% de esas sale;
   - **hacia atrás en campo propio sin un compañero en esa dirección** (35°, 700 px): los humanos patean hacia atrás en el 6% de sus patadas, casi siempre como pase (42% a un compañero).
-  - **h2 con la regla:** atrás 2,04 → 1,12; afuera 0,69 → 0,40; pero patadas 0,77 → 0,68. A un compañero, sin cambio (0,32). Puerta P3 con la regla: en curso.
+  - **h2 con la regla:** atrás 2,04 → 1,12; afuera 0,69 → 0,40; pero patadas 0,77 → 0,68. A un compañero, sin cambio (0,32). Puerta P3 con la regla: **36/36** (`reports/hx11/l0_puerta_h2_reglajuego.md`).
+  - Con esto quedó **encendida por defecto en el bot de sala** (`--regla-juego` en el cerebro; `--sin-regla-juego` en `deploy/hx11/bot.js` la apaga). Prueba sin sala con la grabación del partido real: decide cada 3 ticks, 5–7 ms.
+  - **Patadas atrás separadas en pase y error** (lazo cerrado, con unos 310 min de juego cerca de la pelota por variante, h2; por minuto):
+
+    | | atrás que van a un rival o afuera | afuera | patadas efectivas | a un compañero |
+    |---|---|---|---|---|
+    | humano | 0,049 | — | 6,50 | 1,50 |
+    | sin regla | 0,228 | 0,79 | 5,31 | 0,47 |
+    | primera regla (−0,5, 35°, 700 px) | 0,146 | 0,64 | 4,92 | 0,48 |
+    | **v3 (por defecto): cualquier componente hacia atrás; compañero a 25°, 500 px, sin rival a 45 px de la línea ni a 70 del compañero** | **0,087** | **0,55** | 4,81 | 0,47 |
+
+    La regla saca errores pero no enseña a elegir: las patadas que llegan a un compañero siguen en un tercio de las del humano.
 - **Puerta de realismo P5** (`learn/hx11_realismo.py`):
   - **Métricas:** 22, en cuatro familias (colectivas, tácticas, temporales, mecánicas). Distancia W1 por ventana de 90 s: sintético contra humano de prueba, con techo = humano de entrenamiento contra prueba.
   - **C2ST:** red chica sobre 20 rasgos de clips de 10 s, con validación cruzada por partido; da el AUC y qué rasgos delatan al bot.
   - **Criterio del plan:** ≥ 80% dentro del techo, ninguna colectiva a más de 2 techos, AUC ≤ 0,70.
-  - Prueba chica de punta a punta con e1: 18% dentro y AUC 0,92. La corrida de 200 juegos de e1 está en curso en la PC del hermano.
+  - **e1, 200 juegos de 90 s** (`reports/hx11/realismo_e1.md`): **18% dentro del techo, C2ST AUC 0,988. No pasa.**
+    - Dentro: goles, remates, ancho y cortes por falta u offside.
+    - Lo que más delata al bot, según el C2ST: cambios de tecla (4,9/s contra 3,5), jugadores quietos, tiempo de pelota parada (juego abierto 62% contra 73%), velocidad de los jugadores (0,87).
+    - Colectivas a más de 2 techos: pases (7,6 contra 11,9 por min), pase completo (31% contra 47%) y cambios de posesión.
+    - También fuera: largo del equipo (1060 contra 870 px), espera de los saques (311 contra 199 ticks), laterales (26 contra 19,5 cada 10 min, 23% repetidos), contacto (0,5) y el más cercano (67 contra 55 px).
+    - Siguiente, en curso en la PC del hermano: la misma población con la regla de juego abierto y con la dirección más persistente (`--renovar 0.2`).
 
 ### Lo que sigue, en orden
 
