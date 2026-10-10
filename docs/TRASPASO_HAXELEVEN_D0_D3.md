@@ -603,7 +603,11 @@ El usuario eligió la opción A (quién va + refuerzo). Mediciones en el lazo re
 - **p1** (premio por contacto hasta 2,5 s, pase +0,05, pérdida −0,15): en la iteración 70 retiene más (contacto largo 0,73, rachas 0,76) pero **patea mucho menos (0,48)** y carga menos (0,34). Es el mismo resultado que c1. **Cortado.**
   - **Por qué:** en el banco, solo el 38% de las posesiones humanas termina en un compañero y el 47% en un rival, pero igual la pelota avanza (101 y 182 px). Con una pérdida cara, patear "no conviene", y eso castiga el juego humano normal.
 - **p2** (terreno ganado por posesión, con signo, 0,0005/px; pase +0,05; pérdida −0,05; patada cargada +0,1; sin contacto): en la iteración 40 patea más (0,83), pero **lleva mucho menos** la pelota (contacto largo 0,34, rachas 0,22, cargadas 0,30). Se la saca de encima hacia adelante. **Cortado.**
-- **p3** (p2 con patada cargada +0,5): en la iteración 40 queda como h2 (cargadas 0,44, patadas 0,80, contacto largo 0,46). Se deja terminar (200 iteraciones) y se evalúa cada 40.
+- **p3** (p2 con patada cargada +0,5):
+  - en la iteración 40 queda como h2 (cargadas 0,44, patadas 0,80, contacto largo 0,46);
+  - en la 65 empeora: cargadas 0,34, rachas de carga 0,38, patadas 0,84.
+  - La PC del hermano dejó de responder a las 04:46 del 2026-10-10 (y el Tailscale local quedó en "NoState"), así que la corrida quedó cortada ahí.
+- **Lectura del piloto:** con tres juegos de premios, ninguno sube las patadas cargadas entre humanos; cada premio solo cambia retener por patear. Se entrena entre bots (e1) y se evalúa entre humanos: lo que conviene contra estos compañeros y rivales bot no es lo que mejora contra humanos. **El bot de sala sigue con h2.**
 
 ### Lo que sigue, en orden
 
