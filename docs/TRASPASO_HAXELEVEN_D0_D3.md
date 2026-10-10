@@ -607,7 +607,17 @@ El usuario eligió la opción A (quién va + refuerzo). Mediciones en el lazo re
   - en la iteración 40 queda como h2 (cargadas 0,44, patadas 0,80, contacto largo 0,46);
   - en la 65 empeora: cargadas 0,34, rachas de carga 0,38, patadas 0,84.
   - La PC del hermano dejó de responder a las 04:46 del 2026-10-10 (y el Tailscale local quedó en "NoState"), así que la corrida quedó cortada ahí.
-- **Lectura del piloto:** con tres juegos de premios, ninguno sube las patadas cargadas entre humanos; cada premio solo cambia retener por patear. Se entrena entre bots (e1) y se evalúa entre humanos: lo que conviene contra estos compañeros y rivales bot no es lo que mejora contra humanos. **El bot de sala sigue con h2.**
+  - La corrida en realidad terminó las 200 iteraciones (la PC solo perdió la conexión). Los controles 40–200 dan patadas cargadas entre 0,31 y 0,49, sin tendencia, y llevan la pelota menos que h2.
+- **Lectura de p1–p3:** con tres juegos de premios, ninguno sube las patadas cargadas entre humanos; cada premio solo cambia retener por patear. Se entrena entre bots (e1) y se evalúa entre humanos: lo que conviene contra estos compañeros y rivales bot no es lo que mejora contra humanos.
+- **p4, entre humanos grabados** (`--entorno humanos`: ventanas de 8 s de partidos de entrenamiento como el jugador de campo más cercano a la pelota; los otros 21 repiten sus teclas; premios de p3). Unos 12 s por iteración.
+  - **Retención entre humanos** (desarrollo):
+    - control 40: cargadas 0,59, contacto largo 0,93, rachas 0,93, patadas 0,67;
+    - control 80: cargadas 0,53, contacto largo 0,64, rachas 0,63, patadas 0,77;
+    - controles 120–200: patean cada vez menos (0,63) y las cargadas vuelven a 0,46.
+  - **Puerta P3 del control 80** (`reports/hx11/l0_puerta_rl_p4_80.md`): pasa 35 de 36, pero **falla el MED cerca de la pelota en patadas** (0,63, IC 0,58–0,69).
+  - **Prueba reactiva** (`hx11_protagonista_bots`: protagonista entre 21 bots e1 que sí reaccionan, unos 33 min de juego abierto por modelo): contacto h2 0,66 s/min, p4-40 0,39, p4-80 0,47; patadas cargadas, casi ninguna en los tres.
+  - **Lectura:** **p4 mejora porque los humanos grabados no reaccionan** al bot. Aprendió que aguantar la pelota es seguro, y frente a rivales que reaccionan no se sostiene. Con una muestra chica (10 min) había parecido lo contrario: era ruido.
+- **Conclusión del piloto A3:** ninguno de los dos entornos sirve para refuerzo. Los bots no son realistas y los humanos grabados no reaccionan. **El bot de sala sigue con h2.** Para refuerzo haría falta un entorno reactivo y realista: una población que pase la puerta de realismo, o partidos reales.
 
 ### Lo que sigue, en orden
 

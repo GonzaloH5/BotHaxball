@@ -23,6 +23,13 @@ patea menos y falla la puerta P3). Acá se mira el resultado.
 * **Crítico:** misma arquitectura que la política (cabeza de 1 salida), arranca con el tronco de `--init`; las primeras
   `--calentar` iteraciones solo se entrena el crítico.
 
+* **`--entorno humanos`** (2026-10-10, después de p1–p3 entre bots sin mejora entre humanos): el protagonista juega
+  ventanas de partidos grabados (`--ventana` ticks, desde un momento de juego abierto, como el jugador de campo más
+  cercano a la pelota) y los otros 21 repiten sus teclas grabadas, como en la evaluación de retención
+  (`learn.hx11_closed_loop --cerca`) y como en la sala, entre humanos. La ventana termina al salir del juego abierto.
+  Los grabados no reaccionan al bot: por eso ventanas cortas, sin offside ni faltas (igual que la evaluación), y la
+  puerta P3 como control.
+
 Guarda `model.pt` (formato de L0: sirve para la puerta, la retención y el cerebro de la sala), `ultimo.pt` (todo, para
 `--reanudar`) e `historia.json`.
 
@@ -42,7 +49,7 @@ import torch
 from env.hx11 import contract as C
 from env.hx11 import kernel as K
 from env.hx11.core import HX11Env
-from learn.hx11_closed_loop import FRAME_SKIP, bits_of_action, load_state
+from learn.hx11_closed_loop import FRAME_SKIP, action_of_bits, bits_of_action, load_state
 from learn.hx11_data import D_MAX, D_MIN, MAX_BACK, ROT_MOVE, SELF_DIM, Match, build, load_match
 from learn.hx11_policy import SetPolicy, StickyNoise, near_rows, piece_rows, sample
 from learn.hx11_selfplay import kick_blocked, store_all, window_sp
@@ -295,6 +302,132 @@ def rollout(g: Games, prot, pop, critic, T, temp, every=FRAME_SKIP):
     return out, st
 
 
+def replay_starts(matches, H, rng, per_match=200, min_open=300):
+    """(partido, t0, lugar): momentos con al menos `min_open` ticks de juego abierto grabado por delante, con el jugador
+    de campo más cercano a la pelota presente toda la ventana."""
+    out = []
+    for mi, m in enumerate(matches):
+        op = m.phase == OPEN
+        run = np.zeros(m.T + 1, np.int64)
+        for t in range(m.T - 1, -1, -1):
+            run[t] = run[t + 1] + 1 if op[t] else 0
+        cand = np.nonzero((run[:m.T] >= min_open) & (np.arange(m.T) >= MAX_BACK) & (np.arange(m.T) < m.T - H - 1))[0]
+        if not len(cand):
+            continue
+        got = 0
+        for t0 in rng.choice(cand, size=min(per_match * 2, len(cand)), replace=False):
+            ss = np.nonzero((m.pid[t0] >= 0) & (m.pid[t0] == m.pid[t0 + H]) & (m.pid[t0] == m.pid[t0 - MAX_BACK]))[0]
+            gkp = np.r_[np.full(11, m.gk[t0, 0]), np.full(11, m.gk[t0, 1])]
+            ss = ss[m.pid[t0, ss] != gkp[ss]]
+            if not len(ss):
+                continue
+            d = np.hypot(*(m.pos[t0, ss].astype(np.float64) - m.ball[t0].astype(np.float64)).T)
+            out.append((mi, int(t0), int(ss[int(np.argmin(d))])))
+            got += 1
+            if got >= per_match:
+                break
+    return out
+
+
+class ReplayGames:
+    """n ventanas grabadas en paralelo: el protagonista con la red, los otros 21 con sus teclas grabadas. Cada partido
+    se reinicia por su cuenta al terminar su ventana (siempre en el borde de una decisión)."""
+
+    def __init__(self, n, matches, starts, H, seed, renew=0.33, renew_kick=0.33):
+        self.n, self.matches, self.starts, self.H = n, matches, starts, H
+        self.rng = np.random.default_rng(seed)
+        self.env = HX11Env(n, seed=seed)
+        self.noise = StickyNoise(renew, seed, renew_kick)
+        self.episode = np.zeros(n, np.int64)
+        self.W, self.log, self.D, self.prot, self.team = [None] * n, [None] * n, [0] * n, [0] * n, [0] * n
+        self.k = np.zeros(n, np.int64)
+        self.acts = np.zeros((n, 22), np.int64)
+        self.holder = [False] * n
+        self.gain_x = np.zeros(n)
+        self.streak = np.zeros(n, np.int64)
+        for i in range(n):
+            self.reset_one(i)
+
+    def reset_one(self, i):
+        mi, t0, s = self.starts[int(self.rng.integers(len(self.starts)))]
+        m = self.matches[mi]
+        w = window_sp(m, t0, self.H)
+        load_state(self.env, i, w, MAX_BACK)
+        self.W[i], self.log[i] = w, window_sp(m, t0, self.H)
+        self.D[i] = int(self.rng.integers(D_MIN, D_MAX + 1))
+        self.prot[i], self.team[i] = s, int(s >= 11)
+        self.k[i] = 0
+        self.episode[i] += 1
+        self.holder[i] = False
+        self.streak[i] = 0
+
+
+def rollout_replay(g: ReplayGames, prot, critic, T, temp, every=FRAME_SKIP):
+    """Como `rollout`, entre humanos grabados."""
+    n = g.n
+    buf = {k: [] for k in ("own", "ents", "act", "logp", "val", "rew", "done")}
+    st = {k: 0 for k in ("goles_favor", "goles_contra", "pases", "perdidas", "recuperas", "offsides", "contacto",
+                         "ticks_abiertos", "cargadas")}
+
+    def observe():
+        rows_o, rows_e = [], []
+        for i in range(n):
+            kk = MAX_BACK + int(g.k[i])
+            o, e, _, _ = build(g.W[i], np.array([kk]), np.array([g.prot[i]]), np.array([g.D[i]]), False)
+            rows_o.append(o)
+            rows_e.append(e)
+        return torch.from_numpy(np.concatenate(rows_o)), torch.from_numpy(np.concatenate(rows_e))
+
+    for _ in range(T):
+        po, pe = observe()
+        keys = [(int(g.episode[i]), i) for i in range(n)]
+        fresh = near_rows([g.env.pos[i, g.env.fp + g.prot[i]] for i in range(n)], [g.env.pos[i, 0] for i in range(n)])
+        with torch.no_grad():
+            lg = prot(po, pe)
+            val = critic(po, pe)[:, 0]
+        act = sample(lg, temp, gumbel=g.noise.get(keys, fresh),
+                     kick_u=g.noise.get_kick(keys, piece_rows([g.env.ri[i, K.RI_MODE] for i in range(n)])))
+        lp = tempered_logp(lg, temp).gather(1, torch.as_tensor(act).unsqueeze(1))[:, 0]
+        buf["own"].append(po.numpy())
+        buf["ents"].append(pe.numpy())
+        buf["act"].append(act.astype(np.int64))
+        buf["logp"].append(lp.numpy())
+        buf["val"].append(val.numpy())
+        held = np.array([int(ROT_MOVE[int(a) % 9] + 9 * (int(a) // 9)) if g.prot[i] >= 11 else int(a)
+                         for i, a in enumerate(act)], np.int64)
+        rew = np.zeros(n, np.float32)
+        ended = np.zeros(n, bool)
+        for f in range(every):
+            for i in range(n):
+                kk = MAX_BACK + int(g.k[i])
+                g.acts[i] = action_of_bits(g.log[i].inp[kk])
+                g.acts[i, g.prot[i]] = held[i]
+                g.W[i].inp[kk, g.prot[i]] = bits_of_action(np.array([held[i]]))[0]
+            pre = [dict(score=g.env.ri[i, [K.RI_SCORE0, K.RI_SCORE1]].copy(), mode=int(g.env.ri[i, K.RI_MODE]),
+                        last=int(g.env.ri[i, K.RI_LAST]), offmask=int(g.env.ri[i, K.RI_OFF_MASK]),
+                        curve=int(g.env.ri[i, K.RI_CURVE])) for i in range(n)]
+            ev = g.env.step(g.acts, frames=1)
+            for i in range(n):
+                if ended[i]:
+                    continue
+                kk = MAX_BACK + int(g.k[i])
+                store_all(g.env, i, g.W[i], kk + 1)
+                rew[i] += tick_reward(g, i, pre[i], int(ev[i, 0]), st)
+                g.k[i] += 1
+                if g.env.ri[i, K.RI_MODE] != K.OPEN or g.k[i] + every > g.H:
+                    ended[i] = True
+        buf["rew"].append(rew)
+        buf["done"].append(ended.copy())
+        for i in np.nonzero(ended)[0]:
+            g.reset_one(int(i))
+    with torch.no_grad():
+        po, pe = observe()
+        last_v = critic(po, pe)[:, 0].numpy()
+    out = {k: np.stack(v) for k, v in buf.items()}
+    out["last_v"] = last_v
+    return out, st
+
+
 def gae(rew, val, done, last_v, gamma, lam):
     T = len(rew)
     adv = np.zeros_like(rew)
@@ -312,7 +445,10 @@ def gae(rew, val, done, last_v, gamma, lam):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--init", required=True, help="red del protagonista (y referencia congelada para la KL)")
-    ap.add_argument("--poblacion", required=True, help="red de los otros 21")
+    ap.add_argument("--poblacion", default=None, help="red de los otros 21 (entorno bots)")
+    ap.add_argument("--entorno", default="bots", choices=["bots", "humanos"],
+                    help="bots: población de imitadores; humanos: ventanas grabadas con los otros 21 repitiendo")
+    ap.add_argument("--ventana", type=int, default=480, help="entorno humanos: ticks de cada ventana")
     ap.add_argument("--out", required=True)
     ap.add_argument("--split-file", default="runs/hx11_l0/split.json")
     ap.add_argument("--partidos", type=int, default=40)
@@ -352,12 +488,12 @@ def main():
     names = sorted(rng.permutation(sp["train"])[:a.partidos].tolist())
     modos = json.loads((ROOT / "data" / "hx11" / "modos.json").read_text(encoding="utf-8"))
     matches = [load_match(nm, modos) for nm in names]
-    H = a.segundos * 60
-    starts = game_starts(matches, H, rng)
+    H = a.segundos * 60 if a.entorno == "bots" else a.ventana
+    starts = game_starts(matches, H, rng) if a.entorno == "bots" else replay_starts(matches, H, rng)
     print(f"datos: {len(matches)} partidos, {len(starts)} comienzos ({time.time() - t0:.0f} s)", flush=True)
     prot = load_net(a.init)
     ref = load_net(a.init).eval()
-    pop = load_net(a.poblacion).eval()
+    pop = load_net(a.poblacion).eval() if a.entorno == "bots" else None
     assert not prot.extra, "el protagonista usa la observación de L0 (sin --extra)"
     critic = make_critic(prot)
     opt = torch.optim.Adam(prot.parameters(), lr=a.lr)
@@ -372,12 +508,14 @@ def main():
         opt_c.load_state_dict(ck["opt_c"])
         beta, it0, hist = ck["beta"], ck["paso"], ck["hist"]
         print(f"reanudado en la iteración {it0}", flush=True)
-    games = Games(a.n_env, matches, starts, H, a.seed + 1000 * it0)
+    games = (Games(a.n_env, matches, starts, H, a.seed + 1000 * it0) if a.entorno == "bots"
+             else ReplayGames(a.n_env, matches, starts, H, a.seed + 1000 * it0))
     for it in range(it0, a.iters):
         ti = time.time()
         prot.eval()
         critic.eval()
-        b, st = rollout(games, prot, pop, critic, a.T, a.temp)
+        b, st = (rollout(games, prot, pop, critic, a.T, a.temp) if a.entorno == "bots"
+                 else rollout_replay(games, prot, critic, a.T, a.temp))
         tr = time.time() - ti
         adv, ret = gae(b["rew"], b["val"], b["done"], b["last_v"], a.gamma, a.lam)
         N = a.T * a.n_env
