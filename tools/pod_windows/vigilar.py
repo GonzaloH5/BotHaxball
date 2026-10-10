@@ -8,6 +8,9 @@ Cada `--cada` minutos:
 * si terminó, baja todo por última vez y sale.
 
   python -m tools.pod_windows.vigilar --nombre l0_sinhist_full -- <argumentos de learn.hx11_bc sin --out>
+  python -m tools.pod_windows.vigilar --nombre rl_a3_p1 --modulo learn.hx11_rl -- <argumentos sin --out>
+
+El módulo tiene que aceptar `--out` y `--reanudar` y guardar `ultimo.pt` con `terminado` y `paso`.
 """
 from __future__ import annotations
 
@@ -46,12 +49,13 @@ def main():
     ap.add_argument("--ram-gb", type=float, default=8.0)
     ap.add_argument("--hilos", default="8,9,10,11")
     ap.add_argument("--cpu-pct", type=float, default=33.0)
+    ap.add_argument("--modulo", default="learn.hx11_bc", help="módulo de Python que se corre (learn.hx11_rl: refuerzo)")
     ap.add_argument("bc_args", nargs=argparse.REMAINDER)
     a = ap.parse_args()
     bc = [x for x in a.bc_args if x != "--"]
     local = Path("runs/hx11_l0") / a.nombre
     launch = (f'cmd /c "call C:\\hxpod\\entorno.bat && {PY} C:\\hxpod\\lanzar.py --nombre {a.nombre} '
-              f'--hilos {a.hilos} --cpu-pct {a.cpu_pct} --ram-gb {a.ram_gb} -- {PY} -u -m learn.hx11_bc '
+              f'--hilos {a.hilos} --cpu-pct {a.cpu_pct} --ram-gb {a.ram_gb} -- {PY} -u -m {a.modulo} '
               f'{" ".join(bc)} --out C:\\hxpod\\runs\\{a.nombre} --reanudar"')
     while True:
         rc, out = remote(f"{PY} C:\\hxpod\\estado.py --lineas 1")

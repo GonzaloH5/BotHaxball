@@ -591,9 +591,23 @@ El usuario eligió la opción A (quién va + refuerzo). Mediciones en el lazo re
   - Las rachas de ≥ 6 ticks terminan en patada en el 34% (humanos 50%; largo p50 12 contra 28 ticks), se escapan en el 52% (44%) y con un rival encima en el 14% (6%).
   - Es el mismo hueco que la retención y el powershot: copiar la conducción no lo arregló (c1). Es lo que tiene que atacar el refuerzo (A3).
 
+### Refuerzo A3, piloto corto (aprobado por el usuario el 2026-10-10)
+
+- **`learn/hx11_rl.py`:**
+  - Un protagonista por partido (jugador de campo al azar) arranca de h2 y juega contra 21 bots e1, con las reglas de patada en ellos.
+  - Muestreo igual que en la sala: temperatura 0,7, ruido persistente y `--sin-saques` del bot.
+  - PPO con penalización KL(π‖π_ref) exacta sobre las 18 acciones, a la misma temperatura; π_ref es h2 congelada y el coeficiente se adapta hacia `--kl-objetivo`.
+  - El crítico arranca del tronco de h2. Premios configurables con `--premios k=v,...`.
+  - En la PC del hermano corre con `tools.pod_windows.vigilar --modulo learn.hx11_rl`: unos 20 s por iteración de 4096 decisiones.
+- **Control:** retención entre humanos (`learn.hx11_closed_loop --cerca`, la misma configuración de sala que da para h2: patadas 0,77, contacto largo 0,57, rachas de carga 0,51, patadas cargadas 0,43) y después la puerta P3.
+- **p1** (premio por contacto hasta 2,5 s, pase +0,05, pérdida −0,15): en la iteración 70 retiene más (contacto largo 0,73, rachas 0,76) pero **patea mucho menos (0,48)** y carga menos (0,34). Es el mismo resultado que c1. **Cortado.**
+  - **Por qué:** en el banco, solo el 38% de las posesiones humanas termina en un compañero y el 47% en un rival, pero igual la pelota avanza (101 y 182 px). Con una pérdida cara, patear "no conviene", y eso castiga el juego humano normal.
+- **p2** (terreno ganado por posesión, con signo, 0,0005/px; pase +0,05; pérdida −0,05; patada cargada +0,1; sin contacto): en la iteración 40 patea más (0,83), pero **lleva mucho menos** la pelota (contacto largo 0,34, rachas 0,22, cargadas 0,30). Se la saca de encima hacia adelante. **Cortado.**
+- **p3** (p2 con patada cargada +0,5): en la iteración 40 queda como h2 (cargadas 0,44, patadas 0,80, contacto largo 0,46). Se deja terminar (200 iteraciones) y se evalúa cada 40.
+
 ### Lo que sigue, en orden
 
-0. **(2026-10-10) Refuerzo A3, pendiente de aprobación.** Hace falta porque la imitación no arregla llevar la pelota. La población todavía no pasa la puerta de realismo (contacto 0,4 del humano), así que conviene un piloto corto con KL a la imitación y la puerta P3 como control. Lo de abajo es la lista anterior.
+0. **(2026-10-10) Refuerzo A3:** ver la sección de arriba. Lo de abajo es la lista anterior.
 
 1. **Puerta P3 con la patada mixta** (`reports/hx11/l0_puerta_ancho_patada033_mixta.md`). Si pasa, es la configuración por defecto del bot de sala.
 2. **Evaluar `l0_ancho_bloque`** (acciones en bloque, con y sin ensamble) en el mismo banco, sobre desarrollo.
