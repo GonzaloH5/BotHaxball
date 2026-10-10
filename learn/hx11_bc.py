@@ -127,6 +127,12 @@ def main():
                     chunk=a.chunk)
     if a.init:
         src = torch.load(a.init, map_location="cpu", weights_only=False)["state"]
+        w0 = net.self_net[0].weight
+        if src["self_net.0.weight"].shape[1] < w0.shape[1]:
+            # entradas nuevas (p. ej. --extra, los rasgos de "voy yo"): pesos en cero, arranca igual que el modelo base
+            pad = torch.zeros(w0.shape[0], w0.shape[1] - src["self_net.0.weight"].shape[1])
+            src = dict(src, **{"self_net.0.weight": torch.cat([src["self_net.0.weight"], pad], 1)})
+            print(f"entradas nuevas con pesos en cero: {pad.shape[1]}", flush=True)
         if net.chunk > 1 and src["logits.weight"].shape[0] == net.n_actions:
             # la cabeza de la acción actual del modelo de partida, copiada en las K del bloque
             src = dict(src, **{"logits.weight": src["logits.weight"].repeat(net.chunk, 1),

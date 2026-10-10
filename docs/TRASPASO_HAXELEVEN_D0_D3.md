@@ -561,7 +561,39 @@ El usuario las vio en los partidos simulados (visor `learn/hx11_replay_html.py`,
   La dirección persistente lejos de la pelota resolvió mejor lo mismo.
 - **Faltas y offsides** (lazo reactivo de 22 bots, por 10 min de juego abierto): **0 faltas**; **5,5 offsides** contra ~1,7 humanos (estimado con la proporción de la sala, 138 offsides y 49 faltas en 31 partidos). Pesa para un bot delantero; el MCD casi no queda en offside.
 
+### Coordinación de 22 bots: dónde está la brecha, regla del lateral y "quién va" (e1) (2026-10-10, madrugada)
+
+El usuario eligió la opción A (quién va + refuerzo). Mediciones en el lazo reactivo de 22 bots (`learn.hx11_selfplay`, 24 juegos de 90 s en desarrollo, temperatura 0,7, `--renovar 0.33 --renovar-patada 0.33`, retardo fijo de 15 ticks como la sala), contra los humanos en las mismas ventanas. Scripts de diagnóstico en el scratchpad de la sesión (cercano por fase, pelotas paradas por tipo, laterales repetidos, contacto).
+
+- **El retardo no explica la brecha:** con d = 8, 15 o 36 el contacto con la pelota y el más cercano casi no cambian.
+- **"Quién va" en juego abierto era moderado:** el más cercano a la pelota estaba 1,23–1,38 veces más lejos que entre humanos. La brecha grande estaba en las pelotas paradas (1,8 veces).
+- **Laterales con 22 bots:** el **49% se repetía** en el mismo punto (humanos 4%) y había 41 laterales cada 10 min (humanos 19).
+  - Casi todos eran **patadas paralelas a la línea**: el que saca llega caminando por la línea y patea apenas toca la pelota.
+  - Física del simulador, verificada: desde afuera con ≥ 5° la pelota entra; desde adentro o paralela corre por la línea, y solo vale si la toca un compañero (480 ticks).
+  - Humanos: ángulo hacia adentro p10 6°, p50 27° (3.124 laterales).
+- **Regla del lateral** (`kick_rule_ok` en `learn/hx11_policy.py`): patear solo desde afuera de la pelota, con ≥ 6° hacia la cancha. Las posiciones se llevan al momento de la decisión con la velocidad (`seen_now`); sin esto se bloqueaban patadas buenas.
+  - **Con 22 bots:** repetidos 49% → **21%**, laterales cada 10 min 41 → 27, juego abierto 62% → 66%. Lo que queda: la mete empujando sin patear.
+  - **Con compañeros humanos** (colector desde laterales reales, dos semillas): baja de 90% a 84% bien. El bot bloqueado empuja la pelota adentro, y la patada por la línea a un compañero humano cercano sí servía.
+  - Por eso va **aparte y apagada**: `--regla-lateral` en el cerebro (no usar con humanos) y en `learn.hx11_selfplay`. `--regla-saques` sigue siendo solo córner, tiro libre y saque de arco. Pruebas: `tests/test_hx11_regla.py`.
+- **e1, la señal de "quién va"** (`runs/hx11_l0/l0_quienva_e1/model.pt`):
+  - Ajuste desde h2 con los rasgos `engage` (`--extra`, observación v2: puesto en la cercanía a la pelota y ventaja sobre el compañero y el rival más cercanos), con las 5 entradas nuevas en cero (`--init` ahora rellena columnas).
+  - 20.000 pasos con los 290 partidos y 30% de córner v2 (`humanos_corner_v2.npz`), en la PC del hermano.
+  - NLL de desarrollo 1,3716 → 1,3705: casi igual, como con 30 partidos.
+  - En el lazo de 22 bots, **mejora en las dos semillas** (h2 → e1):
+    - más cercano en juego abierto: 1,27 → 1,16 y 1,38 → 1,29 veces el humano;
+    - offsides: 3,8 → 2,0 y 1,8 → 0,9 cada 10 min (humanos ~1,7–2,3);
+    - juego abierto: 66% → 67% y 58% → 62%;
+    - toques: +8% y +14%.
+  - **Puerta P3 de un bot entre humanos** (`reports/hx11/l0_puerta_e1_sala.md`): pasa todo menos el **MCD cerca de la pelota**. Toca 2,02 veces lo humano (IC 1,37–2,93; h2: 1,08). Con humanos alrededor, el MCD de e1 va de más a la pelota.
+  - **Decisión:** el bot de sala sigue con **h2**; e1 es mejor para la población de 22 bots (lazo reactivo, refuerzo).
+- **Lo que más falta ahora es llevar la pelota:**
+  - Contactos por minuto iguales al humano (1,0), pero el tiempo con alguien en contacto es 0,4 del humano y las rachas largas (p90) 0,3: 24 contra 82 ticks.
+  - Las rachas de ≥ 6 ticks terminan en patada en el 34% (humanos 50%; largo p50 12 contra 28 ticks), se escapan en el 52% (44%) y con un rival encima en el 14% (6%).
+  - Es el mismo hueco que la retención y el powershot: copiar la conducción no lo arregló (c1). Es lo que tiene que atacar el refuerzo (A3).
+
 ### Lo que sigue, en orden
+
+0. **(2026-10-10) Refuerzo A3, pendiente de aprobación.** Hace falta porque la imitación no arregla llevar la pelota. La población todavía no pasa la puerta de realismo (contacto 0,4 del humano), así que conviene un piloto corto con KL a la imitación y la puerta P3 como control. Lo de abajo es la lista anterior.
 
 1. **Puerta P3 con la patada mixta** (`reports/hx11/l0_puerta_ancho_patada033_mixta.md`). Si pasa, es la configuración por defecto del bot de sala.
 2. **Evaluar `l0_ancho_bloque`** (acciones en bloque, con y sin ensamble) en el mismo banco, sobre desarrollo.

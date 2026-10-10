@@ -176,6 +176,44 @@ def near_rows(me, ball, near=NEAR_DIR_PX):
     return d <= near
 
 
+# Regla de patada en las pelotas paradas propias (opcional: cerebro de la sala `--regla-saques`, simulador)
+BAR_MIN = 2.8      # masa inversa mínima de la pelota para patear con barra (p10 humano: córner 3,3, tiro libre 2,8)
+BAR_WAIT = 600     # pasados estos ticks de espera se patea igual (no trabarse)
+LAT_MIN_DEG = 6.0  # lateral: patear desde afuera de la pelota, con al menos este ángulo hacia adentro (p10 humano 6°,
+                   # p50 27°, 3.124 laterales de entrenamiento; en el simulador entra desde 5°: desde adentro la pelota
+                   # corre por la línea y solo vale si la toca un compañero). Con 22 bots, el 49% de los laterales se
+                   # repetía (patada paralela, nadie cerca); con la regla, 21%. Con compañeros humanos (colector desde
+                   # laterales reales) baja de 90% a 84% bien: el bot bloqueado mete la pelota empujando, y la patada por
+                   # la línea a un compañero cercano sí servía. Por eso va aparte (`lateral`), 2026-10-10
+
+
+def kick_rule_ok(me, ball, kind, team, binv, wait, bar=True, lateral=True):
+    """True si el que saca una pelota parada de su equipo puede patear. Lateral (1): desde afuera de la pelota con ángulo
+    >= LAT_MIN_DEG hacia la cancha. Córner (2): del lado de la línea de fondo. Saque de arco (3) y tiro libre (4): del
+    lado de su arco (patea hacia adelante); en esos tres, además, con la barra alta (`bar`). Pasados BAR_WAIT ticks de
+    espera, siempre. Coordenadas del mapa en px; los demás tipos (y el lateral con `lateral` falso), siempre."""
+    if kind not in (1, 2, 3, 4) or wait >= BAR_WAIT or (kind == 1 and not lateral):
+        return True
+    if kind == 1:
+        side = 1.0 if ball[1] > 0 else -1.0
+        return bool(np.degrees(np.arctan2((me[1] - ball[1]) * side, abs(me[0] - ball[0]))) >= LAT_MIN_DEG)
+    if kind == 2:
+        ok = (me[0] - ball[0]) * (1.0 if ball[0] > 0 else -1.0) > 0.0
+    else:
+        ok = (me[0] - ball[0]) * (1.0 if team == 0 else -1.0) < 0.0
+    return bool(ok and (not bar or binv >= BAR_MIN))
+
+
+def seen_now(w, L, s, d):
+    """Posiciones (px) del bot `s` y de la pelota al aplicarse la decisión, estimadas con lo que ve el bot: la última
+    fila vista L (ya con el retardo d) más la velocidad × (d + 1). Sin esto, el bot que llega a la pelota todavía se ve
+    lejos y la regla bloquea patadas buenas (laterales en el simulador, 2026-10-10)."""
+    k = d + 1
+    me = w.pos[L, s].astype(np.float64) / 10 + w.vel[L, s].astype(np.float64) / 1000 * k
+    ball = w.ball[L].astype(np.float64) / 10 + w.bvel[L].astype(np.float64) / 1000 * k
+    return me, ball
+
+
 def piece_rows(phases):
     """Filas en pelota parada (2) o saque inicial (5): ahí la tecla de patear va con sorteo independiente."""
     ph = np.asarray(phases)

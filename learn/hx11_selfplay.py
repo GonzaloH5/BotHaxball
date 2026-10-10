@@ -30,7 +30,8 @@ from env.hx11 import kernel as K
 from env.hx11.core import HX11Env
 from learn.hx11_closed_loop import FRAME_SKIP, bits_of_action, load_state
 from learn.hx11_data import D_MAX, D_MIN, HOLD_REP, MAX_BACK, ROT_MOVE, Match, build, l0_split, load_match
-from learn.hx11_policy import Ensemble, SetPolicy, StickyNoise, near_rows, piece_rows, policy_logits, sample
+from learn.hx11_policy import (Ensemble, SetPolicy, StickyNoise, kick_rule_ok, near_rows, piece_rows, policy_logits,
+                               sample, seen_now)
 from tools.hx11_d0 import KICKOFF, OPEN
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -175,7 +176,7 @@ def positioning(w: Match, ks, pos, ball, on, poss):
 
 
 def play(policy, matches, n_games, H, seed=0, n_env=8, every=FRAME_SKIP, temp_move=1.0, delay=None, hyst=0.0,
-         only_kickoff=False, ens_k=0, ens_m=0.0, renew=1.0, renew_kick=1.0):
+         only_kickoff=False, ens_k=0, ens_m=0.0, renew=1.0, renew_kick=1.0, rule=False, rule_lateral=False):
     rng = np.random.default_rng(seed)
     env = HX11Env(n_env, seed=seed)
     ens = Ensemble(min(ens_k, policy.chunk), ens_m, every) if (ens_k > 1 and getattr(policy, "chunk", 1) > 1) else None
@@ -245,6 +246,9 @@ def play(policy, matches, n_games, H, seed=0, n_env=8, every=FRAME_SKIP, temp_mo
                                     if noise and renew_kick < 1.0 else None)
                 for j, ((i, s), a) in enumerate(zip(who, act)):
                     a = int(a)
+                    if (rule or rule_lateral) and a >= 9 and kick_blocked(W[i], kk - int(D[i][s]) - 1, s, int(D[i][s]),
+                                                                          rule, rule_lateral):
+                        a = a % 9
                     prev[i, s] = a
                     if s >= 11:
                         a = int(ROT_MOVE[a % 9] + 9 * (a // 9))
@@ -279,6 +283,18 @@ def play(policy, matches, n_games, H, seed=0, n_env=8, every=FRAME_SKIP, temp_mo
     return res, logs_ref, traj
 
 
+def kick_blocked(w: Match, L, s, d, rule=True, rule_lateral=True):
+    """Regla de patada de las pelotas paradas propias (`kick_rule_ok`) con lo que ve el bot (tick L, ya con el retardo
+    d; posiciones llevadas al momento de la decisión con `seen_now`), igual que el cerebro de la sala con
+    `--regla-saques` (córner, tiro libre, saque de arco: `rule`) y `--regla-lateral` (`rule_lateral`)."""
+    team = 1 if s >= 11 else 0
+    kind = int(w.pkind[L])
+    if int(w.phase[L]) != 2 or int(w.pteam[L]) != team or (kind == 1 and not rule_lateral) or (kind != 1 and not rule):
+        return False
+    me, ball = seen_now(w, L, s, d)
+    return not kick_rule_ok(me, ball, kind, team, float(w.binv[L]), int(w.pticks[L]))
+
+
 def summarize(rows):
     keys = [k for k in rows[0] if isinstance(rows[0][k], float)]
     return {k: dict(media=round(float(np.nanmean([r[k] for r in rows])), 3),
@@ -304,6 +320,10 @@ def main():
     ap.add_argument("--ens-m", type=float, default=0.0, help="peso exp(−m·antigüedad) del ensamble (0 = parejo)")
     ap.add_argument("--renovar", type=float, default=1.0, help="ruido persistente de la dirección (1 = no)")
     ap.add_argument("--renovar-patada", type=float, default=1.0, help="ruido persistente de la tecla de patear")
+    ap.add_argument("--regla-saques", action="store_true",
+                    help="regla de patada en córner, tiro libre y saque de arco propios, como el cerebro de la sala")
+    ap.add_argument("--regla-lateral", action="store_true",
+                    help="regla de patada en el lateral propio: desde afuera, con ángulo hacia la cancha")
     ap.add_argument("--threads", type=int, default=6)
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
@@ -319,7 +339,8 @@ def main():
     t0 = time.time()
     rows, ref, traj = play(policy, matches, a.games, a.seconds * 60, seed=a.seed, n_env=a.n_env, every=a.every,
                            temp_move=a.temp, delay=a.delay, hyst=a.hyst, only_kickoff=a.solo_saques, ens_k=a.ens,
-                           ens_m=a.ens_m, renew=a.renovar, renew_kick=a.renovar_patada)
+                           ens_m=a.ens_m, renew=a.renovar, renew_kick=a.renovar_patada, rule=a.regla_saques,
+                           rule_lateral=a.regla_lateral)
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     res = dict(modelo=a.model, juegos=len(rows), segundos_por_juego=a.seconds, simulado=summarize(rows),

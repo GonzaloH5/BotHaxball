@@ -33,7 +33,7 @@ from env.hx11 import kernel as K
 from env.hx11.core import HX11Env
 from learn.hx11_closed_loop import FRAME_SKIP, bits_of_action, load_state
 from learn.hx11_data import D_MAX, D_MIN, MAX_BACK, ROT_MOVE, build, l0_split, load_match
-from learn.hx11_policy import SetPolicy, StickyNoise, piece_rows, sample
+from learn.hx11_policy import BAR_MIN, BAR_WAIT, SetPolicy, StickyNoise, kick_rule_ok, piece_rows, sample
 from learn.hx11_selfplay import store_all, window_sp
 from tools.hx11_d0 import PIECE
 
@@ -51,21 +51,19 @@ def behind(me, ball, kind=C.CORNER, team=0):
     return (me[0] - ball[0]) * attack < 0.0
 
 
-BAR_MIN = 2.8            # masa inversa mínima de la pelota para patear (barra alta; p10 humano: córner 3,3, tiro libre 2,8)
-BAR_WAIT = 600           # pasados estos ticks de espera, se patea con cualquier barra (no trabarse)
-
-
 def kick_allowed(env, i, s, rule, bar_rule):
-    """Regla de patada en una pelota parada propia con barra (córner, tiro libre, saque de arco)."""
+    """Regla de patada en una pelota parada propia con barra (córner, tiro libre, saque de arco; `rule` también la del
+    lateral: `kick_rule_ok`)."""
     ri = env.ri[i]
-    if ri[K.RI_MODE] != K.PIECE or ri[K.RI_KIND] not in (C.CORNER, C.FREE_KICK, C.GOAL_KICK):
+    kinds = (C.CORNER, C.FREE_KICK, C.GOAL_KICK) + ((C.LATERAL,) if rule else ())
+    if ri[K.RI_MODE] != K.PIECE or ri[K.RI_KIND] not in kinds:
         return True
     team = int(ri[K.RI_TEAM])
     if (s >= 11) != (team == 1):
         return True
-    if rule and not behind(env.pos[i, env.fp + s], env.pos[i, 0], int(ri[K.RI_KIND]), team):
+    if rule and not kick_rule_ok(env.pos[i, env.fp + s], env.pos[i, 0], int(ri[K.RI_KIND]), team, 99.0, 0):
         return False
-    if bar_rule and env.inv[i, 0] < BAR_MIN and ri[K.RI_TICKS] < BAR_WAIT:
+    if bar_rule and ri[K.RI_KIND] != C.LATERAL and env.inv[i, 0] < BAR_MIN and ri[K.RI_TICKS] < BAR_WAIT:
         return False
     return True
 
@@ -300,7 +298,7 @@ def main():
 
 
 
-def human_takers(names, kind=C.CORNER, stride=3, seed=0, modos=None):
+def human_takers(names, kind=C.CORNER, stride=3, seed=0, modos=None, extra=False):
     """Decisiones de los humanos que sacaron la pelota parada `kind`, desde la colocación hasta su patada (propia,
     entidades, acción del equipo; retardo sorteado como en el entrenamiento). Para darles más peso en un ajuste corto:
     en el entrenamiento normal quedan diluidas entre las de juego abierto."""
@@ -324,7 +322,7 @@ def human_takers(names, kind=C.CORNER, stride=3, seed=0, modos=None):
             if not len(ts):
                 continue
             d = rng.integers(D_MIN, D_MAX + 1, len(ts))
-            o, e, y, _ = build(m, ts, np.full(len(ts), s), d, False)
+            o, e, y, _ = build(m, ts, np.full(len(ts), s), d, extra)
             keep_o.append(o); keep_e.append(e); keep_y.append(y)
     return dict(own=np.concatenate(keep_o).astype(np.float32), ents=np.concatenate(keep_e).astype(np.float32),
                 y=np.concatenate(keep_y).astype(np.int64))
@@ -335,11 +333,13 @@ def main_humanos():
     ap.add_argument("--split-file", default="runs/hx11_l0/split.json")
     ap.add_argument("--tipo", default="corner", choices=["corner", "lateral", "conduccion"])
     ap.add_argument("--out", required=True)
+    ap.add_argument("--extra", action="store_true", help="observación v2 (rasgos de 'voy yo')")
     a = ap.parse_args()
     sp = json.loads((ROOT / a.split_file).read_text(encoding="utf-8"))
     modos = json.loads((ROOT / "data" / "hx11" / "modos.json").read_text(encoding="utf-8"))
     data = (human_carry(sp["train"], modos=modos) if a.tipo == "conduccion"
-            else human_takers(sp["train"], C.CORNER if a.tipo == "corner" else C.LATERAL, modos=modos))
+            else human_takers(sp["train"], C.CORNER if a.tipo == "corner" else C.LATERAL, modos=modos,
+                              extra=a.extra))
     np.savez_compressed(a.out, **data)
     print(json.dumps(dict(muestras=int(len(data["y"])), patadas=int((data["y"] >= 9).sum()), out=a.out)))
 

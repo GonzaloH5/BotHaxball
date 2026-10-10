@@ -34,7 +34,7 @@ from env.hx11.core import HX11Env
 from learn.hx11_closed_loop import FRAME_SKIP, bits_of_action, load_state
 from learn.hx11_data import D_MAX, D_MIN, MAX_BACK, ROT_MOVE, build, load_match
 from learn.hx11_policy import SetPolicy, StickyNoise, piece_rows, sample
-from learn.hx11_selfplay import store_all, window_sp
+from learn.hx11_selfplay import kick_blocked, store_all, window_sp
 from tools.hx11_d0 import PIECE
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -53,7 +53,8 @@ def lateral_starts(matches, H, rng, per_match=None):
     return out
 
 
-def run(policy, matches, starts, H=720, n_env=16, seed=0, temp=0.7, renew_kick=0.33, near_px=200.0, every=FRAME_SKIP):
+def run(policy, matches, starts, H=720, n_env=16, seed=0, temp=0.7, renew_kick=0.33, near_px=200.0, every=FRAME_SKIP,
+        rule=False):
     """Episodios de lateral. Devuelve (resultados, muestras de los `bien`: propia, entidades, acción del equipo)."""
     rng = np.random.default_rng(seed)
     env = HX11Env(n_env, seed=seed)
@@ -103,6 +104,8 @@ def run(policy, matches, starts, H=720, n_env=16, seed=0, temp=0.7, renew_kick=0
                              if noise else None)
                 for j, ((i, s), a) in enumerate(zip(who, act)):
                     a = int(a)
+                    if rule and a >= 9 and kick_blocked(W[i], kk - int(D[i][s]) - 1, s, int(D[i][s]), False, True):
+                        a = a % 9
                     if info[i]["state"] == "pendiente" and (s >= 11) == (info[i]["team"] == 1):
                         ball, me = env.pos[i, 0], env.pos[i, env.fp + s]
                         if np.hypot(*(ball - me)) <= near_px:
@@ -126,7 +129,10 @@ def run(policy, matches, starts, H=720, n_env=16, seed=0, temp=0.7, renew_kick=0
                 if st == "pateado" and env.ri[i, K.RI_LAT_ARMED] == 1:
                     info[i]["state"], info[i]["end"] = "bien", k
                 elif e == K.EV_OUT:
+                    # mal desde "pendiente": pateado con la pelota adentro, o metida sin patear y dejada adentro;
+                    # desde "pateado": no entró (paralelo o hacia afuera), o la tocó un rival afuera
                     info[i]["state"], info[i]["end"] = "mal", k
+                    info[i]["mal_desde"] = st
                 elif e == K.EV_TIMEOUT:
                     info[i]["state"], info[i]["end"] = "tiempo", k
         for i, (mi, tp) in enumerate(chunk):
@@ -134,7 +140,8 @@ def run(policy, matches, starts, H=720, n_env=16, seed=0, temp=0.7, renew_kick=0
             if st in ("pendiente", "pateado"):
                 st = "sin_resolver"
             results.append(dict(partido=matches[mi].name, t=tp, resultado=st, ticks=info[i]["end"],
-                                patada=info[i].get("kick_t"), muestras=len(info[i]["buf_y"])))
+                                patada=info[i].get("kick_t"), mal_desde=info[i].get("mal_desde"),
+                                muestras=len(info[i]["buf_y"])))
             if st == "bien" and info[i]["buf_y"]:
                 keep_o.append(np.stack(info[i]["buf_o"]))
                 keep_e.append(np.stack(info[i]["buf_e"]))
@@ -150,7 +157,9 @@ def summarize(results):
     c = collections.Counter(r["resultado"] for r in results)
     n = max(len(results), 1)
     good = [r["ticks"] for r in results if r["resultado"] == "bien"]
+    md = collections.Counter(r.get("mal_desde") for r in results if r["resultado"] == "mal")
     return dict(laterales=len(results), **{k: round(v / n, 3) for k, v in sorted(c.items())},
+                mal_sin_patear=round(md["pendiente"] / n, 3), mal_pateado=round(md["pateado"] / n, 3),
                 ticks_hasta_bien_p50=float(np.median(good)) if good else None)
 
 
@@ -167,6 +176,7 @@ def main():
     c.add_argument("--temp", type=float, default=0.7)
     c.add_argument("--renovar-patada", type=float, default=0.33)
     c.add_argument("--seed", type=int, default=0)
+    c.add_argument("--regla", action="store_true", help="regla de patada del lateral (kick_rule_ok)")
     c.add_argument("--threads", type=int, default=4)
     c.add_argument("--out", required=True)
     a = ap.parse_args()
@@ -185,7 +195,8 @@ def main():
     policy.load_state_dict(ck["state"])
     policy.eval()
     t0 = time.time()
-    results, data = run(policy, matches, starts, n_env=a.n_env, seed=a.seed, temp=a.temp, renew_kick=a.renovar_patada)
+    results, data = run(policy, matches, starts, n_env=a.n_env, seed=a.seed, temp=a.temp, renew_kick=a.renovar_patada,
+                           rule=a.regla)
     out = Path(a.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     res = dict(modelo=a.model, split=a.split, partidos=len(names), resumen=summarize(results),

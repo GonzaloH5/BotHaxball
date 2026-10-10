@@ -31,7 +31,8 @@ import torch
 from learn.hx11_closed_loop import bits_of_action
 from learn.hx11_data import D_MAX, D_MIN, FAULT_MODES, LINES, MAX_BACK, ROT_MOVE, Match, build
 from learn.hx11_fase import Fase
-from learn.hx11_policy import Ensemble, SetPolicy, StickyNoise, near_rows, piece_rows, policy_logits, sample
+from learn.hx11_policy import (Ensemble, SetPolicy, StickyNoise, kick_rule_ok, near_rows, piece_rows, policy_logits,
+                               sample, seen_now)
 
 ROOT = Path(__file__).resolve().parent.parent
 CAP = 4096
@@ -46,7 +47,7 @@ def lookup(vocab, key):
 
 class Cerebro:
     def __init__(self, model, pos, vocab, temp=1.0, every=3, hyst=0.0, ens_k=0, ens_m=0.0, renew=1.0, renew_kick=1.0,
-                 sin_saques=(), regla_saques=False):
+                 sin_saques=(), regla_saques=False, regla_lateral=False):
         ck = torch.load(model, map_location="cpu", weights_only=False)
         self.net = SetPolicy(**ck["config"])
         self.net.load_state_dict(ck["state"])
@@ -56,6 +57,7 @@ class Cerebro:
         self.prev = {}                          # id -> última acción (coordenadas del equipo), para la histéresis
         # acciones en bloque (ACT): ensamble temporal por jugador, si el modelo predice varias decisiones
         self.sin_saques = set(int(k) for k in sin_saques)   # tipos de pelota parada propia que el bot no patea
+        self.regla_lateral = bool(regla_lateral)            # regla de patada en el lateral (ver kick_rule_ok)
         self.regla_saques = bool(regla_saques)              # regla de patada (dirección y barra) en las que sí saca
         # ruido persistente (dirección y tecla de patear), por jugador
         self.renew, self.renew_kick = renew, renew_kick
@@ -160,25 +162,22 @@ class Cerebro:
                     kick_u=self.noise.get_kick(ids, piece_rows([self.w.phase[self.n - 1]] * len(ids)))
                     if self.renew_kick < 1.0 else None)
 
-    def _kick_blocked(self, s):
-        """Regla de patada en las pelotas paradas propias con barra (córner, tiro libre, saque de arco), si está
-        activada: solo desde atrás de la pelota respecto de adónde va y con la barra alta (o pasados 10 s de espera).
-        Medida en el simulador (learn/hx11_corner.py, 2026-10-09): sin córners italianos y con la potencia humana."""
-        if not self.regla_saques or self.n < 1:
+    def _kick_blocked(self, s, d=0):
+        """Regla de patada en las pelotas paradas propias, si está activada (`kick_rule_ok`): en el córner, el tiro libre
+        y el saque de arco, solo desde atrás de la pelota y con la barra alta (o pasados 10 s de espera); en el lateral,
+        desde afuera con ángulo hacia la cancha. Medida en el simulador (learn/hx11_corner.py, 2026-10-09: sin córners
+        italianos y con la potencia humana; learn/hx11_selfplay.py, 2026-10-10: laterales)."""
+        if not (self.regla_saques or self.regla_lateral) or self.n < 1:
             return False
         L = self.n - 1
         team = 1 if s >= 11 else 0
         kind = int(self.w.pkind[L])
-        if int(self.w.phase[L]) != 2 or int(self.w.pteam[L]) != team or kind not in (2, 3, 4):
+        if int(self.w.phase[L]) != 2 or int(self.w.pteam[L]) != team:
             return False
-        me = self.w.pos[L, s].astype(np.float64) / 10
-        ball = self.w.ball[L].astype(np.float64) / 10
-        if kind == 2:
-            ok_dir = (me[0] - ball[0]) * (1.0 if ball[0] > 0 else -1.0) > 0.0
-        else:
-            ok_dir = (me[0] - ball[0]) * (1.0 if team == 0 else -1.0) < 0.0
-        ok_bar = float(self.w.binv[L]) >= 2.8 or int(self.w.pticks[L]) >= 600
-        return not (ok_dir and ok_bar)
+        if (kind == 1 and not self.regla_lateral) or (kind != 1 and not self.regla_saques):
+            return False
+        me, ball = seen_now(self.w, L, s, d)
+        return not kick_rule_ok(me, ball, kind, team, float(self.w.binv[L]), int(self.w.pticks[L]))
 
     def _no_kick(self, s):
         """True si el bot del lugar s no debe patear ahora: pelota parada de su equipo de un tipo en `self.sin_saques`
@@ -223,7 +222,8 @@ class Cerebro:
             self.prev[me] = a
             if s >= 11:
                 a = int(ROT_MOVE[a % 9] + 9 * (a // 9))
-            out[me] = int(bits_of_action(np.array([a]))[0]) & (~16 if (self._no_kick(s) or self._kick_blocked(s)) else ~0)
+            out[me] = int(bits_of_action(np.array([a]))[0]) & (~16 if (self._no_kick(s) or self._kick_blocked(s, d))
+                                                                 else ~0)
         return out
 
     def decide(self, me, delay):
@@ -259,7 +259,7 @@ class Cerebro:
         if s >= 11:
             a = int(ROT_MOVE[a % 9] + 9 * (a // 9))
         bits = int(bits_of_action(np.array([a]))[0])
-        if self._no_kick(s) or self._kick_blocked(s):
+        if self._no_kick(s) or self._kick_blocked(s, d):
             bits &= ~16                      # pelota parada que saca un humano, o regla de patada
         self.pending = [(tk, b) for tk, b in self.pending if tk > last_abs - 2] + [(last_abs + d + 1, bits)]
         return bits
@@ -280,6 +280,9 @@ def main():
                     help="ruido persistente de la tecla de patear (1 = sorteo independiente)")
     ap.add_argument("--regla-saques", action="store_true",
                     help="en córner, tiro libre y saque de arco propios: patea solo desde atrás y con la barra alta")
+    ap.add_argument("--regla-lateral", action="store_true",
+                    help="en el lateral propio: patea solo desde afuera, con ángulo hacia la cancha (con compañeros "
+                         "humanos no conviene: ver LAT_MIN_DEG en learn/hx11_policy.py)")
     ap.add_argument("--sin-saques", default="",
                     help="pelotas paradas de su equipo que el bot no patea: corner,tiro_libre,saque_arco,lateral,penal")
     a = ap.parse_args()
@@ -290,7 +293,7 @@ def main():
     kinds = {"lateral": 1, "corner": 2, "saque_arco": 3, "tiro_libre": 4, "penal": 5}
     sin = [kinds[k.strip()] for k in a.sin_saques.split(",") if k.strip()]
     c = Cerebro(a.model, a.pos, vocab, a.temp, a.every, a.hyst, a.ens, a.ens_m, a.renovar, a.renovar_patada, sin,
-                a.regla_saques)
+                a.regla_saques, a.regla_lateral)
     print(json.dumps({"listo": True, "pos": a.pos, "linea": LINES[c.line]}), flush=True)
     for line in sys.stdin:
         if not line.strip():
