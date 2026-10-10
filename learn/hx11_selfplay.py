@@ -271,16 +271,25 @@ def play(policy, matches, n_games, H, seed=0, n_env=8, every=FRAME_SKIP, temp_mo
             om = max(float((W[i].phase[MAX_BACK + 1:MAX_BACK + H] == OPEN).sum()) / 3600, 1e-6)
             r.update(faltas_10min=float(fouls[i] / om * 10), offsides_10min=float(offs[i] / om * 10))
             res.append(r)
-            traj.append(dict(pos=W[i].pos[MAX_BACK:].tolist(), ball=W[i].ball[MAX_BACK:].tolist(),
-                             pid=(W[i].pid[MAX_BACK] >= 0).tolist(), phase=W[i].phase[MAX_BACK:].tolist(),
-                             score=W[i].score[MAX_BACK:].tolist(), pkind=W[i].pkind[MAX_BACK:].tolist(),
-                             pteam=W[i].pteam[MAX_BACK:].tolist(), spot=W[i].spot[MAX_BACK:].tolist()))
+            traj.append(clip_of(W[i], MAX_BACK))
             # referencia humana: la misma ventana en la grabación (si el partido alcanza)
             m = matches[mi]
             if t0 + H < m.T:
                 ref = game_metrics(window_sp(m, t0, H), MAX_BACK + 1, MAX_BACK + H)
                 logs_ref.append(ref)
     return res, logs_ref, traj
+
+
+def clip_of(w: Match, k0, k1=None):
+    """Arreglos de una ventana desde el tick k0 (sintética o grabada, mismo formato): lo que mide la puerta de realismo
+    (`learn.hx11_realismo`) y los diagnósticos. Posiciones ×10, como en Match."""
+    sl = slice(k0, k1)
+    on = w.pid[sl] >= 0
+    gk = on & (w.pid[sl] == np.where(np.arange(22)[None] < 11, w.gk[sl, :1], w.gk[sl, 1:]))
+    return dict(pos=w.pos[sl].astype(np.int16), ball=w.ball[sl].astype(np.int16), on=on, gk=gk,
+                pid=on[0], inp=w.inp[sl].astype(np.int8), binv=w.binv[sl].astype(np.float16),
+                phase=w.phase[sl].astype(np.int8), pkind=w.pkind[sl].astype(np.int8),
+                pteam=w.pteam[sl].astype(np.int8), spot=w.spot[sl].astype(np.int16), score=w.score[sl].astype(np.int16))
 
 
 def kick_blocked(w: Match, L, s, d, rule=True, rule_lateral=True):
@@ -346,7 +355,9 @@ def main():
     res = dict(modelo=a.model, juegos=len(rows), segundos_por_juego=a.seconds, simulado=summarize(rows),
                humano_mismas_ventanas=summarize(ref) if ref else None, tiempo=round(time.time() - t0))
     (out / "resumen.json").write_text(json.dumps(dict(res, filas=rows), indent=1), encoding="utf-8")
-    (out / "trayectorias.json").write_text(json.dumps(traj), encoding="utf-8")
+    keys = ("pos", "ball", "pid", "phase", "score", "pkind", "pteam", "spot")
+    (out / "trayectorias.json").write_text(json.dumps([{k: t[k].tolist() for k in keys} for t in traj]),
+                                            encoding="utf-8")
     print(json.dumps(res, ensure_ascii=False))
 
 

@@ -35,7 +35,8 @@ from env.hx11 import kernel as K
 from env.hx11.core import HX11Env
 from learn.hx11_data import (D_MAX, D_MIN, HOLD_REP, MAX_BACK, MOVE_DX, MOVE_DY, ROT_MOVE, Match, build, l0_split,
                              load_match, move_of_input)
-from learn.hx11_policy import Ensemble, SetPolicy, StickyNoise, near_rows, piece_rows, policy_logits, sample
+from learn.hx11_policy import (Ensemble, SetPolicy, StickyNoise, near_rows, open_kick_blocked, piece_rows,
+                               policy_logits, sample)
 from tools.hx11_d0 import OPEN
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -154,7 +155,7 @@ def store(env, i, w: Match, k, acts):
 
 def rollout(policy, matches, owners, starts_list, n_env=64, seed=0, human=False, swap=None, every=FRAME_SKIP,
             temp_move=1.0, hyst=0.0, hold_scale=1.0, delay=None, every_near=None, near_px=30.0, kick_free=False,
-            ens_k=0, ens_m=0.0, renew=1.0, renew_kick=1.0):
+            ens_k=0, ens_m=0.0, renew=1.0, renew_kick=1.0, open_rule=False):
     """Corre las ventanas en lotes de n_env entornos; devuelve una fila de métricas por ventana.
 
     `swap` (vocabulario de `tools.hx11_pos`): al bot se le pide otro puesto, de otra línea (E8). Se pisa su ancla y su
@@ -238,6 +239,8 @@ def rollout(policy, matches, owners, starts_list, n_env=64, seed=0, human=False,
                 for j, i in enumerate(deciding):
                     s = W[i][2]
                     act = int(a_team[j])
+                    if open_rule and act >= 9 and open_kick_blocked(W[i][0], MAX_BACK + k - W[i][3] - 1, s, W[i][3]):
+                        act %= 9                 # regla de patada en juego abierto (`open_kick_ok`)
                     if s >= 11:
                         act = int(ROT_MOVE[act % 9] + 9 * (act // 9))
                     held[i] = act
@@ -343,6 +346,8 @@ def metrics(w: Match, log: Match, s, end, acts, m: Match, t0, owner):
         # distancia de borde mientras controla (<= 4 px): pegado (0) o conduciendo a distancia
         out[f"borde_control_{who}"] = float(np.median(gap[ctl])) if ctl.any() else None
         out[f"patadas_cargadas_min_{who}"] = float((kf & (arr.binv[ks].astype(np.float64) >= 2.4)).sum()) / mins
+        for k, v in kick_outcomes(arr, s, np.nonzero(kf)[0], k0, end).items():
+            out[f"{k}_min_{who}"] = v / mins
     out["cambios_s_bot"] = float((np.diff(acts) != 0).sum()) / (end / 60)
     ha = action_of_bits(log.inp[ks, s])
     out["cambios_s_humano"] = float((np.diff(ha) != 0).sum()) / (end / 60)
@@ -353,6 +358,39 @@ def metrics(w: Match, log: Match, s, end, acts, m: Match, t0, owner):
     out["dist_ancla_bot"] = zone_dist(w, s, end, anc, owner, t0)
     out["dist_ancla_humano"] = zone_dist(log, s, end, anc, owner, t0)
     return out
+
+
+def kick_outcomes(arr: Match, s, js, k0, end, horizon=120):
+    """Qué pasa después de cada patada del jugador s (índices js sobre los ticks k0+1…k0+end), con lo que hay en la
+    ventana (en la del bot, lo simulado hasta que termina): la toca después un compañero o un rival, sale (la ventana
+    termina en una salida: saca el rival), y si iba para atrás en campo propio. El partido real del bot (2026-10-09,
+    lo echaron a los 2 min) mostró las dos: la pateó para atrás por la banda (lateral rival en campo propio) y la
+    regaló a un rival en campo propio (contraataque)."""
+    from env.hx11 import contract as HC
+    team = 0 if s < 11 else 1
+    att = 1.0 if team == 0 else -1.0
+    last = k0 + end
+    c = dict(patadas_atras_propio=0, regaladas=0, afuera=0, a_companero=0)
+    for j in js:
+        kk = k0 + 1 + int(j)
+        b0 = arr.ball[kk].astype(np.float64) / 10
+        b3 = arr.ball[min(kk + 3, last)].astype(np.float64) / 10
+        if b0[0] * att < 0 and (b3[0] - b0[0]) * att < -4.5:
+            c["patadas_atras_propio"] += 1
+        res = None
+        for t in range(kk + 2, min(kk + horizon, last) + 1):
+            on = arr.pid[t] >= 0
+            g = np.hypot(*(arr.pos[t].astype(np.float64) / 10 - arr.ball[t].astype(np.float64) / 10).T) - HC.PLAYER_R - HC.BALL_R
+            hit = np.nonzero(on & (g <= TOUCH) & (np.arange(22) != s))[0]
+            if len(hit):
+                res = "a_companero" if (int(hit[0]) >= 11) == (team == 1) else "regaladas"
+                break
+            if int(arr.phase[t]) == 1:
+                res = "afuera"
+                break
+        if res:
+            c[res] += 1
+    return c
 
 
 def zone_dist(arr: Match, s, end, anc, owner, t0):
@@ -414,6 +452,8 @@ def main():
                     help="ruido persistente de la tecla de patear (1 = sorteo independiente)")
     ap.add_argument("--patada-libre", action="store_true",
                     help="con --every-cerca: sostiene solo la dirección; la patada se decide cada --every ticks")
+    ap.add_argument("--regla-juego", action="store_true",
+                    help="regla de patada en juego abierto: no hacia afuera por la banda ni atrás sin compañero")
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     torch.set_num_threads(4)
@@ -436,7 +476,7 @@ def main():
     rows = rollout(policy, matches, owners, sl, n_env=a.n_env, seed=a.seed, human=a.policy == "humano", swap=swap,
                    every=a.every, temp_move=a.temp, hyst=a.hyst, hold_scale=a.hold_scale, delay=a.delay,
                    every_near=a.every_cerca, near_px=a.cerca_px, kick_free=a.patada_libre, ens_k=a.ens, ens_m=a.ens_m,
-                   renew=a.renovar, renew_kick=a.renovar_patada)
+                   renew=a.renovar, renew_kick=a.renovar_patada, open_rule=a.regla_juego)
     res = dict(politica=a.policy, modelo=a.model, cada=a.every, temp=a.temp, hyst=a.hyst, cerca=a.cerca, partidos=names, ventanas=len(rows), resumen=summarize(rows),
                segundos=round(time.time() - t0))
     Path(a.out).parent.mkdir(parents=True, exist_ok=True)

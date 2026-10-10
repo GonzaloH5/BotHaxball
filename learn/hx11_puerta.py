@@ -68,6 +68,7 @@ def main():
     ap.add_argument("--matches", type=int, default=20)
     ap.add_argument("--cerca", type=int, default=1600)
     ap.add_argument("--azar", type=int, default=1600)
+    ap.add_argument("--regla-juego", action="store_true", help="regla de patada en juego abierto (open_kick_ok)")
     ap.add_argument("--out", default="reports/hx11/l0_puerta")
     a = ap.parse_args()
     torch.set_num_threads(6)
@@ -88,7 +89,7 @@ def main():
         sl = [(mi, t0, s) for mi, m in enumerate(matches)
               for t0, s in CL.starts(m, owners[mi], per, rng, near=kind == "cerca")]
         rows = CL.rollout(net, matches, owners, sl, n_env=64, seed=0, temp_move=a.temp, every=a.every, ens_k=a.ens,
-                          ens_m=a.ens_m, renew=a.renovar, renew_kick=a.renovar_patada)
+                          ens_m=a.ens_m, renew=a.renovar, renew_kick=a.renovar_patada, open_rule=a.regla_juego)
         res[kind] = {}
         for line in ("ARQ", "DEF", "MCD", "MED", "DEL"):
             rr = [r for r in rows if r.get("linea") == line]

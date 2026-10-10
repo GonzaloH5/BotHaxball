@@ -214,6 +214,49 @@ def seen_now(w, L, s, d):
     return me, ball
 
 
+SIDE_Y = 1000.0           # juego abierto: pelota pegada a la banda
+BACK_CONE = 35.0          # pase atrás válido: un compañero a menos de 35° de la dirección de la patada…
+BACK_DIST = 700.0         # …y a menos de 700 px de la pelota
+
+
+def open_kick_ok(me, ball, team, mates):
+    """Regla de patada en juego abierto (la dirección de la patada es la de jugador → pelota). Bloquea:
+    * pegado a la banda (|y| > 1000), patear hacia afuera (|dy| > 0,7 hacia la línea): en el banco el 56% sale;
+    * en campo propio, patear hacia atrás (dx < −0,5 en coordenadas del equipo) sin un compañero en esa dirección
+      (a menos de 35° y 700 px). Los humanos lo hacen en el 6% de sus patadas, casi siempre como pase atrás (42% llega
+      a un compañero); el bot lo hacía el doble, y en el partido real del 2026-10-09 la pateó para atrás por la banda
+      (lateral del rival en campo propio) y lo echaron.
+    me, ball: (2,) px; mates: (k, 2) px de los compañeros de campo y el arquero (sin él)."""
+    v = np.asarray(ball, np.float64) - np.asarray(me, np.float64)
+    n = np.hypot(*v)
+    if n < 1e-6:
+        return True
+    v = v / n
+    if abs(ball[1]) > SIDE_Y and v[1] * np.sign(ball[1]) > 0.7:
+        return False
+    att = 1.0 if team == 0 else -1.0
+    if ball[0] * att < 0 and v[0] * att < -0.5:
+        if len(mates):
+            w = np.asarray(mates, np.float64) - np.asarray(ball, np.float64)
+            dist = np.hypot(*w.T)
+            cos = (w @ v) / np.maximum(dist, 1e-6)
+            if ((dist < BACK_DIST) & (cos > np.cos(np.radians(BACK_CONE)))).any():
+                return True
+        return False
+    return True
+
+
+def open_kick_blocked(w, L, s, d):
+    """`open_kick_ok` con lo que ve el bot (fila L, retardo d; posiciones llevadas al momento de la decisión)."""
+    if int(w.phase[L]) != 0:
+        return False
+    team = 1 if s >= 11 else 0
+    me, ball = seen_now(w, L, s, d)
+    sl = range(11 * team, 11 * team + 11)
+    mates = [w.pos[L, q].astype(np.float64) / 10 for q in sl if q != s and w.pid[L, q] >= 0]
+    return not open_kick_ok(me, ball, team, np.array(mates).reshape(-1, 2))
+
+
 def piece_rows(phases):
     """Filas en pelota parada (2) o saque inicial (5): ahí la tecla de patear va con sorteo independiente."""
     ph = np.asarray(phases)

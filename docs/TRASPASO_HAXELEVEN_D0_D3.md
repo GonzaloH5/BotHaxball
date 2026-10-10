@@ -619,6 +619,28 @@ El usuario eligió la opción A (quién va + refuerzo). Mediciones en el lazo re
   - **Lectura:** **p4 mejora porque los humanos grabados no reaccionan** al bot. Aprendió que aguantar la pelota es seguro, y frente a rivales que reaccionan no se sostiene. Con una muestra chica (10 min) había parecido lo contrario: era ruido.
 - **Conclusión del piloto A3:** ninguno de los dos entornos sirve para refuerzo. Los bots no son realistas y los humanos grabados no reaccionan. **El bot de sala sigue con h2.** Para refuerzo haría falta un entorno reactivo y realista: una población que pase la puerta de realismo, o partidos reales.
 
+- **Puerta P3 del control 40 de p4** (`reports/hx11/l0_puerta_rl_p4_40.md`): falla 5 chequeos: patadas de DEF, MCD y MED, y toques de DEF y MCD (de más).
+
+### Seguir mejorando la imitación (pedido del usuario, 2026-10-10)
+
+- **Partido real del bot (grabación del usuario, `HaxEleven-9-10-2026-22h26m.hbr2`):** GonzaloH4 jugó 135 s de MCD (83 de juego abierto) y lo echaron "por dos decisiones erradas". El análisis (scratchpad `analizar_bot_real.py` y `jugadas_bot.py`) muestra cuáles:
+  1. **1:47:** la pelota venía hacia su campo pegada a la banda. La alcanzó de frente y la pateó **para atrás por la línea**, y fue lateral del rival en x = −1378, sin nadie que lo apurara (rival más cercano a ~80 px).
+  2. **2:06:** la llevó 1,5 s en campo propio y la pateó **directo a un rival** (recuperada en 0,4 s). El contraataque llegó cerca del área y el bot no volvió.
+  - Además: 6,5 cambios de tecla por segundo (humanos de esa sala 3,6), distancia mediana a la pelota 420 px contra 581, y toques 1,27 por minuto contra 0,66.
+  - La causa es la misma que la de los laterales: **patea apenas llega a la pelota, sin acomodarse**.
+- **Métricas de calidad de patada** en el lazo cerrado (`kick_outcomes` en `learn/hx11_closed_loop.py`): patadas hacia atrás en campo propio, regaladas (la toca después un rival), afuera y a un compañero, del bot contra el humano en las mismas ventanas.
+  - Las ventanas humanas son, por construcción, de juego abierto, así que "afuera" humano es 0: lo del bot es exceso.
+  - **h2:** atrás en campo propio 2,04 veces el humano; afuera 0,69 por minuto; a un compañero 0,34.
+- **Regla de patada en juego abierto** (`open_kick_ok` en `learn/hx11_policy.py`; `--regla-juego` en el lazo cerrado y la puerta). No patea:
+  - **pegado a la banda hacia afuera:** en el banco, el 3% de las patadas humanas, y el 56% de esas sale;
+  - **hacia atrás en campo propio sin un compañero en esa dirección** (35°, 700 px): los humanos patean hacia atrás en el 6% de sus patadas, casi siempre como pase (42% a un compañero).
+  - **h2 con la regla:** atrás 2,04 → 1,12; afuera 0,69 → 0,40; pero patadas 0,77 → 0,68. A un compañero, sin cambio (0,32). Puerta P3 con la regla: en curso.
+- **Puerta de realismo P5** (`learn/hx11_realismo.py`):
+  - **Métricas:** 22, en cuatro familias (colectivas, tácticas, temporales, mecánicas). Distancia W1 por ventana de 90 s: sintético contra humano de prueba, con techo = humano de entrenamiento contra prueba.
+  - **C2ST:** red chica sobre 20 rasgos de clips de 10 s, con validación cruzada por partido; da el AUC y qué rasgos delatan al bot.
+  - **Criterio del plan:** ≥ 80% dentro del techo, ninguna colectiva a más de 2 techos, AUC ≤ 0,70.
+  - Prueba chica de punta a punta con e1: 18% dentro y AUC 0,92. La corrida de 200 juegos de e1 está en curso en la PC del hermano.
+
 ### Lo que sigue, en orden
 
 0. **(2026-10-10) Refuerzo A3:** ver la sección de arriba. Lo de abajo es la lista anterior.
