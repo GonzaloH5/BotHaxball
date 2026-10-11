@@ -681,9 +681,31 @@ El usuario eligió la opción A (quién va + refuerzo). Mediciones en el lazo re
     - Implementada, con pruebas y con el cerebro de sala probado sin sala. Datos de córner v4 listos.
     - Se lanza si la etapa 1 mejora la prueba larga.
 
+### Ancla en vivo y etapas del modelo nuevo: resultados (2026-10-11, madrugada)
+
+- **Ancla en vivo** (`learn/hx11_ancla.py`; `--ancla-vivo` en el cerebro, encendida por defecto en `deploy/hx11/bot.js`):
+  - Con los compañeros del último minuto (posición media relativa al centroide, con y sin la pelota) se ajustan las plantillas de formación del vocabulario con el húngaro, y el bot toma el rol libre de la línea pedida.
+  - Si el rol libre no es de esa línea, usa el ancla genérica del puesto (con el hueco aproximado el MCD empeoraba).
+  - En la sala se recalcula cada 5 s y se suaviza un 40% por paso.
+  - **Error del ancla contra la real del humano** (80 jugadores de prueba): 115 px p50, contra 205 px de la genérica.
+  - **Prueba larga con h2 y la red de seguridad** (zona, genérica → en vivo): DEF 1,76 → 1,19, MCD 1,09 → 1,08, MED 1,27 → 1,29, DEL 1,15 → 1,10. DEF queda del lado de su arco (0,89 → 1,04).
+- **Etapa 1, estado del juego** (`runs/hx11_l0/l0_estado_s1/model.pt`): NLL de desarrollo 1,3705 → 1,3688. En la prueba larga, mejoras chicas en DEF, MED y DEL y un poco peor el MCD. No se usa.
+- **Etapa 2, memoria de 2 s** (`runs/hx11_l0/l0_memoria_s2/model.pt`, extra 7, 30.000 pasos desde la etapa 1): NLL 1,3592 (la mejor) y más acierto en los cambios de tecla.
+  - **Prueba larga contra h2** (ancla en vivo y red de seguridad, `reports/hx11/larga_l0_memoria_s2_vivo2.md`): empate. Zona DEF 1,19 → 1,23, MCD 1,08 → 1,14, MED 1,29 → 1,21, DEL 1,10 → 1,08; dispersión un poco mejor; temblor igual (1,1–1,65).
+  - **P3 con la regla de juego abierto:** 35/36; falla en patadas del MED (0,678, IC 0,624–0,735).
+- **Decisión:** el bot de sala sigue con **h2**, ahora con ancla en vivo, red de seguridad (pelotas paradas y saque inicial), regla de juego abierto (v2) y `--use-system-ca`. La etapa 2 predice mejor pero no juega mejor en las pruebas.
+
 ### Lo que sigue, en orden
 
-0. **(2026-10-10) Refuerzo A3:** ver la sección de arriba. Lo de abajo es la lista anterior.
+1. **Un partido real controlado** (sala propia o con permiso) con h2 y todo lo nuevo. Grabarlo y analizarlo con los scripts de esta sesión (trayectoria, pelotas paradas, posición).
+2. **Lo flojo, por impacto:**
+   - pases: llegan a un compañero un tercio de las veces que los de un humano;
+   - temblor: 1,25–1,4 veces el humano;
+   - llevar la pelota y patear cargado: la mitad de lo humano;
+   - ubicación de los medios: con el ancla en vivo casi siempre cae en la genérica.
+3. **Población con la etapa 2** por la puerta de realismo: ¿se acerca a L1?
+4. **L2** (plan §5) solo si L1 pasa, y como está escrito: protagonista, gol + EPV, KL a la imitación, E14 antes de entrenar largo, auditoría de exploits, juez con potencia. El piloto A3 fue un L2 adelantado sin L1, y falló por eso.
+5. **La lista anterior**, para referencia:
 
 1. **Puerta P3 con la patada mixta** (`reports/hx11/l0_puerta_ancho_patada033_mixta.md`). Si pasa, es la configuración por defecto del bot de sala.
 2. **Evaluar `l0_ancho_bloque`** (acciones en bloque, con y sin ensamble) en el mismo banco, sobre desarrollo.
