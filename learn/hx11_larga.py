@@ -36,7 +36,8 @@ import torch
 from learn import hx11_closed_loop as CL
 from learn.hx11_closed_loop import bits_of_action
 from learn.hx11_data import D_MAX, D_MIN, LINES, MAX_BACK, MOVE_DX, MOVE_DY, ROT_MOVE, build, l0_split, load_match
-from learn.hx11_policy import KICKOFF_KIND, SetPolicy, StickyNoise, keep_away, near_rows, piece_rows, sample
+from learn.hx11_policy import (KICKOFF_KIND, SetPolicy, StickyNoise, keep_away, near_rows, piece_rows, sample,
+                               unfreeze)
 from learn.hx11_selfplay import window_sp
 from tools.hx11_d0 import KICKOFF, OPEN
 
@@ -55,7 +56,7 @@ RATIO_KEYS = ("zona", "disp_x", "disp_y", "lado_arco", "repliegue", "va_a_la_pel
 
 
 def ghost_window(policy, m, t0, slots, owner, rng, temp=0.7, renew=0.33, renew_kick=0.33, every=3, moves=None,
-                 anchors=None, length=None, start=None):
+                 anchors=None, length=None, start=None, hyst=0.0, renew_near=1.0):
     """Juega los lugares `slots` como fantasmas en [t0, t0 + H). Devuelve {lugar: ventana con el fantasma}.
     `anchors` ({lugar: ancla de 4}): el ancla que ve la red en vez de la propia del humano (como en la sala, donde el
     bot recibe el ancla genérica del puesto pedido)."""
@@ -71,6 +72,7 @@ def ghost_window(policy, m, t0, slots, owner, rng, temp=0.7, renew=0.33, renew_k
         W[s].pos[MAX_BACK, s] = np.round(pos[s] * 10)
     vel = {s: base.vel[MAX_BACK, s].astype(np.float64) / 1000 for s in slots}
     act = {s: 0 for s in slots}
+    prev = {s: -1 for s in slots}                    # última acción (coordenadas del equipo), para la histéresis
     D = {s: int(rng.integers(D_MIN, D_MAX + 1)) for s in slots}
     noise = StickyNoise(renew, int(rng.integers(1 << 30)), renew_kick)
     for k in range(Hw):
@@ -84,15 +86,20 @@ def ghost_window(policy, m, t0, slots, owner, rng, temp=0.7, renew=0.33, renew_k
             ot = np.concatenate(own)
             keys = [(t0, s) for s in slots]
             fresh = near_rows([pos[s] for s in slots], [base.ball[kk].astype(np.float64) / 10 for _ in slots])
+            if renew_near < 1.0:
+                # cerca de la pelota la tirada también puede persistir (renovación `renew_near` por decisión)
+                fresh = fresh & (rng.random(len(slots)) < renew_near)
             with torch.no_grad():
                 lg = policy(torch.from_numpy(ot), torch.from_numpy(np.concatenate(ents)))
-            a_team = sample(lg, temp, gumbel=noise.get(keys, fresh) if renew < 1 else None,
+            a_team = sample(lg, temp, prev=np.array([prev[s] for s in slots]), hyst=hyst,
+                            gumbel=noise.get(keys, fresh) if renew < 1 else None,
                             kick_u=noise.get_kick(keys, piece_rows([base.phase[kk]] * len(slots)))
                             if renew_kick < 1 else None)
             if moves is not None:
                 a_team = moves(ot, a_team)
             for j, s in enumerate(slots):
                 a = int(a_team[j])
+                prev[s] = a
                 act[s] = int(ROT_MOVE[a % 9] + 9 * (a // 9)) if s >= 11 else a
         ph_prev, ph = int(base.phase[kk]), int(base.phase[kk + 1])
         for s in slots:
@@ -175,6 +182,12 @@ def slot_metrics(arr, base, s, m, t0, owner):
         est += near.sum() / 60
         n_p += 1
     out["estorbo_s"] = est / n_p if n_p else np.nan
+    # congelado: rachas de > 3 s casi quieto, a > 400 px de su zona y > 500 px de la pelota (s por minuto de juego)
+    spd = np.r_[0.0, sp]
+    cond = op & (spd < 0.3) & (zona > 400) & (db > 500)
+    e = np.flatnonzero(np.diff(np.r_[0, cond.astype(np.int8), 0]))
+    runs = e[1::2] - e[::2]
+    out["congelado_s_min"] = float(runs[runs > 180].sum() / 60) / max(op.sum() / 3600, 1e-6)
     out["saques"] = n_p
     return out
 
@@ -191,6 +204,10 @@ def main():
     ap.add_argument("--ancla", default="propia", choices=["propia", "puesto", "vivo"],
                     help="propia: la del humano de ese lugar; puesto: la genérica del puesto (como en la sala hasta el "
                          "2026-10-11); vivo: deducida de los compañeros del último minuto (`learn.hx11_ancla`)")
+    ap.add_argument("--hyst", type=float, default=0.0, help="histéresis de la dirección (como en el cerebro)")
+    ap.add_argument("--renovar-cerca", type=float, default=1.0,
+                    help="renovación de la tirada de dirección cerca de la pelota (1 = sorteo independiente)")
+    ap.add_argument("--destrabar", action="store_true", help="destrabador: quieto lejos de su zona → a su zona")
     ap.add_argument("--seguridad", action="store_true",
                     help="red de seguridad de la sala: no acercarse en saques que saca otro (keep_away)")
     ap.add_argument("--threads", type=int, default=6)
@@ -246,9 +263,18 @@ def main():
                     gk = int(m.gk[t0, int(s >= 11)]) == pid
                     key = "ARQ" if gk else ROL_A_PUESTO.get(role.get(pid, ""), "MC")
                     anchors[s] = vocab[key]["ancla"]
-            moves = (lambda ot, act: keep_away(ot, act, (2, 3, 4, KICKOFF_KIND))) if a.seguridad else None
+            idle = {}
+
+            def moves(ot, act, _slots=slots):
+                if a.seguridad:
+                    act = keep_away(ot, act, (2, 3, 4, KICKOFF_KIND))
+                if a.destrabar:
+                    cur = np.array([idle.get(s_, 0) for s_ in _slots])
+                    act, cur = unfreeze(ot, act, cur)
+                    idle.update(zip(_slots, cur.tolist()))
+                return act
             base, W = ghost_window(policy, m, t0, slots, owner, rng, a.temp, a.renovar, a.renovar_patada,
-                                   moves=moves, anchors=anchors)
+                                   moves=moves, anchors=anchors, hyst=a.hyst, renew_near=a.renovar_cerca)
             for s in slots:
                 pid = int(m.pid[t0, s])
                 gk = int(m.gk[t0, int(s >= 11)]) == pid
@@ -286,6 +312,9 @@ def main():
         e_b = np.array([r["estorbo_s_bot"] for r in rr], np.float64)
         e_h = np.array([r["estorbo_s_humano"] for r in rr], np.float64)
         okk = np.isfinite(e_b) & np.isfinite(e_h)
+        c_b = np.array([r["congelado_s_min_bot"] for r in rr], np.float64)
+        c_h = np.array([r["congelado_s_min_humano"] for r in rr], np.float64)
+        res[line]["congelado_s_por_min"] = dict(bot=round(float(np.nanmean(c_b)), 3), humano=round(float(np.nanmean(c_h)), 3))
         res[line]["estorbo_s_por_saque"] = dict(bot=round(float(e_b[okk].mean()), 3) if okk.any() else None,
                                                 humano=round(float(e_h[okk].mean()), 3) if okk.any() else None,
                                                 saques=int(sum(r["saques_bot"] for r in rr)))
@@ -302,6 +331,9 @@ def main():
     for line, d in res.items():
         for key, v in d.items():
             if key == "ventanas":
+                continue
+            if key == "congelado_s_por_min":
+                md.append(f"| {line} | congelado (s por min de juego abierto) | {v['bot']} | {v['humano']} | | | |")
                 continue
             if key == "estorbo_s_por_saque":
                 md.append(f"| {line} | estorbo (s por saque, {v['saques']} saques) | {v['bot']} | {v['humano']} | | | |")

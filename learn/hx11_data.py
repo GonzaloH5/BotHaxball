@@ -207,11 +207,34 @@ def hold_class(m: Match, t, s):
     return np.searchsorted(HOLD_EDGES, m.hold[t, s].astype(np.int64), side="left")
 
 
-def valid_samples(m: Match, stride=1):
-    """(t, s) válidos: fase con decisión, jugador presente y el mismo desde t − MAX_BACK, entrada conocida."""
+AFK_TICKS = 600          # quieto más de 10 s seguidos en juego abierto: AFK
+AFK_SPEED = 0.3
+
+
+def afk_mask(m: Match):
+    """(T, 22) True en los ticks en que el jugador está en una racha AFK (casi quieto > AFK_TICKS en juego abierto).
+    El bot los imitaba: lejos de la pelota y quieto, la red daba 97% a "quieto" y se trababa (partido real del
+    2026-10-11); en el banco son el 0,2% del juego abierto pero dominan ese estado."""
+    pos = m.pos.astype(np.float32) / 10
+    sp = np.r_[np.zeros((1, 22), np.float32), np.hypot(*np.diff(pos, axis=0).transpose(2, 0, 1))]
+    idle = (sp < AFK_SPEED) & (m.pid >= 0) & (m.phase[:, None] == 0)
+    out = np.zeros_like(idle)
+    for s in range(22):
+        e = np.flatnonzero(np.diff(np.r_[0, idle[:, s].astype(np.int8), 0]))
+        for a, b in zip(e[::2], e[1::2]):
+            if b - a > AFK_TICKS:
+                out[a:b, s] = True
+    return out
+
+
+def valid_samples(m: Match, stride=1, sin_afk=False):
+    """(t, s) válidos: fase con decisión, jugador presente y el mismo desde t − MAX_BACK, entrada conocida (y, con
+    `sin_afk`, fuera de rachas AFK)."""
     t = np.arange(MAX_BACK, m.T, stride)
     t = t[np.isin(m.phase[t], LABEL_PHASES)]
     ok = (m.pid[t] >= 0) & (m.pid[t] == m.pid[t - MAX_BACK]) & (m.inp[t] >= 0)
+    if sin_afk:
+        ok &= ~afk_mask(m)[t]
     tt, ss = np.nonzero(ok)
     return t[tt].astype(np.int32), ss.astype(np.int8)
 
@@ -369,7 +392,7 @@ class Sampler:
     """Muestras al azar de varios partidos: (propia, entidades, acción, cambió[, duración][, acciones en bloque])."""
 
     def __init__(self, names, stride=2, seed=0, modos=None, extra=False, cerca_frac=0.0, cerca_px=150.0, hold=False,
-                 por_lote=32, chunk=0):
+                 por_lote=32, chunk=0, sin_afk=False):
         """`cerca_frac` > 0: esa fracción de cada lote sale de muestras con el jugador a <= `cerca_px` de la pelota en
         el tick de la etiqueta (sobremuestreo de los momentos con pelota; brazo del 2026-10-08)."""
         self.rng = np.random.default_rng(seed)
@@ -379,7 +402,7 @@ class Sampler:
         self.por_lote = por_lote
         self.cerca_frac = cerca_frac
         self.matches = [load_match(n, modos, hold=hold) for n in names]
-        self.idx = [valid_samples(m, stride) for m in self.matches]
+        self.idx = [valid_samples(m, stride, sin_afk) for m in self.matches]
         self.near = []
         for m, (t, s) in zip(self.matches, self.idx):
             if cerca_frac <= 0:

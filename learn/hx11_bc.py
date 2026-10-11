@@ -89,6 +89,8 @@ def main():
     ap.add_argument("--eval-every", type=int, default=1000)
     ap.add_argument("--sin-historia", action="store_true", help="brazo: sin las entradas propias anteriores")
     ap.add_argument("--extra", action="store_true", help="observación v2: rasgos de 'voy yo'")
+    ap.add_argument("--sin-afk", action="store_true",
+                    help="saca del entrenamiento las rachas AFK (quieto > 10 s en juego abierto; ver hx11_data.afk_mask)")
     ap.add_argument("--memoria", action="store_true",
                     help="observación v4: memoria de 2 s (cuánto se movió cada jugador en 0,5, 1 y 2 s)")
     ap.add_argument("--estado", action="store_true",
@@ -122,7 +124,7 @@ def main():
     dev = sorted(rng.permutation(sp["dev"])[:a.dev].tolist())
     t0 = time.time()
     a.extra = (1 if a.extra else 0) | (2 if a.estado else 0) | (4 if a.memoria else 0)   # bits (ver SetPolicy)
-    tr = Sampler(train, stride=a.stride, seed=a.seed, modos=modos, extra=a.extra, cerca_frac=a.cerca_frac, hold=a.hold,
+    tr = Sampler(train, stride=a.stride, seed=a.seed, modos=modos, extra=a.extra, sin_afk=a.sin_afk, cerca_frac=a.cerca_frac, hold=a.hold,
                  chunk=a.chunk)
     dv = Sampler(dev, stride=a.stride, seed=a.seed + 1, modos=modos, extra=a.extra, hold=a.hold)
     dev_data = batch_with_line(dv, 40000)

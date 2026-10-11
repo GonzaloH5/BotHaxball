@@ -90,3 +90,30 @@ def test_distancia_en_saques_ajenos():
     own[0, 31:37] = 0
     own[0, 31 + 0] = 1          # juego abierto: nada
     assert keep_away(own, np.array([3 + 9]), (2, 3, 4, KICKOFF_KIND))[0] == 3 + 9
+
+
+def test_destrabar():
+    from learn.hx11_policy import FREEZE_DECISIONS, unfreeze
+    own = np.zeros((1, 69), np.float32)
+    own[0, 31] = 1                      # juego abierto
+    own[0, 10] = 0.9                    # pelota a 900 px
+    own[0, 64:66] = [-0.6, 0.0]         # centroide 600 px atrás: la zona está atrás
+    a = np.array([0])
+    act, idle = unfreeze(own, a, np.array([FREEZE_DECISIONS - 1]))
+    assert act[0] == 7                  # va hacia su zona (−x)
+    act, idle = unfreeze(own, a, np.array([0]))
+    assert act[0] == 0 and idle[0] == 1 # recién se quedó quieto: no se toca
+    own[0, 2:4] = [0.5, 0.0]            # se está moviendo: no se toca
+    act, idle = unfreeze(own, a, np.array([FREEZE_DECISIONS]))
+    assert act[0] == 0 and idle[0] == 0
+
+
+def test_destrabar_no_saca_al_arquero():
+    from learn.hx11_policy import FREEZE_DECISIONS, unfreeze
+    own = np.zeros((1, 69), np.float32)
+    own[0, 31] = 1
+    own[0, 10] = 0.9
+    own[0, 64:66] = [0.8, 0.0]
+    own[0, 68] = 1                      # arquero
+    act, _ = unfreeze(own, np.array([0]), np.array([FREEZE_DECISIONS]))
+    assert act[0] == 0

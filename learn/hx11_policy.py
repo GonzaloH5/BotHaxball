@@ -336,6 +336,35 @@ def keep_away(own, act, sin_kinds=()):
     return out
 
 
+FREEZE_SPEED = 0.3        # px/tick: "quieto"
+FREEZE_DECISIONS = 30     # decisiones seguidas (1,5 s con una cada 3 ticks)
+FREEZE_ZONE_PX = 350.0    # lejos de su zona…
+FREEZE_BALL_PX = 400.0    # …y de la pelota
+
+
+def unfreeze(own, act, idle):
+    """Destrabador (partido real del 2026-10-11: el bot se quedó parado en campo rival mientras su equipo defendía un
+    contraataque; la red daba 97% a "quieto"). Los humanos del banco casi nunca están quietos lejos de su zona y de la
+    pelota (0,3% del juego abierto, dos tercios AFK de más de 10 s), así que en ese estado la red imita a los AFK y el
+    bot se traba. Si lleva FREEZE_DECISIONS decisiones casi quieto, en juego abierto, a más de FREEZE_ZONE_PX de su zona
+    (centroide de campo + ancla, promedio con y sin la pelota) y a más de FREEZE_BALL_PX de la pelota, va hacia su
+    zona. own: (B, ≥ SELF_DIM); act: (B,) acciones en coordenadas del equipo; idle: (B,) decisiones quieto hasta ahora
+    (lo lleva el que llama). Devuelve (acciones, idle actualizado)."""
+    out = np.asarray(act).copy()
+    idle = np.asarray(idle).copy()
+    for i in range(len(out)):
+        o = own[i]
+        speed = float(np.hypot(*o[2:4])) * 3
+        idle[i] = idle[i] + 1 if speed < FREEZE_SPEED else 0
+        if int(np.argmax(o[31:37])) != 0 or idle[i] < FREEZE_DECISIONS or o[68] > 0.5:
+            continue                    # el arquero (o[68]) se queda en su arco: su "zona" sigue al centroide
+        zone = (np.asarray(o[64:66], np.float64) + (np.asarray(o[55:57], np.float64)
+                                                     + np.asarray(o[57:59], np.float64)) / 2) * 1000
+        if np.hypot(*zone) > FREEZE_ZONE_PX and float(o[10]) * 1000 > FREEZE_BALL_PX:
+            out[i] = _dir_toward(zone)
+    return out, idle
+
+
 def piece_rows(phases):
     """Filas en pelota parada (2) o saque inicial (5): ahí la tecla de patear va con sorteo independiente."""
     ph = np.asarray(phases)

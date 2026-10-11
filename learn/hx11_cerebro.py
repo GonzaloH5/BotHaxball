@@ -34,7 +34,7 @@ from learn.hx11_data import D_MAX, D_MIN, FAULT_MODES, LINES, MAX_BACK, ROT_MOVE
 from learn.hx11_ancla import live_anchor, role_templates, teammates_means
 from learn.hx11_fase import Fase
 from learn.hx11_policy import (KICKOFF_KIND, Ensemble, SetPolicy, StickyNoise, keep_away, kick_rule_ok, near_rows,
-                               open_kick_blocked, piece_rows, policy_logits, sample, seen_now)
+                               open_kick_blocked, piece_rows, policy_logits, sample, seen_now, unfreeze)
 
 ROOT = Path(__file__).resolve().parent.parent
 CAP = 4096
@@ -50,7 +50,7 @@ def lookup(vocab, key):
 class Cerebro:
     def __init__(self, model, pos, vocab, temp=1.0, every=3, hyst=0.0, ens_k=0, ens_m=0.0, renew=1.0, renew_kick=1.0,
                  sin_saques=(), regla_saques=False, regla_lateral=False, regla_juego=False, distancia_saques=False,
-                 ancla_vivo=False):
+                 ancla_vivo=False, destrabar=False):
         ck = torch.load(model, map_location="cpu", weights_only=False)
         self.net = SetPolicy(**ck["config"])
         self.net.load_state_dict(ck["state"])
@@ -80,6 +80,8 @@ class Cerebro:
         self.tmpl = role_templates(vocab) if ancla_vivo else None
         self.hist = collections.deque(maxlen=600)   # muestras de juego abierto cada 6 ticks: (pos, pid, gk, dueño)
         self.anchor_info = None
+        self.destrabar = bool(destrabar)                    # quieto lejos de su zona → a su zona (ver unfreeze)
+        self.idle = {}                                      # id → decisiones seguidas casi quieto
         self.bots = {}                          # varios bots: id -> (ancla, línea)
         self.fase = Fase()
         self.slot_of = {}                       # id de jugador -> lugar fijo (0–10 rojo, 11–21 azul)
@@ -269,6 +271,9 @@ class Cerebro:
                           **self._noise(ids, [s for _, s, _ in rows]))
             if self.distancia_saques:
                 acts = keep_away(own, acts, self.sin_saques)
+            if self.destrabar:
+                acts, idl = unfreeze(own, acts, np.array([self.idle.get(me, 0) for me in ids]))
+                self.idle.update(zip(ids, idl.tolist()))
         out = {}
         for (me, s, d), a in zip(rows, acts):
             a = int(a)
@@ -312,6 +317,10 @@ class Cerebro:
                            **self._noise([int(me)], [s]))[0])
         if self.distancia_saques:
             a = int(keep_away(own, np.array([a]), self.sin_saques)[0])
+        if self.destrabar:
+            acts, idl = unfreeze(own, np.array([a]), np.array([self.idle.get(int(me), 0)]))
+            a = int(acts[0])
+            self.idle[int(me)] = int(idl[0])
         self.prev[int(me)] = a
         if s >= 11:
             a = int(ROT_MOVE[a % 9] + 9 * (a // 9))
@@ -337,6 +346,8 @@ def main():
                     help="ruido persistente de la tecla de patear (1 = sorteo independiente)")
     ap.add_argument("--regla-saques", action="store_true",
                     help="en córner, tiro libre y saque de arco propios: patea solo desde atrás y con la barra alta")
+    ap.add_argument("--destrabar", action="store_true",
+                    help="si lleva 1,5 s quieto lejos de su zona y de la pelota, vuelve a su zona (ver unfreeze)")
     ap.add_argument("--ancla-vivo", action="store_true",
                     help="ancla del rol libre del equipo real, deducida de los compañeros del último minuto")
     ap.add_argument("--distancia-saques", action="store_true",
@@ -357,7 +368,7 @@ def main():
     kinds = {"lateral": 1, "corner": 2, "saque_arco": 3, "tiro_libre": 4, "penal": 5, "saque_inicial": KICKOFF_KIND}
     sin = [kinds[k.strip()] for k in a.sin_saques.split(",") if k.strip()]
     c = Cerebro(a.model, a.pos, vocab, a.temp, a.every, a.hyst, a.ens, a.ens_m, a.renovar, a.renovar_patada, sin,
-                a.regla_saques, a.regla_lateral, a.regla_juego, a.distancia_saques, a.ancla_vivo)
+                a.regla_saques, a.regla_lateral, a.regla_juego, a.distancia_saques, a.ancla_vivo, a.destrabar)
     print(json.dumps({"listo": True, "pos": a.pos, "linea": LINES[c.line]}), flush=True)
     for line in sys.stdin:
         if not line.strip():
