@@ -61,6 +61,9 @@ const cer = startCerebro({
   // si lleva 1,5 s quieto lejos de su zona y de la pelota vuelve a su zona (partido real del 2026-10-11: se quedó parado
   // en campo rival en dos contraataques; la red daba 97% a "quieto"). --sin-destrabar lo apaga
   destrabar: !args.includes("--sin-destrabar"),
+  // fuera de la jugada, si se aleja de su zona más que el p95 humano de su línea, vuelve (partido real del 2026-10-11:
+  // medio izquierdo según su ancla, terminó por la banda derecha y adelantado). --sin-correa la apaga
+  correa: !args.includes("--sin-correa"),
   onInfo: (m) => console.log(`ancla: ${m.rol} (${m.formacion || "?"})`),
   renovar: parseFloat(arg("--renovar", "0.33")),   // dirección persistente lejos de la pelota: 10 → 4,7 cambios de tecla/s (puerta P3 pasa)
   // con humanos: el bot no patea córners, tiros libres ni saques de arco de su equipo (los saca un humano); "ninguno"

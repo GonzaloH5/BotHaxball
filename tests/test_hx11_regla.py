@@ -117,3 +117,21 @@ def test_destrabar_no_saca_al_arquero():
     own[0, 68] = 1                      # arquero
     act, _ = unfreeze(own, np.array([0]), np.array([FREEZE_DECISIONS]))
     assert act[0] == 0
+
+
+def test_correa():
+    from learn.hx11_policy import leash
+    own = np.zeros((1, 69), np.float32)
+    own[0, 31] = 1                      # juego abierto
+    own[0, 59 + 3] = 1                  # línea MED (p95 ~425 px)
+    own[0, 10] = 0.8                    # pelota a 800 px
+    own[0, 64:66] = [0.0, -0.6]         # zona 600 px hacia −y
+    ents = np.zeros((1, 21, 9), np.float32)
+    ents[0, 0, 0] = 1
+    ents[0, 0, 5:7] = [0.1, 0.0]        # un compañero a 100 px de la pelota: no soy el más cercano
+    assert leash(own, ents, np.array([5]))[0] == 1          # vuelve hacia −y
+    own[0, 64:66] = [0.0, -0.3]         # dentro del p95: no se toca
+    assert leash(own, ents, np.array([5]))[0] == 5
+    own[0, 64:66] = [0.0, -0.6]
+    own[0, 10] = 0.2                    # en la jugada (pelota a 200 px): no se toca
+    assert leash(own, ents, np.array([5]))[0] == 5

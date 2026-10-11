@@ -365,6 +365,38 @@ def unfreeze(own, act, idle):
     return out, idle
 
 
+# correa: p95 de la distancia de los humanos a su zona cuando no están en la jugada (30 partidos del banco, 2026-10-11)
+LEASH_PX = {1: 390.0, 2: 415.0, 3: 425.0, 4: 485.0}      # índice de línea (DEF, MCD, MED, DEL); el arquero no
+ENGAGED_BALL_PX = 250.0
+
+
+def leash(own, ents, act):
+    """Correa de posición (partido real del 2026-10-11: medio izquierdo según su ancla, terminó jugando por la banda
+    derecha y adelantado: la red sigue más a la pelota que al ancla). Si no está en la jugada (a más de ENGAGED_BALL_PX
+    de la pelota y no es el más cercano de su equipo) y su zona (centroide de campo + ancla, promedio con y sin la
+    pelota) queda más lejos que el p95 humano de su línea, va hacia la zona. En juego abierto; el arquero no.
+    own: (B, ≥ SELF_DIM); ents: (B, N_ENT, ≥ ENT_DIM); act: (B,) en coordenadas del equipo."""
+    out = np.asarray(act).copy()
+    for i in range(len(out)):
+        o = own[i]
+        if int(np.argmax(o[31:37])) != 0 or o[68] > 0.5:
+            continue
+        line = int(np.argmax(o[59:64]))
+        lim = LEASH_PX.get(line)
+        if lim is None:
+            continue
+        db = float(o[10]) * 1000
+        mates = np.asarray(ents[i, :N_MATES], np.float64)
+        dm = np.where(mates[:, 0] > 0.5, np.hypot(mates[:, 5], mates[:, 6]) * 1000, np.inf)
+        if db <= ENGAGED_BALL_PX or db <= dm.min():
+            continue
+        zone = (np.asarray(o[64:66], np.float64) + (np.asarray(o[55:57], np.float64)
+                                                     + np.asarray(o[57:59], np.float64)) / 2) * 1000
+        if np.hypot(*zone) > lim:
+            out[i] = _dir_toward(zone)
+    return out
+
+
 def piece_rows(phases):
     """Filas en pelota parada (2) o saque inicial (5): ahí la tecla de patear va con sorteo independiente."""
     ph = np.asarray(phases)

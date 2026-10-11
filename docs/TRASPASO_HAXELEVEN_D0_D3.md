@@ -695,6 +695,29 @@ El usuario eligió la opción A (quién va + refuerzo). Mediciones en el lazo re
   - **P3 con la regla de juego abierto:** 35/36; falla en patadas del MED (0,678, IC 0,624–0,735).
 - **Decisión:** el bot de sala sigue con **h2**, ahora con ancla en vivo, red de seguridad (pelotas paradas y saque inicial), regla de juego abierto (v2) y `--use-system-ca`. La etapa 2 predice mejor pero no juega mejor en las pruebas.
 
+### Tercer partido real y redes de seguridad de posición (2026-10-11)
+
+- **Partido real** (`HBReplay-2026-10-11-19h37m.hbr2`, sala con permiso; SoyMC de MC en el azul, con h2 y todo lo nuevo): lo sacaron a los ~2 min "porque hizo lo que quiso".
+  - **Lo que funcionó:**
+    - el ancla en vivo dedujo la formación (3-5-2, después 4-4-2/4-2-3-1) y el rol MED-I;
+    - la red de seguridad: nunca a menos de 270 px de la pelota en pelotas paradas ni en el saque inicial;
+    - el lado azul está bien mapeado.
+  - **Lo que falló:**
+    - en dos contraataques del rival se quedó parado en campo rival sin apretar teclas. Reconstruyendo su observación, la red daba 96–98% a "quieto";
+    - medio izquierdo según su ancla, terminó por la banda derecha y adelantado: sigue más a la pelota que al ancla;
+    - no tocó la pelota.
+- **Causa del congelamiento:** en el banco, los humanos quietos lejos de su zona y de la pelota son el 0,3% del juego abierto, y dos tercios son AFK de más de 10 s. En ese estado la red imita a los AFK.
+- **Destrabador** (`unfreeze` en `learn/hx11_policy.py`; `--destrabar`, por defecto en el bot):
+  - si lleva 1,5 s casi quieto, a más de 350 px de su zona y 400 de la pelota, en juego abierto, va a su zona (el arquero no);
+  - en la prueba larga, el congelado (s por min) baja: DEF 0,41 → 0,10, MED 0,21 → 0, DEL 0,61 → 0 (humanos 0,06–0,19), sin tocar el resto.
+  - Métrica nueva `congelado_s_min` en `learn/hx11_larga.py`.
+- **Filtro de AFK** para el entrenamiento (`hx11_data.afk_mask`, `--sin-afk` en `learn/hx11_bc.py`): saca el 0,3% de las muestras. Ajuste de h2 sin AFK en curso en la PC del hermano (`l0_h2_sin_afk`).
+- **Correa de posición** (`leash`; `--correa`, por defecto en el bot):
+  - fuera de la jugada (a más de 250 px de la pelota y sin ser el más cercano de su equipo), si su zona queda más lejos que el p95 humano de su línea (DEF 390, MCD 415, MED 425, DEL 485 px; 30 partidos), va hacia la zona;
+  - prueba larga: zona DEF 1,23 → 1,21, MCD 1,14 → 1,10, MED 1,28 → 1,24, DEL 1,08 → 1,04; dispersión algo menor.
+- **Población con la etapa 2** (`reports/hx11/realismo_s2_juego.md`): 9% dentro del techo, AUC 0,989. No acerca a L1.
+- **Wi-Fi del usuario:** la placa MediaTek MT7921 comparte antena con el Bluetooth en 2,4 GHz. Apagar el Bluetooth bajó el ping al router de 61 a 18 ms de media.
+
 ### Lo que sigue, en orden
 
 1. **Un partido real controlado** (sala propia o con permiso) con h2 y todo lo nuevo. Grabarlo y analizarlo con los scripts de esta sesión (trayectoria, pelotas paradas, posición).

@@ -36,8 +36,8 @@ import torch
 from learn import hx11_closed_loop as CL
 from learn.hx11_closed_loop import bits_of_action
 from learn.hx11_data import D_MAX, D_MIN, LINES, MAX_BACK, MOVE_DX, MOVE_DY, ROT_MOVE, build, l0_split, load_match
-from learn.hx11_policy import (KICKOFF_KIND, SetPolicy, StickyNoise, keep_away, near_rows, piece_rows, sample,
-                               unfreeze)
+from learn.hx11_policy import (KICKOFF_KIND, SetPolicy, StickyNoise, keep_away, leash, near_rows, piece_rows,
+                               sample, unfreeze)
 from learn.hx11_selfplay import window_sp
 from tools.hx11_d0 import KICKOFF, OPEN
 
@@ -96,7 +96,7 @@ def ghost_window(policy, m, t0, slots, owner, rng, temp=0.7, renew=0.33, renew_k
                             kick_u=noise.get_kick(keys, piece_rows([base.phase[kk]] * len(slots)))
                             if renew_kick < 1 else None)
             if moves is not None:
-                a_team = moves(ot, a_team)
+                a_team = moves(ot, a_team, np.concatenate(ents))
             for j, s in enumerate(slots):
                 a = int(a_team[j])
                 prev[s] = a
@@ -208,6 +208,7 @@ def main():
     ap.add_argument("--renovar-cerca", type=float, default=1.0,
                     help="renovación de la tirada de dirección cerca de la pelota (1 = sorteo independiente)")
     ap.add_argument("--destrabar", action="store_true", help="destrabador: quieto lejos de su zona → a su zona")
+    ap.add_argument("--correa", action="store_true", help="correa de posición: fuera de la jugada, p95 humano")
     ap.add_argument("--seguridad", action="store_true",
                     help="red de seguridad de la sala: no acercarse en saques que saca otro (keep_away)")
     ap.add_argument("--threads", type=int, default=6)
@@ -265,7 +266,9 @@ def main():
                     anchors[s] = vocab[key]["ancla"]
             idle = {}
 
-            def moves(ot, act, _slots=slots):
+            def moves(ot, act, et, _slots=slots):
+                if a.correa:
+                    act = leash(ot, et, act)
                 if a.seguridad:
                     act = keep_away(ot, act, (2, 3, 4, KICKOFF_KIND))
                 if a.destrabar:
