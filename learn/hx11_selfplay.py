@@ -63,6 +63,11 @@ def store_all(env, i, w: Match, k):
     w.pos[k] = np.where(on[:, None], np.round(env.pos[i, fp:] * 10), 0).clip(-32767, 32767).astype(np.int16)
     w.vel[k] = np.where(on[:, None], np.round(env.vel[i, fp:] * 1000), 0).clip(-32767, 32767).astype(np.int16)
     w.binv[k] = env.inv[i, 0]
+    if w.owner is not None:
+        last = int(env.ri[i, K.RI_LAST])
+        w.owner[k] = last
+        same = (last < 0) == (w.owner[k - 1] < 0) and (last < 0 or last // 11 == int(w.owner[k - 1]) // 11)
+        w.pchg[k] = min(int(w.pchg[k - 1]) + 1, 32000) if same else 0
     w.bg[k] = env.grav[i]
     mode = int(env.ri[i, K.RI_MODE])
     w.phase[k] = mode

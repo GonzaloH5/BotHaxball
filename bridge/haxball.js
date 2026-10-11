@@ -56,6 +56,24 @@ class RTCPeerConnection extends polyfill.RTCPeerConnection {
     if (onSuccess || onError) {
       p.then(() => onSuccess && onSuccess(), (e) => onError && onError(e));
     }
+    if (process.env.HAXBALL_DEBUG) {
+      // diagnóstico de "Error de conexión Master" (código 14): también sale si la respuesta del anfitrión no se acepta
+      const sdp = (desc && desc.sdp) || "";
+      const lines = sdp.split(String.fromCharCode(10)).map((l) => l.trim());
+      console.error("[rtc] respuesta del anfitrión:", JSON.stringify({ tipo: desc && desc.type, lineas: lines.length,
+        fingerprint: lines.filter((l) => l.startsWith("a=fingerprint")).map((l) => l.split(" ")[0]),
+        candidatos: lines.filter((l) => l.startsWith("a=candidate")).map((l) => l.split(" ").slice(4, 8).join(" ")),
+        m: lines.filter((l) => l.startsWith("m=")) }));
+      p.then(() => console.error("[rtc] setRemoteDescription ok"), (e) => console.error("[rtc] setRemoteDescription falló:", String(e)));
+    }
+    return p;
+  }
+
+  addIceCandidate(c, ...rest) {
+    const p = super.addIceCandidate(c, ...rest);
+    if (process.env.HAXBALL_DEBUG && p && p.catch) {
+      p.catch((e) => console.error("[rtc] addIceCandidate falló:", String(e), c && c.candidate));
+    }
     return p;
   }
 
@@ -88,6 +106,20 @@ class RTCPeerConnection extends polyfill.RTCPeerConnection {
     });
     return ch;
   }
+}
+
+if (process.env.HAXBALL_DEBUG) {
+  // diagnóstico de la conexión con el servidor de señalización (wss://p2p.haxball.com/client)
+  const WS = require("ws");
+  const emit = WS.prototype.emit;
+  WS.prototype.emit = function (ev, ...a) {
+    if (ev === "open") console.error("[ws] abierto", this.url);
+    else if (ev === "error") console.error("[ws] error", a[0] && (a[0].message || a[0].code || a[0]));
+    else if (ev === "unexpected-response") console.error("[ws] respuesta inesperada", a[1] && a[1].statusCode);
+    else if (ev === "close") console.error("[ws] cierre", a[0], String(a[1] || ""));
+    else if (ev === "message") console.error("[ws] mensaje", a[0] && (a[0].length || a[0].byteLength), "bytes");
+    return emit.call(this, ev, ...a);
+  };
 }
 
 module.exports = function makeAPI(config, { language = true, PeerConnection = RTCPeerConnection } = {}) {

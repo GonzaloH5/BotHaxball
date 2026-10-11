@@ -31,8 +31,8 @@ import torch
 from learn.hx11_closed_loop import bits_of_action
 from learn.hx11_data import D_MAX, D_MIN, FAULT_MODES, LINES, MAX_BACK, ROT_MOVE, Match, build
 from learn.hx11_fase import Fase
-from learn.hx11_policy import (Ensemble, SetPolicy, StickyNoise, kick_rule_ok, near_rows, open_kick_blocked,
-                               piece_rows, policy_logits, sample, seen_now)
+from learn.hx11_policy import (KICKOFF_KIND, Ensemble, SetPolicy, StickyNoise, keep_away, kick_rule_ok, near_rows,
+                               open_kick_blocked, piece_rows, policy_logits, sample, seen_now)
 
 ROOT = Path(__file__).resolve().parent.parent
 CAP = 4096
@@ -47,7 +47,7 @@ def lookup(vocab, key):
 
 class Cerebro:
     def __init__(self, model, pos, vocab, temp=1.0, every=3, hyst=0.0, ens_k=0, ens_m=0.0, renew=1.0, renew_kick=1.0,
-                 sin_saques=(), regla_saques=False, regla_lateral=False, regla_juego=False):
+                 sin_saques=(), regla_saques=False, regla_lateral=False, regla_juego=False, distancia_saques=False):
         ck = torch.load(model, map_location="cpu", weights_only=False)
         self.net = SetPolicy(**ck["config"])
         self.net.load_state_dict(ck["state"])
@@ -59,6 +59,7 @@ class Cerebro:
         self.sin_saques = set(int(k) for k in sin_saques)   # tipos de pelota parada propia que el bot no patea
         self.regla_lateral = bool(regla_lateral)            # regla de patada en el lateral (ver kick_rule_ok)
         self.regla_juego = bool(regla_juego)                # regla de patada en juego abierto (ver open_kick_ok)
+        self.distancia_saques = bool(distancia_saques)      # no acercarse en saques que saca otro (ver keep_away)
         self.regla_saques = bool(regla_saques)              # regla de patada (dirección y barra) en las que sí saca
         # ruido persistente (dirección y tecla de patear), por jugador
         self.renew, self.renew_kick = renew, renew_kick
@@ -81,7 +82,7 @@ class Cerebro:
                        pid=np.full((CAP, 22), -1, np.int16), gk=np.full((CAP, 2), -1, np.int32),
                        phase=z(CAP, dt=np.int8), pkind=z(CAP, dt=np.int8), pteam=np.full(CAP, -1, np.int8),
                        pticks=z(CAP), spot=z(CAP, 2), offside=np.ones(CAP, bool), fouls=FAULT_MODES.index("prendido"),
-                       anchor={}, line={})
+                       anchor={}, line={}, owner=np.full(CAP, -1, np.int8), pchg=z(CAP))
 
     def _slots(self, players):
         present = {p[0] for p in players}
@@ -100,7 +101,7 @@ class Cerebro:
         keep = MAX_BACK + D_MAX + 8
         w = self.w
         for f in ("pos", "vel", "ball", "bvel", "binv", "bg", "inp", "kick", "score", "pid", "gk", "phase", "pkind",
-                  "pteam", "pticks", "spot", "offside"):
+                  "pteam", "pticks", "spot", "offside", "owner", "pchg"):
             a = getattr(w, f)
             a[:keep] = a[self.n - keep:self.n]
         self.n = keep
@@ -136,11 +137,21 @@ class Cerebro:
         w.offside[i] = bool(fr.get("offside", True))
         toucher = -1
         on = w.pid[i] >= 0
+        last = int(w.owner[i - 1]) if i > 0 else -1
         if on.any():
             d = np.hypot(*(w.pos[i].astype(np.float64) / 10 - w.ball[i].astype(np.float64) / 10).T) - 23.0
             d[~on] = np.inf
             j = int(np.argmin(d))
             toucher = int(j >= 11) if d[j] <= 0.6 else -1
+            if d[j] <= 0.6:
+                last = j                                    # posesión (observación v3): el último que la tocó
+        kicked = np.nonzero(w.kick[i])[0]
+        if len(kicked):
+            last = int(kicked[0])
+        w.owner[i] = last
+        prev = int(w.owner[i - 1]) if i > 0 else -1
+        same = (last < 0) == (prev < 0) and (last < 0 or last // 11 == prev // 11)
+        w.pchg[i] = min(int(w.pchg[i - 1]) + 1, 32000) if (same and i > 0) else 0
         kicks = sorted({int(s >= 11) for s in np.nonzero(w.kick[i])[0]})
         ph, kd, tm, pt, sx, sy = self.fase.step(int(fr.get("state", 1)), fr.get("placement"), kicks,
                                                 bool(fr.get("goal")), toucher)
@@ -194,6 +205,8 @@ class Cerebro:
             return False
         L = self.n - 1
         team = 1 if s >= 11 else 0
+        if int(self.w.phase[L]) == 5:
+            return KICKOFF_KIND in self.sin_saques            # saque inicial: con humanos lo saca otro
         return int(self.w.phase[L]) == 2 and int(self.w.pteam[L]) == team and int(self.w.pkind[L]) in self.sin_saques
 
     def decide_many(self, bots):
@@ -223,6 +236,8 @@ class Cerebro:
             ids = [me for me, _, _ in rows]
             acts = sample(lg, self.temp, prev=np.array([self.prev.get(me, -1) for me in ids]), hyst=self.hyst,
                           **self._noise(ids, [s for _, s, _ in rows]))
+            if self.distancia_saques:
+                acts = keep_away(own, acts, self.sin_saques)
         out = {}
         for (me, s, d), a in zip(rows, acts):
             a = int(a)
@@ -262,6 +277,8 @@ class Cerebro:
             lg = policy_logits(self.net, torch.from_numpy(own), torch.from_numpy(ents), self.ens, [int(me)], [self.ticks])
             a = int(sample(lg, self.temp, prev=np.array([self.prev.get(int(me), -1)]), hyst=self.hyst,
                            **self._noise([int(me)], [s]))[0])
+        if self.distancia_saques:
+            a = int(keep_away(own, np.array([a]), self.sin_saques)[0])
         self.prev[int(me)] = a
         if s >= 11:
             a = int(ROT_MOVE[a % 9] + 9 * (a // 9))
@@ -287,6 +304,8 @@ def main():
                     help="ruido persistente de la tecla de patear (1 = sorteo independiente)")
     ap.add_argument("--regla-saques", action="store_true",
                     help="en córner, tiro libre y saque de arco propios: patea solo desde atrás y con la barra alta")
+    ap.add_argument("--distancia-saques", action="store_true",
+                    help="en pelotas paradas y saques iniciales que saca otro, no se acerca a la pelota (keep_away)")
     ap.add_argument("--regla-juego", action="store_true",
                     help="en juego abierto: no patea hacia afuera pegado a la banda ni atrás en campo propio sin un "
                          "compañero en esa dirección")
@@ -300,10 +319,10 @@ def main():
     vocab = json.loads((ROOT / "reports" / "hx11" / "pos_vocab.json").read_text(encoding="utf-8"))
     if a.pos and lookup(vocab, a.pos) is None:
         sys.exit(f"puesto desconocido {a.pos}; opciones: {', '.join(k for k in vocab if k != 'roles')}")
-    kinds = {"lateral": 1, "corner": 2, "saque_arco": 3, "tiro_libre": 4, "penal": 5}
+    kinds = {"lateral": 1, "corner": 2, "saque_arco": 3, "tiro_libre": 4, "penal": 5, "saque_inicial": KICKOFF_KIND}
     sin = [kinds[k.strip()] for k in a.sin_saques.split(",") if k.strip()]
     c = Cerebro(a.model, a.pos, vocab, a.temp, a.every, a.hyst, a.ens, a.ens_m, a.renovar, a.renovar_patada, sin,
-                a.regla_saques, a.regla_lateral, a.regla_juego)
+                a.regla_saques, a.regla_lateral, a.regla_juego, a.distancia_saques)
     print(json.dumps({"listo": True, "pos": a.pos, "linea": LINES[c.line]}), flush=True)
     for line in sys.stdin:
         if not line.strip():

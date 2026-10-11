@@ -334,12 +334,14 @@ def main_humanos():
     ap.add_argument("--tipo", default="corner", choices=["corner", "lateral", "conduccion"])
     ap.add_argument("--out", required=True)
     ap.add_argument("--extra", action="store_true", help="observación v2 (rasgos de 'voy yo')")
+    ap.add_argument("--estado", action="store_true", help="observación v3 (estado del juego)")
+    ap.add_argument("--memoria", action="store_true", help="observación v4 (memoria de 2 s)")
     a = ap.parse_args()
     sp = json.loads((ROOT / a.split_file).read_text(encoding="utf-8"))
     modos = json.loads((ROOT / "data" / "hx11" / "modos.json").read_text(encoding="utf-8"))
     data = (human_carry(sp["train"], modos=modos) if a.tipo == "conduccion"
             else human_takers(sp["train"], C.CORNER if a.tipo == "corner" else C.LATERAL, modos=modos,
-                              extra=a.extra))
+                              extra=(1 if a.extra else 0) | (2 if a.estado else 0) | (4 if a.memoria else 0)))
     np.savez_compressed(a.out, **data)
     print(json.dumps(dict(muestras=int(len(data["y"])), patadas=int((data["y"] >= 9).sum()), out=a.out)))
 

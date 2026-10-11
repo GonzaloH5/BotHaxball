@@ -89,6 +89,10 @@ def main():
     ap.add_argument("--eval-every", type=int, default=1000)
     ap.add_argument("--sin-historia", action="store_true", help="brazo: sin las entradas propias anteriores")
     ap.add_argument("--extra", action="store_true", help="observación v2: rasgos de 'voy yo'")
+    ap.add_argument("--memoria", action="store_true",
+                    help="observación v4: memoria de 2 s (cuánto se movió cada jugador en 0,5, 1 y 2 s)")
+    ap.add_argument("--estado", action="store_true",
+                    help="observación v3: estado del juego (quién tiene la pelota, hace cuánto, trayectoria)")
     ap.add_argument("--cerca-frac", type=float, default=0.0, help="fracción del lote con el jugador cerca de la pelota")
     ap.add_argument("--max-minutes", type=float, default=0.0, help="corta (evaluando y guardando) al pasar este tiempo")
     ap.add_argument("--hold", action="store_true", help="cabeza de duración: cuánto sostiene el humano la tecla")
@@ -117,6 +121,7 @@ def main():
     train = sorted(rng.permutation(sp["train"])[:a.train].tolist())
     dev = sorted(rng.permutation(sp["dev"])[:a.dev].tolist())
     t0 = time.time()
+    a.extra = (1 if a.extra else 0) | (2 if a.estado else 0) | (4 if a.memoria else 0)   # bits (ver SetPolicy)
     tr = Sampler(train, stride=a.stride, seed=a.seed, modos=modos, extra=a.extra, cerca_frac=a.cerca_frac, hold=a.hold,
                  chunk=a.chunk)
     dv = Sampler(dev, stride=a.stride, seed=a.seed + 1, modos=modos, extra=a.extra, hold=a.hold)
@@ -127,6 +132,12 @@ def main():
                     chunk=a.chunk)
     if a.init:
         src = torch.load(a.init, map_location="cpu", weights_only=False)["state"]
+        for k in ("mate_net.0.weight", "riv_net.0.weight"):
+            we = getattr(net, k.split(".")[0])[0].weight
+            if src[k].shape[1] < we.shape[1]:
+                # memoria de las entidades: columnas nuevas al final, en cero
+                src = dict(src, **{k: torch.cat([src[k], torch.zeros(we.shape[0], we.shape[1] - src[k].shape[1])], 1)})
+                print(f"{k}: entradas nuevas con pesos en cero: {we.shape[1] - src[k].shape[1]}", flush=True)
         w0 = net.self_net[0].weight
         if src["self_net.0.weight"].shape[1] < w0.shape[1]:
             # entradas nuevas (p. ej. --extra, los rasgos de "voy yo"): pesos en cero, arranca igual que el modelo base

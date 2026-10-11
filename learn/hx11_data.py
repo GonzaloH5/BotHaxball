@@ -32,7 +32,8 @@ D1 = ROOT / "data" / "hx11" / "d1"
 D2 = ROOT / "data" / "hx11" / "d2"
 D_MIN, D_MAX = 8, 36
 HIST = (3, 6, 9, 12, 15)                 # entradas propias ya enviadas (como X4: sin t−1 ni t−2, contra el copycat)
-MAX_BACK = D_MAX + 1 + max(HIST)
+POSS_LAGS = (30, 60, 120)   # trayectoria de la pelota y memoria de los jugadores: hace 0,5, 1 y 2 s (v3, v4)
+MAX_BACK = D_MAX + 1 + max(max(HIST), max(POSS_LAGS))   # historia que necesita una observación (2026-10-11: 157)
 LABEL_PHASES = (OPEN, OUT_PENDING, PIECE, KICKOFF)
 LINES = ("ARQ", "DEF", "MCD", "MED", "DEL")
 N_KIND = 8
@@ -43,6 +44,9 @@ FAULT_MODES = ("prendido", "apagado", "desconocido")
 CTX = 11
 SELF_DIM = 69
 EXTRA_DIM = 5          # observación v2: rasgos de "voy yo" (ver `engage`)
+ESTADO_DIM = 11        # observación v3 (bit 2 de `extra`): estado del juego (ver `estado`)
+MEM_DIM = 2 * len(POSS_LAGS)  # observación v4 (bit 4 de `extra`): memoria de 2 s, cuánto se movió cada jugador
+                              # (yo: MEM_DIM más en la propia; cada entidad: MEM_DIM más)
 ENT_DIM = 9
 N_MATES, N_ENT = 10, 21
 # cabeza de duración (brazo del 2026-10-08 contra la vibración sin historia propia): cuántos ticks más sostiene el
@@ -133,6 +137,8 @@ class Match:
     anchor: dict           # (pid, mitad) → 4 floats
     line: dict             # pid → índice en LINES
     hold: np.ndarray = None    # (T, 22) int16: ticks seguidos con la misma tecla desde t (incluido)
+    owner: np.ndarray = None   # (T,) int8: lugar del último que tuvo la pelota (−1 nadie), causal (D1)
+    pchg: np.ndarray = None    # (T,) int16: ticks desde que cambió el equipo con la pelota (tope 32000)
 
 
 def load_match(name, modos=None, hold=False):
@@ -154,7 +160,38 @@ def load_match(name, modos=None, hold=False):
                  pid=o["slot_pid"].astype(np.int16) if o["slot_pid"].max() < 32767 else o["slot_pid"], gk=gk, phase=o["phase"],
                  pkind=o["piece_kind"], pteam=o["piece_team"], pticks=o["phase_ticks"], spot=o["spot"],
                  offside=o["offside_on"], fouls=FAULT_MODES.index(fm), anchor=anchors(o, owner, gk), line=line,
-                 hold=hold_runs(o["input"]) if hold else None)
+                 hold=hold_runs(o["input"]) if hold else None, owner=owner.astype(np.int8),
+                 pchg=possession_age(owner))
+
+
+def possession_age(owner):
+    """Ticks desde el último cambio del equipo con la pelota (−1: nadie cuenta como un equipo más)."""
+    team = np.where(owner < 0, -1, owner // 11)
+    out = np.zeros(len(owner), np.int16)
+    c = 0
+    for t in range(1, len(owner)):
+        c = c + 1 if team[t] == team[t - 1] else 0
+        out[t] = min(c, 32000)
+    return out
+
+
+def estado(m: Match, to, s, team, ball, att):
+    """Observación v3: estado del juego en el tick visto `to` (causal). Quién tiene la pelota (nosotros, ellos, nadie)
+    y si la tengo yo; hace cuánto cambió la posesión; dónde estaba la pelota hace 0,5, 1 y 2 s respecto de ahora.
+    Sin esto la red recibía las dos anclas (con y sin la pelota) sin saber cuál corresponde (2026-10-10)."""
+    B = len(to)
+    out = np.zeros((B, ESTADO_DIM), np.float32)
+    if m.owner is None:
+        return out
+    o = m.owner[to].astype(np.int64)
+    ar = np.arange(B)
+    out[ar, np.where(o < 0, 2, np.where((o >= 11) == (team == 1), 0, 1))] = 1
+    out[:, 3] = o == s
+    out[:, 4] = np.minimum(m.pchg[to].astype(np.float32), 600) / 600
+    for j, lag in enumerate(POSS_LAGS):
+        bl = m.ball[np.maximum(to - lag, 0)].astype(np.float32) / 10 * att
+        out[:, 5 + 2 * j:7 + 2 * j] = (bl - ball) / 1000
+    return out
 
 
 def hold_runs(inp):
@@ -290,8 +327,25 @@ def build(m: Match, t, s, d, extra=False):
     ents[..., 7] = is_gk[ar[:, None], idx]
     ents[..., 8] = kicking[ar[:, None], idx]
     ents[~on[ar[:, None], idx]] = 0.0
-    if extra:
+    if extra and int(extra) & 1:
         own = np.concatenate([own, engage(me, ball, bvel, pos, on, mates, rivs, s)], 1)
+    if extra and int(extra) & 2:
+        own = np.concatenate([own, estado(m, to, s, team, ball, att)], 1)
+    if extra and int(extra) & 4:
+        # memoria: desplazamiento de cada uno en los últimos 0,5, 1 y 2 s (ahora − antes, coordenadas del equipo).
+        # Ve quién pica, quién vuelve y quién sigue a quién (partidos reales del 2026-10-10: no replegaba ni cubría).
+        mh = np.zeros((B, MEM_DIM), np.float32)
+        eh = np.zeros((B, N_ENT, MEM_DIM), np.float32)
+        for j, lag in enumerate(POSS_LAGS):
+            tl = np.maximum(to - lag, 0)
+            pl = m.pos[tl].astype(np.float32) / 10 * att[:, :, None]
+            okl = (m.pid[tl] == m.pid[to]) & on
+            dpos = np.where(okl[..., None], pos - pl, 0.0) / 1000                          # (B, 22, 2)
+            mh[:, 2 * j:2 * j + 2] = dpos[ar, s]
+            eh[..., 2 * j:2 * j + 2] = dpos[ar[:, None], idx]
+        eh[~on[ar[:, None], idx]] = 0.0
+        own = np.concatenate([own, mh], 1)
+        ents = np.concatenate([ents, eh], 2)
     y = action_of_input(m.inp[t, s], blue)
     prev = action_of_input(np.maximum(m.inp[t - 1, s], 0), blue)
     return own, ents, y, y != prev

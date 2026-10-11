@@ -20,7 +20,8 @@ import numpy as np
 import torch
 from torch import nn
 
-from learn.hx11_data import CTX, ENT_DIM, EXTRA_DIM, HOLD_REP, N_ENT, N_MATES, SELF_DIM
+from learn.hx11_data import (CTX, ENT_DIM, ESTADO_DIM, EXTRA_DIM, HOLD_REP, MEM_DIM, MOVE_DX, MOVE_DY, N_ENT, N_MATES,
+                             SELF_DIM)
 
 HIST_LO, HIST_HI = 14, 30        # tecla de patear sostenida y las 5 entradas propias anteriores (`hx11_data.build`)
 
@@ -31,13 +32,18 @@ class SetPolicy(nn.Module):
         self.n_actions = n_actions
         self.chunk = max(int(chunk), 1)          # acciones en bloque: cuántas decisiones predice (1 = solo la actual)
         self.hold = bool(hold)                   # cabeza de duración (`hx11_data.HOLD_REP`)
-        self.extra = bool(extra)                 # observación v2 (rasgos de "voy yo", `hx11_data.engage`)
-        self_dim = SELF_DIM + (EXTRA_DIM if self.extra else 0)
+        # bits de observación: 1 = v2 (rasgos de "voy yo", `hx11_data.engage`), 2 = v3 (estado del juego,
+        # `hx11_data.estado`), 4 = v4 (memoria de 2 s: cuánto se movió cada uno); True de los modelos viejos vale 1
+        self.extra = int(extra)
+        self.mem = bool(self.extra & 4)
+        self_dim = (SELF_DIM + (EXTRA_DIM if self.extra & 1 else 0) + (ESTADO_DIM if self.extra & 2 else 0)
+                    + (MEM_DIM if self.mem else 0))
+        ent_in = ENT_DIM + CTX + (MEM_DIM if self.mem else 0)     # memoria al final: [entidad, contexto, memoria]
         self.sin_historia = bool(sin_historia)   # brazo contra el copycat (de Haan 2019): sin las entradas propias
         self.self_net = nn.Sequential(nn.Linear(self_dim, hidden), nn.ReLU(), nn.Linear(hidden, hidden), nn.ReLU())
-        self.mate_net = nn.Sequential(nn.Linear(ENT_DIM + CTX, ent_hidden), nn.ReLU(),
+        self.mate_net = nn.Sequential(nn.Linear(ent_in, ent_hidden), nn.ReLU(),
                                       nn.Linear(ent_hidden, ent_hidden), nn.ReLU())
-        self.riv_net = nn.Sequential(nn.Linear(ENT_DIM + CTX, ent_hidden), nn.ReLU(),
+        self.riv_net = nn.Sequential(nn.Linear(ent_in, ent_hidden), nn.ReLU(),
                                      nn.Linear(ent_hidden, ent_hidden), nn.ReLU())
         self.head = nn.Sequential(nn.Linear(hidden + 4 * ent_hidden, hidden), nn.ReLU(),
                                   nn.Linear(hidden, hidden), nn.ReLU())
@@ -72,8 +78,10 @@ class SetPolicy(nn.Module):
         if self.sin_historia:
             own = torch.cat([own[:, :HIST_LO], torch.zeros_like(own[:, HIST_LO:HIST_HI]), own[:, HIST_HI:]], 1)
         ctx = own[:, :CTX].unsqueeze(1)
-        mates = torch.cat([ents[:, :N_MATES], ctx.expand(-1, N_MATES, -1)], -1)
-        rivs = torch.cat([ents[:, N_MATES:], ctx.expand(-1, N_ENT - N_MATES, -1)], -1)
+        mem = ents[..., ENT_DIM:]                     # memoria (vacía sin el bit 4), va después del contexto
+        ents = ents[..., :ENT_DIM]
+        mates = torch.cat([ents[:, :N_MATES], ctx.expand(-1, N_MATES, -1), mem[:, :N_MATES]], -1)
+        rivs = torch.cat([ents[:, N_MATES:], ctx.expand(-1, N_ENT - N_MATES, -1), mem[:, N_MATES:]], -1)
         h = torch.cat([self.self_net(own), self._pool(self.mate_net(mates), ents[:, :N_MATES, 0]),
                        self._pool(self.riv_net(rivs), ents[:, N_MATES:, 0])], -1)
         return self.head(h)
@@ -219,7 +227,8 @@ SIDE_Y = 1000.0           # juego abierto: pelota pegada a la banda
 # cerca de la pelota por variante (h2). Patadas atrás que terminan en un rival o afuera, por minuto: sin regla 0,228,
 # primera regla (−0,5, 35°, 700 px, sin mirar rivales) 0,146, v3 0,087 (humano 0,049). Afuera: 0,79 → 0,55. Patadas
 # efectivas: 5,31 → 4,81 (humano 6,50).
-BACK_DX = 0.0             # "hacia atrás": componente x de la dirección (coordenadas del equipo) menor que esto
+BACK_DX = -0.2            # "hacia atrás": componente x de la dirección (coordenadas del equipo) menor que esto (v2:
+                          # con 0.0 / v3 la puerta P3 fallaba en patadas de DEF y MED: despejan de costado)
 BACK_CONE = 25.0          # pase atrás válido: un compañero a menos de BACK_CONE° de la dirección de la patada…
 BACK_DIST = 500.0         # …a menos de BACK_DIST px de la pelota…
 LANE_PX = 45.0            # …sin un rival a menos de LANE_PX px de la línea del pase (0: no se mira)…
@@ -278,6 +287,53 @@ def open_kick_blocked(w, L, s, d):
     mates = [pos[q] for q in range(11 * team, 11 * team + 11) if q != s and on[q]]
     rivals = [pos[q] for q in range(11 * (1 - team), 11 * (1 - team) + 11) if on[q]]
     return not open_kick_ok(me, ball, team, np.array(mates).reshape(-1, 2), np.array(rivals).reshape(-1, 2))
+
+
+KEEP_PX = 90.0            # pelota parada o saque inicial que saca otro: no acercarse a la pelota a menos de esto…
+KEEP_SLOW_PX = 140.0      # …y entre KEEP_PX y esto, no ir hacia ella
+KICKOFF_KIND = 9          # código de "saque_inicial" en `sin_kinds` (los tipos de pelota parada van de 1 a 5)
+_DIRS = np.stack([MOVE_DX, MOVE_DY], 1).astype(np.float64)
+
+
+def _dir_toward(v):
+    """Dirección 1..8 (coordenadas del equipo) más parecida al vector v (0 si es nulo)."""
+    n = np.hypot(*v)
+    if n < 1e-6:
+        return 0
+    c = (_DIRS[1:] @ v) / (np.hypot(*_DIRS[1:].T) * n)
+    return 1 + int(np.argmax(c))
+
+
+def keep_away(own, act, sin_kinds=()):
+    """Red de seguridad de pelotas paradas (partidos reales del 2026-10-09/10: el bot se paraba al lado del compañero
+    que sacaba un córner y tomaba el saque inicial después del gol). En una pelota parada o saque inicial que saca
+    otro (del rival, o del equipo y de un tipo en `sin_kinds`; KICKOFF_KIND para el saque inicial), el bot no patea,
+    no se acerca a la pelota a menos de KEEP_PX (si está más cerca, se aleja) ni va hacia ella hasta KEEP_SLOW_PX.
+    Usa solo la observación (coordenadas del equipo), así que vale igual para cualquier puesto, en la sala y en el
+    simulador. own: (B, ≥ SELF_DIM); act: (B,) acciones 0..17 en coordenadas del equipo. Devuelve las acciones."""
+    out = np.asarray(act).copy()
+    for i in range(len(out)):
+        o = own[i]
+        ph = int(np.argmax(o[31:37]))
+        if ph not in (1, 2, 3, 5):
+            continue
+        pk = int(np.argmax(o[37:45]))
+        pt = int(np.argmax(o[45:48]))                 # 0 propio, 1 rival, 2 nadie
+        if ph == 5:
+            ajena = KICKOFF_KIND in sin_kinds
+        else:
+            ajena = pt == 1 or (pt == 0 and pk in sin_kinds)
+        if not ajena:
+            continue
+        to_ball = np.asarray(o[4:6], np.float64) * 1000
+        dist = float(o[10]) * 1000
+        mv = int(out[i]) % 9
+        if dist < KEEP_PX:
+            mv = _dir_toward(-to_ball)
+        elif dist < KEEP_SLOW_PX and mv and _DIRS[mv] @ to_ball > 0:
+            mv = 0
+        out[i] = mv
+    return out
 
 
 def piece_rows(phases):

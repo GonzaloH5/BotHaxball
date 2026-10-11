@@ -66,3 +66,27 @@ def test_juego_abierto_atras_y_banda():
     assert not open_kick_ok(np.array([300.0, 1080.0]), np.array([300.0, 1100.0]), 0, np.zeros((0, 2)))
     # en campo rival, hacia atrás: libre
     assert open_kick_ok(np.array([520.0, 0.0]), np.array([500.0, 0.0]), 0, np.zeros((0, 2)))
+
+
+def test_distancia_en_saques_ajenos():
+    from learn.hx11_policy import KICKOFF_KIND, keep_away
+    own = np.zeros((1, 69), np.float32)
+    own[0, 31 + 2] = 1          # pelota parada
+    own[0, 37 + 2] = 1          # córner
+    own[0, 45 + 0] = 1          # de mi equipo
+    own[0, 4:6] = [0.03, 0.0]   # pelota 30 px adelante (coordenadas del equipo)
+    own[0, 10] = 0.03
+    a = np.array([3 + 9])       # hacia la pelota, pateando
+    assert keep_away(own, a, (2, 3, 4))[0] == 7            # se aleja (dx −1), sin patear
+    assert keep_away(own, a, ())[0] == 3 + 9               # si el córner lo saca el bot, no se toca
+    own[0, 4:6] = [0.12, 0.0]
+    own[0, 10] = 0.12
+    assert keep_away(own, np.array([3]), (2, 3, 4))[0] == 0        # entre 90 y 140 px: no va hacia ella
+    assert keep_away(own, np.array([7]), (2, 3, 4))[0] == 7        # alejarse sí
+    own[0, 31:37] = 0
+    own[0, 31 + 5] = 1          # saque inicial
+    assert keep_away(own, np.array([3 + 9]), (KICKOFF_KIND,))[0] == 0
+    assert keep_away(own, np.array([3 + 9]), ())[0] == 3 + 9
+    own[0, 31:37] = 0
+    own[0, 31 + 0] = 1          # juego abierto: nada
+    assert keep_away(own, np.array([3 + 9]), (2, 3, 4, KICKOFF_KIND))[0] == 3 + 9

@@ -1,6 +1,7 @@
 // Bot de HaxEleven X11 en una sala real, como cliente (docs/PLAN_HAXELEVEN.md §4; piloto C0).
 //
-//   node deploy/hx11/bot.js --join <id o link de la sala> --pos LI [--name HX-Bot] [--password x]
+//   node --use-system-ca deploy/hx11/bot.js --join <id o link de la sala> --pos LI [--name HX-Bot] [--password x]
+//   (--use-system-ca: en la PC del usuario Avast reemplaza los certificados HTTPS; sin eso, "Error de conexión Master")
 //        [--model runs/hx11_l0/l0_ajuste_corner_h2/model_final.pt] [--temp 0.7] [--renovar-patada 0.33]
 //        [--sin-saques corner,tiro_libre,saque_arco | ninguno] [--flag uy --lat -34.9 --lon -56.17] [--avatar x]
 //
@@ -51,10 +52,14 @@ const cer = startCerebro({
   // juego abierto: no patea hacia afuera pegado a la banda ni atrás en campo propio sin compañero (los dos errores del
   // partido real del 2026-10-09; puerta P3 completa con la regla). --sin-regla-juego la apaga
   reglaJuego: !args.includes("--sin-regla-juego"),
+  // en pelotas paradas y saques iniciales que saca otro no se acerca a la pelota (partido real del 2026-10-10: se paraba
+  // al lado del que sacaba el córner y tomaba el saque inicial). --sin-distancia-saques la apaga
+  distanciaSaques: !args.includes("--sin-distancia-saques"),
   renovar: parseFloat(arg("--renovar", "0.33")),   // dirección persistente lejos de la pelota: 10 → 4,7 cambios de tecla/s (puerta P3 pasa)
   // con humanos: el bot no patea córners, tiros libres ni saques de arco de su equipo (los saca un humano); "ninguno"
   // para que patee todo
-  sinSaques: arg("--sin-saques", "corner,tiro_libre,saque_arco") === "ninguno" ? "" : arg("--sin-saques", "corner,tiro_libre,saque_arco"),
+  sinSaques: arg("--sin-saques", "corner,tiro_libre,saque_arco,saque_inicial") === "ninguno" ? ""
+    : arg("--sin-saques", "corner,tiro_libre,saque_arco,saque_inicial"),
   onReady: (m) => { ready = true; console.log(`cerebro listo: puesto ${m.pos} (línea ${m.linea})`); },
   onDecision: (msg) => {
     if (!room || paused) return;
@@ -117,6 +122,10 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
                geo: { lat: parseFloat(arg("--lat", "-34.6")), lon: parseFloat(arg("--lon", "-58.4")), flag: arg("--flag", "ar") } },
     plugins: [plugin],
     onOpen: (r) => { room = r; console.log(`conectado a "${r.name}" como ${arg("--name", "HX-Bot")}; puesto ${pos}`); },
-    onClose: (e) => { console.log("salió de la sala", e ? String(e) : ""); cer.stop(); process.exit(0); },
+    onClose: (e) => {
+      let det = "";
+      try { det = JSON.stringify({ code: e && e.code, params: e && e.params }); } catch {}
+      console.log("salió de la sala", e ? String(e) : "", det); cer.stop(); process.exit(0);
+    },
   });
 })().catch((e) => { console.error(e.message); cer.stop(); process.exit(1); });

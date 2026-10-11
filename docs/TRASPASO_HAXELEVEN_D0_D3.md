@@ -657,6 +657,30 @@ El usuario eligió la opción A (quién va + refuerzo). Mediciones en el lazo re
     - También fuera: largo del equipo (1060 contra 870 px), espera de los saques (311 contra 199 ticks), laterales (26 contra 19,5 cada 10 min, 23% repetidos), contacto (0,5) y el más cercano (67 contra 55 px).
     - Siguiente, en curso en la PC del hermano: la misma población con la regla de juego abierto y con la dirección más persistente (`--renovar 0.2`).
 
+### Segundo partido real, prueba larga y modelo nuevo (2026-10-10/11)
+
+- **El bot entra a la sala desde la terminal del usuario solo con `node --use-system-ca`.** Avast intercepta HTTPS y Node rechaza su certificado: el "Error de conexión Master" (código 14) era eso. Ver `HAXBALL_DEBUG=1` en `bridge/haxball.js`.
+- **Partido real (grabación `HBReplay-2026-10-10-22h45m.hbr2`):** 182 s de MCD, sacado por el admin. Análisis (scratchpad `analizar_bot_real2.py`):
+  - en un córner propio se paró al lado de la pelota 6,8 s;
+  - tomó el saque inicial después de un gol en contra;
+  - corrió por la banda en un contraataque rival y se quedó quieto en otro;
+  - tocó la pelota en 1 tick.
+- **GAIL (`learn/hx11_gail.py`, 150 iteraciones): descartado.** Puerta de realismo: 0% dentro del techo, AUC 0,987 (`reports/hx11/realismo_gail_p1.md`). El discriminador ganó (95% de acierto) y la política, atada con KL a 0,02, casi no se movió.
+- **Prueba larga (`learn/hx11_larga.py`):** el bot como fantasma durante 60 s entre humanos grabados, en los 22 lugares, contra el humano de ese lugar. Mide zona, dispersión, lado del arco, repliegue, si va a la pelota, cercanía, velocidad, teclas y estorbo en saques.
+  - **h2 con el ancla propia del humano** (`reports/hx11/larga_h2.md`, 12 partidos de prueba): casi humano en ubicación (zona 1,01–1,22, lado del arco ~1); teclas 1,23–1,37.
+  - **Con el ancla genérica del puesto, como en la sala** (6 partidos): zona de DEF 1,07 → 1,78, MED 1,04 → 1,24, DEL 0,96 → 1,13; lado del arco 0,82–0,88. Darle al bot un ancla que corresponda con el equipo real es parte del problema de ubicación.
+- **Red de seguridad de pelotas paradas** (`keep_away` en `learn/hx11_policy.py`; `--distancia-saques` en el cerebro, encendida por defecto en `deploy/hx11/bot.js`, que también suma `saque_inicial` a `--sin-saques`): en pelotas paradas o saques iniciales que saca otro, no patea y no se acerca a menos de 90 px. Si está más cerca, se aleja; entre 90 y 140 px no va hacia la pelota.
+  - **Prueba dirigida** (fantasma arrancando pegado a la pelota en 44 saques de un compañero): estorbo medio 0,51 → 0,21 s; saques con más de 1 s, 25% → 5%. En la prueba larga no cambia nada más.
+- **Modelo nuevo, aprobado (etapas 1 y 2):**
+  - **Etapa 1, estado del juego** (`extra` bit 2, `hx11_data.estado`, 11 entradas): quién tiene la pelota (nosotros, ellos, nadie; yo), hace cuánto cambió, y dónde estaba la pelota hace 0,5, 1 y 2 s.
+    - Antes la red recibía las dos anclas (con y sin la pelota) sin saber cuál correspondía.
+    - Posesión: `Match.owner` y `pchg`, desde D1 en el banco, desde `RI_LAST` en el simulador y desde los toques y patadas en el cerebro de la sala.
+    - Entrenando `l0_estado_s1` desde e1: 20.000 pasos, 30% de córner v3.
+  - **Etapa 2, memoria de 2 s** (bit 4, `MEM_DIM`): cuánto se movió cada jugador (y el bot) en los últimos 0,5, 1 y 2 s.
+    - Va en las entradas de cada entidad, así que el costo es casi el de hoy. `MAX_BACK` pasó de 52 a 157 ticks para tener esa historia.
+    - Implementada, con pruebas y con el cerebro de sala probado sin sala. Datos de córner v4 listos.
+    - Se lanza si la etapa 1 mejora la prueba larga.
+
 ### Lo que sigue, en orden
 
 0. **(2026-10-10) Refuerzo A3:** ver la sección de arriba. Lo de abajo es la lista anterior.
