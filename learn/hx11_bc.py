@@ -136,8 +136,9 @@ def main():
             we = getattr(net, k.split(".")[0])[0].weight
             if src[k].shape[1] < we.shape[1]:
                 # memoria de las entidades: columnas nuevas al final, en cero
-                src = dict(src, **{k: torch.cat([src[k], torch.zeros(we.shape[0], we.shape[1] - src[k].shape[1])], 1)})
-                print(f"{k}: entradas nuevas con pesos en cero: {we.shape[1] - src[k].shape[1]}", flush=True)
+                extra_cols = we.shape[1] - src[k].shape[1]
+                src = dict(src, **{k: torch.cat([src[k], torch.zeros(we.shape[0], extra_cols)], 1)})
+                print(f"{k}: entradas nuevas con pesos en cero: {extra_cols}", flush=True)
         w0 = net.self_net[0].weight
         if src["self_net.0.weight"].shape[1] < w0.shape[1]:
             # entradas nuevas (p. ej. --extra, los rasgos de "voy yo"): pesos en cero, arranca igual que el modelo base

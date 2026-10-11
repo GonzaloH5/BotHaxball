@@ -55,6 +55,10 @@ const cer = startCerebro({
   // en pelotas paradas y saques iniciales que saca otro no se acerca a la pelota (partido real del 2026-10-10: se paraba
   // al lado del que sacaba el córner y tomaba el saque inicial). --sin-distancia-saques la apaga
   distanciaSaques: !args.includes("--sin-distancia-saques"),
+  // ancla del rol libre del equipo real, deducida de los compañeros del último minuto (en la prueba larga, un defensor
+  // con el ancla genérica del puesto se alejaba 1,76 veces más de su zona que el humano; con esta, 1,19). --sin-ancla-vivo
+  anclaVivo: !args.includes("--sin-ancla-vivo"),
+  onInfo: (m) => console.log(`ancla: ${m.rol} (${m.formacion || "?"})`),
   renovar: parseFloat(arg("--renovar", "0.33")),   // dirección persistente lejos de la pelota: 10 → 4,7 cambios de tecla/s (puerta P3 pasa)
   // con humanos: el bot no patea córners, tiros libres ni saques de arco de su equipo (los saca un humano); "ninguno"
   // para que patee todo

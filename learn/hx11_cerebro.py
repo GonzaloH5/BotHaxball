@@ -21,6 +21,7 @@ El puesto lo fija el usuario con `--pos` (P2): ancla y línea del vocabulario (`
 from __future__ import annotations
 
 import argparse
+import collections
 import json
 import sys
 from pathlib import Path
@@ -30,6 +31,7 @@ import torch
 
 from learn.hx11_closed_loop import bits_of_action
 from learn.hx11_data import D_MAX, D_MIN, FAULT_MODES, LINES, MAX_BACK, ROT_MOVE, Match, build
+from learn.hx11_ancla import live_anchor, role_templates, teammates_means
 from learn.hx11_fase import Fase
 from learn.hx11_policy import (KICKOFF_KIND, Ensemble, SetPolicy, StickyNoise, keep_away, kick_rule_ok, near_rows,
                                open_kick_blocked, piece_rows, policy_logits, sample, seen_now)
@@ -47,7 +49,8 @@ def lookup(vocab, key):
 
 class Cerebro:
     def __init__(self, model, pos, vocab, temp=1.0, every=3, hyst=0.0, ens_k=0, ens_m=0.0, renew=1.0, renew_kick=1.0,
-                 sin_saques=(), regla_saques=False, regla_lateral=False, regla_juego=False, distancia_saques=False):
+                 sin_saques=(), regla_saques=False, regla_lateral=False, regla_juego=False, distancia_saques=False,
+                 ancla_vivo=False):
         ck = torch.load(model, map_location="cpu", weights_only=False)
         self.net = SetPolicy(**ck["config"])
         self.net.load_state_dict(ck["state"])
@@ -69,6 +72,14 @@ class Cerebro:
         v = lookup(vocab, pos) if pos else None
         self.anchor = np.array(v["ancla"], np.float32) if v else None
         self.line = int(v["linea_idx"]) if v else 3
+        # ancla en vivo (`learn.hx11_ancla`): del rol libre del equipo real, deducido de los compañeros del último
+        # minuto; si no es de la línea del puesto pedido, la genérica del puesto
+        self.ancla_vivo = bool(ancla_vivo)
+        self.generic = self.anchor
+        self.want_line = LINES[self.line] if v else None
+        self.tmpl = role_templates(vocab) if ancla_vivo else None
+        self.hist = collections.deque(maxlen=600)   # muestras de juego abierto cada 6 ticks: (pos, pid, gk, dueño)
+        self.anchor_info = None
         self.bots = {}                          # varios bots: id -> (ancla, línea)
         self.fase = Fase()
         self.slot_of = {}                       # id de jugador -> lugar fijo (0–10 rojo, 11–21 azul)
@@ -156,6 +167,8 @@ class Cerebro:
         ph, kd, tm, pt, sx, sy = self.fase.step(int(fr.get("state", 1)), fr.get("placement"), kicks,
                                                 bool(fr.get("goal")), toucher)
         w.phase[i], w.pkind[i], w.pteam[i], w.pticks[i] = ph, kd, tm, min(pt, 32767)
+        if self.ancla_vivo and ph == 0 and self.ticks % 6 == 0:
+            self.hist.append((w.pos[i].astype(np.float32) / 10, w.pid[i].copy(), w.gk[i].copy(), int(w.owner[i])))
         w.spot[i] = np.round([sx * 10, sy * 10])
         self.n += 1
         self.ticks += 1
@@ -196,6 +209,24 @@ class Cerebro:
             return False
         me, ball = seen_now(self.w, L, s, d)
         return not kick_rule_ok(me, ball, kind, team, float(self.w.binv[L]), int(self.w.pticks[L]))
+
+    def _live_anchor(self, s):
+        """Recalcula el ancla del bot con los compañeros del último minuto (cada 5 s)."""
+        pos = np.stack([h[0] for h in self.hist])
+        pid = np.stack([h[1] for h in self.hist])
+        gk = np.stack([h[2] for h in self.hist])
+        owner = np.array([h[3] for h in self.hist])
+        team = int(s >= 11)
+        wb, nb = teammates_means(pos, pid, gk, owner, np.arange(len(pos)), team, s)
+        anc, f, role = live_anchor(wb, nb, self.tmpl, self.want_line, self.generic)
+        # suavizado: cada 5 s el ancla se mueve un 40% hacia la nueva (en un 4-2-3-1 el hueco salta entre MCD-CI y
+        # MCD-CD según dónde se pare el otro MCD; sin esto el bot cruzaría la cancha)
+        self.anchor = (0.6 * self.anchor + 0.4 * np.asarray(anc, np.float32)).astype(np.float32)
+        info = (f, role)
+        if info != self.anchor_info:
+            self.anchor_info = info
+            print(json.dumps({"ancla": [round(float(x)) for x in self.anchor], "formacion": f,
+                              "rol": role or "genérica del puesto"}, ensure_ascii=False), flush=True)
 
     def _no_kick(self, s):
         """True si el bot del lugar s no debe patear ahora: pelota parada de su equipo de un tipo en `self.sin_saques`
@@ -268,6 +299,8 @@ class Cerebro:
             if L < k <= t:
                 w.inp[k:t + 1, s] = bits
         pid = int(w.pid[L, s])
+        if self.ancla_vivo and self.ticks % 300 == 0 and len(self.hist) >= 100:
+            self._live_anchor(s)
         w.anchor[(pid, 0)] = w.anchor[(pid, 1)] = self.anchor
         w.line[pid] = self.line
         w.T = 10 ** 9                        # la mitad del partido no importa: el ancla es la misma
@@ -304,6 +337,8 @@ def main():
                     help="ruido persistente de la tecla de patear (1 = sorteo independiente)")
     ap.add_argument("--regla-saques", action="store_true",
                     help="en córner, tiro libre y saque de arco propios: patea solo desde atrás y con la barra alta")
+    ap.add_argument("--ancla-vivo", action="store_true",
+                    help="ancla del rol libre del equipo real, deducida de los compañeros del último minuto")
     ap.add_argument("--distancia-saques", action="store_true",
                     help="en pelotas paradas y saques iniciales que saca otro, no se acerca a la pelota (keep_away)")
     ap.add_argument("--regla-juego", action="store_true",
@@ -322,7 +357,7 @@ def main():
     kinds = {"lateral": 1, "corner": 2, "saque_arco": 3, "tiro_libre": 4, "penal": 5, "saque_inicial": KICKOFF_KIND}
     sin = [kinds[k.strip()] for k in a.sin_saques.split(",") if k.strip()]
     c = Cerebro(a.model, a.pos, vocab, a.temp, a.every, a.hyst, a.ens, a.ens_m, a.renovar, a.renovar_patada, sin,
-                a.regla_saques, a.regla_lateral, a.regla_juego, a.distancia_saques)
+                a.regla_saques, a.regla_lateral, a.regla_juego, a.distancia_saques, a.ancla_vivo)
     print(json.dumps({"listo": True, "pos": a.pos, "linea": LINES[c.line]}), flush=True)
     for line in sys.stdin:
         if not line.strip():
@@ -333,7 +368,10 @@ def main():
             v = lookup(vocab, fr["set_pos"])
             if v:
                 c.anchor = np.array(v["ancla"], np.float32)
+                c.generic = c.anchor
                 c.line = int(v["linea_idx"])
+                c.want_line = LINES[c.line]
+                c.anchor_info = None
                 print(json.dumps({"pos": fr["set_pos"], "linea": LINES[c.line]}), flush=True)
             else:
                 print(json.dumps({"error": f"puesto desconocido {fr['set_pos']}"}), flush=True)

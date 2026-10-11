@@ -188,8 +188,9 @@ def main():
     ap.add_argument("--temp", type=float, default=0.7)
     ap.add_argument("--renovar", type=float, default=0.33)
     ap.add_argument("--renovar-patada", type=float, default=0.33)
-    ap.add_argument("--ancla", default="propia", choices=["propia", "puesto"],
-                    help="propia: la del humano de ese lugar; puesto: la genérica del puesto (como en la sala)")
+    ap.add_argument("--ancla", default="propia", choices=["propia", "puesto", "vivo"],
+                    help="propia: la del humano de ese lugar; puesto: la genérica del puesto (como en la sala hasta el "
+                         "2026-10-11); vivo: deducida de los compañeros del último minuto (`learn.hx11_ancla`)")
     ap.add_argument("--seguridad", action="store_true",
                     help="red de seguridad de la sala: no acercarse en saques que saca otro (keep_away)")
     ap.add_argument("--threads", type=int, default=6)
@@ -220,6 +221,22 @@ def main():
             if len(slots) < 10:
                 continue
             anchors = None
+            if a.ancla == "vivo":
+                from learn.hx11_ancla import live_anchor, role_templates, teammates_means
+                tmpl = role_templates(vocab)
+                hist = np.arange(max(MAX_BACK, t0 - 3600), t0)[::6]
+                hist = hist[m.phase[hist] == OPEN]
+                mpos = m.pos.astype(np.float64) / 10
+                anchors = {}
+                for s in slots:
+                    pid = int(m.pid[t0, s])
+                    team = int(s >= 11)
+                    if int(m.gk[t0, team]) == pid:
+                        continue                            # el arquero conserva la suya
+                    wb, nb = teammates_means(mpos, m.pid, m.gk, m.owner, hist, team, s)
+                    line = LINES[m.line.get(pid, 3)]
+                    generic = vocab[{"DEF": "DFC", "MCD": "MCD", "MED": "MC", "DEL": "DC"}.get(line, "MC")]["ancla"]
+                    anchors[s] = live_anchor(wb, nb, tmpl, line, generic)[0]
             if a.ancla == "puesto":
                 d2 = json.loads((ROOT / "data" / "hx11" / "d2" / f"{n}.json").read_text(encoding="utf-8"))
                 role = {int(p): info["nombre_rol"] for t in d2["equipos"] for p, info in t["jugadores"].items()}

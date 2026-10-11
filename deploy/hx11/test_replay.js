@@ -34,6 +34,7 @@ let ready = false;
 const cer = startCerebro({
   model, pos, temp: 0.7, renovarPatada: 0.33, sinSaques: "corner,tiro_libre,saque_arco,saque_inicial",
   reglaJuego: argv.includes("--regla-juego"), distanciaSaques: argv.includes("--distancia-saques"),
+  anclaVivo: argv.includes("--ancla-vivo"), onInfo: (m) => console.log("ancla:", JSON.stringify(m)),
   onReady: () => { ready = true; },
   onDecision: (msg) => {
     decisions++;
