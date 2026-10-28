@@ -14,7 +14,16 @@ from __future__ import annotations
 import math
 
 import numpy as np
-from numba import njit, prange
+
+try:
+    from numba import njit, prange
+except ImportError:  # pragma: no cover - fallback cuando numba no está instalado
+    def njit(*args, **kwargs):
+        if len(args) == 1 and callable(args[0]):
+            return args[0]
+        return lambda fn: fn
+
+    prange = range
 
 from .stadium import BLUEKO, PLAYER_MASK, REDKO, Stadium, load_stadium
 
@@ -187,19 +196,8 @@ def step_batch(pos, vel, mask, kick_cancel, kickoff, kickoff_team, actions, move
                ball_grav, ps_on, ps_par, ps_held, ps_charge, ps_comba, ps_grav_left, ps_inv_left,
                ps_gtick, ps_pending, ps_has_pending, ps_kick_out,
                frames=1, window_goal=None, window_kicked=None, last_touch=None,
-                window_touches=None, window_ball_pos=None):
-    """Avanza frames ticks por partido con una única barrera paralela.
-
-    goal_out[n]: +1 si anotó rojo, -1 si anotó azul, 0 nada.
-    touch_out[n, p]: el jugador p tocó (o pateó) la pelota este tick.
-    kick_out[n, p]: el jugador p pateó la pelota este tick.
-    inv_env[n, k]: invMass por partido (la de la pelota cambia con el powershot).
-    ball_grav[n]: gravedad de la pelota (curva del powershot).
-    ps_*: estado del powershot (sólo si ps_on). ps_kick_out[n, p]: pateó un powershot.
-    Los eventos anteriores describen el último tick. Los buffers opcionales window_*
-    conservan el primer gol y todas las patadas; last_touch conserva el último equipo.
-    Sin buffers y con frames=1 es la ruta original; reglas/lag llaman esa variante.
-    """
+               window_touches=None, window_ball_pos=None):
+    """Avanza frames ticks por partido con una única barrera paralela."""
     N = pos.shape[0]
     K = pos.shape[1]
     P = actions.shape[1]
@@ -240,8 +238,6 @@ def step_batch(pos, vel, mask, kick_cancel, kickoff, kickoff_team, actions, move
                         kick_cancel[n, p] = True
                         kick_out[n, p] = True
                         if ps_on and ps_comba[n]:
-                            # curva: gravedad perpendicular al tiro, proporcional a la velocidad
-                            # lateral del jugador respecto de la pelota (setDiscProps del script)
                             lat = nx * vel[n, k, 1] - ny * vel[n, k, 0]
                             ci = min(1.0, max(-1.0, lat / ps_par[PS_MAX_LAT]))
                             sx = vel[n, 0, 0]
@@ -306,13 +302,12 @@ def step_batch(pos, vel, mask, kick_cancel, kickoff, kickoff_team, actions, move
                     c1 = _cross(qx - ax, qy - ay, mvx, mvy) * _cross(qx - g_p1[g, 0], qy - g_p1[g, 1], mvx, mvy)
                     c2 = _cross(bx0 - ax, by0 - ay, gx, gy) * _cross(qx - ax, qy - ay, gx, gy)
                     if c1 <= 0.0 and c2 <= 0.0 and (mvx != 0.0 or mvy != 0.0):
-                        # entró en el arco de g_team -> anota el otro equipo
                         goal_out[n] = -1 if g_team[g] == 0 else 1
                         break
             # 5. script de la sala (onGameTick), después de la física
             if ps_on:
                 ps_gtick[n] += 1
-                if ps_has_pending[n]:  # runAfterGameTick: la curva arranca en el tick siguiente al tiro
+                if ps_has_pending[n]:
                     ball_grav[n, 0] = ps_pending[n, 0]
                     ball_grav[n, 1] = ps_pending[n, 1]
                     ps_has_pending[n] = False
@@ -328,13 +323,12 @@ def step_batch(pos, vel, mask, kick_cancel, kickoff, kickoff_team, actions, move
                 if ps_charge[n] > 0:
                     ps_charge[n] -= 1
                     if ps_charge[n] == 0:
-                        # el timer dispara aunque ya no la tenga: la pelota queda cargada
                         ps_comba[n] = True
                         inv[0] = ps_par[PS_POWER_INV]
                         ps_charge[n] = -1
                 if ps_gtick[n] % int(ps_par[PS_EVERY]) == 0:
                     holder = -1
-                    for p in range(P):  # el script se queda con el ÚLTIMO jugador que la toca
+                    for p in range(P):
                         k = first_player + p
                         dx = pos[n, 0, 0] - pos[n, k, 0]
                         dy = pos[n, 0, 1] - pos[n, k, 1]
@@ -346,7 +340,6 @@ def step_batch(pos, vel, mask, kick_cancel, kickoff, kickoff_team, actions, move
                             ps_comba[n] = False
                             ps_charge[n] = int(ps_par[PS_CHARGE])
                     elif ps_held[n] >= 0:
-                        # la perdió: se cancela la carga (ojo: si ya estaba cargada, invMass NO vuelve)
                         ps_held[n] = -1
                         ps_comba[n] = False
                         ps_charge[n] = -1
@@ -360,12 +353,13 @@ def step_batch(pos, vel, mask, kick_cancel, kickoff, kickoff_team, actions, move
                     if touch_out[n, p]:
                         last_touch[n] = player_team[p]
             if window_touches is not None:
-                            for p in range(P):
-                                window_touches[n, frame, p] = touch_out[n, p]
+                for p in range(P):
+                    window_touches[n, frame, p] = touch_out[n, p]
 
             if window_ball_pos is not None:
                 window_ball_pos[n, frame, 0] = pos[n, 0, 0]
                 window_ball_pos[n, frame, 1] = pos[n, 0, 1]
+
 
 class BatchSim:
     """N partidos simultáneos de `n_red` vs `n_blue` en un estadio."""
@@ -384,6 +378,27 @@ class BatchSim:
         self.K = 1 + D + self.P
         self.rng = np.random.default_rng(seed)
         pl, b = st.player, st.ball
+
+        # Pre-filtrar segmentos y vértices decorativos (cMask == 0 o cGroup == 0) para acelerar colisiones
+        # sin alterar el objeto Stadium ni su identidad canónica.
+        v_active = (st.v_mask != 0) & (st.v_group != 0)
+        self._v_pos = np.ascontiguousarray(st.v_pos[v_active])
+        self._v_bcoef = np.ascontiguousarray(st.v_bcoef[v_active])
+        self._v_group = np.ascontiguousarray(st.v_group[v_active])
+        self._v_mask = np.ascontiguousarray(st.v_mask[v_active])
+
+        s_active = (st.s_mask != 0) & (st.s_group != 0)
+        self._s_p0 = np.ascontiguousarray(st.s_p0[s_active])
+        self._s_p1 = np.ascontiguousarray(st.s_p1[s_active])
+        self._s_curved = np.ascontiguousarray(st.s_curved[s_active])
+        self._s_center = np.ascontiguousarray(st.s_center[s_active])
+        self._s_radius = np.ascontiguousarray(st.s_radius[s_active])
+        self._s_t0 = np.ascontiguousarray(st.s_t0[s_active])
+        self._s_t1 = np.ascontiguousarray(st.s_t1[s_active])
+        self._s_bias = np.ascontiguousarray(st.s_bias[s_active])
+        self._s_bcoef = np.ascontiguousarray(st.s_bcoef[s_active])
+        self._s_group = np.ascontiguousarray(st.s_group[s_active])
+        self._s_mask = np.ascontiguousarray(st.s_mask[s_active])
 
         self.player_team = np.array([0] * n_red + [1] * n_blue, dtype=np.int64)
         self.radius = np.concatenate([[b["radius"]], st.d_radius, np.full(self.P, pl["radius"])])
@@ -406,10 +421,8 @@ class BatchSim:
         self.kicked = np.zeros((n_envs, self.P), dtype=np.bool_)
         self._coop_touch_window = None
         self._coop_ball_pos_window = None
-        # invMass por partido (la de la pelota cambia con el powershot) y gravedad de la pelota
         self.inv_env = np.tile(self.invmass, (n_envs, 1))
         self.ball_grav = np.zeros((n_envs, 2))
-        # powershot + curva del script de la sala (ball-physics.js); tiempos en ticks
         self.ps_on = bool(powershot)
         cfg = dict(charge=96, power_inv=2.3, base_inv=float(b["invMass"]), curve=84, inv_reset=48,
                    grav=0.1, max_lat=3.0, every=30)
@@ -441,7 +454,6 @@ class BatchSim:
         self.ps_gtick[idx] = 0
         self.ps_has_pending[idx] = False
 
-    # ------------------------------------------------------------------ reset
     def spawn_positions(self) -> np.ndarray:
         """Posiciones de saque de HaxBall: x = ±spawnDistance, y = 0, +55, -55, +110..."""
         out = np.zeros((self.P, 2))
@@ -451,10 +463,9 @@ class BatchSim:
             c = counts[t]
             pts = points[t]
             if pts is not None and c < len(pts):
-                # el mapa define puntos de saque propios (HaxEleven, Real Futsal x7)
                 out[p] = pts[c]
             else:
-                y = 55.0 * ((c + 1) >> 1) * (1 if c % 2 == 1 else -1)  # 0, +55, -55, +110 (medido en salas reales)
+                y = 55.0 * ((c + 1) >> 1) * (1 if c % 2 == 1 else -1)
                 out[p] = (-self.st.spawn_distance if t == 0 else self.st.spawn_distance, y)
             counts[t] += 1
         return out
@@ -506,7 +517,6 @@ class BatchSim:
     def reset_all(self) -> None:
         self.reset_kickoff(np.arange(self.N), kickoff_team=0)
 
-    # ------------------------------------------------------------------ step
     def step(self, actions: np.ndarray) -> np.ndarray:
         """actions: (N, P) enteros 0..17. Devuelve goal (N,) con +1 rojo / -1 azul / 0."""
         step_batch(*self._step_args(actions))
@@ -561,22 +571,21 @@ class BatchSim:
     def _step_args(self, actions):
         st, pl = self.st, self.st.player
         return (self.pos, self.vel, self.mask, self.kick_cancel, self.kickoff, self.kickoff_team,
-                   np.ascontiguousarray(actions, dtype=np.int64), MOVE_UNIT,
-                   self.radius, self.inv_env, self.bcoef, self.damping, self.group,
-                   self.first_player, self.player_team,
-                   float(pl["acceleration"]), float(pl["kickingAcceleration"]), float(pl["kickingDamping"]),
-                   float(pl["kickStrength"]), float(pl["kickback"]),
-                   st.v_pos, st.v_bcoef, st.v_group, st.v_mask,
-                   st.s_p0, st.s_p1, st.s_curved, st.s_center, st.s_radius, st.s_t0, st.s_t1,
-                   st.s_bias, st.s_bcoef, st.s_group, st.s_mask,
-                   st.p_normal, st.p_dist, st.p_bcoef, st.p_group, st.p_mask,
-                   st.g_p0, st.g_p1, st.g_team,
-                   self.goal, self.touch, self.kicked,
-                   self.ball_grav, self.ps_on, self.ps_par, self.ps_held, self.ps_charge, self.ps_comba,
-                   self.ps_grav_left, self.ps_inv_left, self.ps_gtick, self.ps_pending,
-                   self.ps_has_pending, self.ps_kicked)
+                np.ascontiguousarray(actions, dtype=np.int64), MOVE_UNIT,
+                self.radius, self.inv_env, self.bcoef, self.damping, self.group,
+                self.first_player, self.player_team,
+                float(pl["acceleration"]), float(pl["kickingAcceleration"]), float(pl["kickingDamping"]),
+                float(pl["kickStrength"]), float(pl["kickback"]),
+                self._v_pos, self._v_bcoef, self._v_group, self._v_mask,
+                self._s_p0, self._s_p1, self._s_curved, self._s_center, self._s_radius, self._s_t0, self._s_t1,
+                self._s_bias, self._s_bcoef, self._s_group, self._s_mask,
+                st.p_normal, st.p_dist, st.p_bcoef, st.p_group, st.p_mask,
+                st.g_p0, st.g_p1, st.g_team,
+                self.goal, self.touch, self.kicked,
+                self.ball_grav, self.ps_on, self.ps_par, self.ps_held, self.ps_charge, self.ps_comba,
+                self.ps_grav_left, self.ps_inv_left, self.ps_gtick, self.ps_pending,
+                self.ps_has_pending, self.ps_kicked)
 
-    # vistas cómodas
     @property
     def ball_pos(self):
         return self.pos[:, 0]

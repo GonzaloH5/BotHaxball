@@ -1,15 +1,15 @@
 """Prepare replay-grounded 3v3 Futsal x3 behavior-cloning data.
 
   python -m learn.x3futsal_data
-  python -m learn.x3futsal_data --cache data/x3futsal_jsonl --out data/x3futsal_bc
+  python -m learn.x3futsal_data --cache data/x3futsal_jsonl --out data/x3futsal_bc_active
 """
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
-from concurrent.futures import ProcessPoolExecutor
 from collections import Counter
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 import numpy as np
@@ -21,21 +21,36 @@ from tools.x3futsal_physics import _read_replay, transition_is_valid
 MOVE_DX = (0, 0, 1, 1, 1, 0, -1, -1, -1)
 MOVE_DY = (0, -1, -1, 0, 1, 1, 1, 0, -1)
 MOVE_BY_DELTA = dict(zip(zip(MOVE_DX, MOVE_DY), range(9)))
+Y_FLIP_MOVE = np.asarray([0, 5, 4, 3, 2, 1, 8, 7, 6], dtype=np.int64)
 N_PLAYERS = 6
 N_ACTIONS = 18
+DECISION_STRIDE = 3
+PLAYER_RADIUS = 15.0
+BALL_RADIUS = 6.25
+KICK_REACH = 4.0
+CONTACT_DIST = PLAYER_RADIUS + BALL_RADIUS
+EFFECTIVE_KICK_DIST = CONTACT_DIST + KICK_REACH
+NEAR_BALL_DIST_PX = 140.0
+MAX_HELD_KICK_OUTSIDE_REACH = 9
+
 DATA_VERSION = "x3-futsal-bc-v3-active"
+TACTICAL_DATA_VERSION = "x3-futsal-bc-v4-tactical"
 DEFAULT_OUT = ROOT / "data" / "x3futsal_bc_active"
 AFK_OUTSIDE_MARGIN = 25.0
 AFK_STATIONARY_FRAMES = 600
 AFK_SPEED_THRESHOLD = 0.08
+
+TACTICAL_SELF_DIM = 28
+TACTICAL_ENTITY_DIM = 10
+
 FILTER_CONTRACT = {
     "targetStadiumSpans": True,
     "state": "0 (kickoff/restart) or 1 (active gameplay)",
     "roster": "stable 3v3 across consecutive frames",
     "physics": "standard player properties; property-event frames excluded",
     "degeneratePositions": "coincident players and neighboring ticks excluded",
-    "transition": "consecutive frame t -> t+1; label is input at t",
-    "kickLabel": "kick key bit (16) at t",
+    "transition": "consecutive frame t -> t+1; label is input at t (with 3-frame kick window and stride-3 history support)",
+    "kickLabel": "kick key bit (16) at t, filtered against stale held-kick states outside reach",
     "afk": "transition excluded when any rostered player is outside the field envelope or stationary with no directional input for 600 consecutive frames",
 }
 FEATURE_CONTRACT = {
@@ -55,7 +70,7 @@ FEATURE_CONTRACT = {
         },
     },
     "history": {
-        "previousAction": "one-hot 18-class action at t-1 for the controlled player",
+        "previousAction": "one-hot 18-class action at t-1 (or t-3 decision stride) for the controlled player",
         "validityMask": "present only when the previous sample is contiguous in the same segment",
     },
     "action": {
@@ -65,6 +80,26 @@ FEATURE_CONTRACT = {
         "kick_offset": 9,
         "coordinate_convention": "x right, y down; team 2 direction is mirrored horizontally",
     },
+}
+TACTICAL_FEATURE_CONTRACT = {
+    "version": "x3-futsal-observation-v3",
+    "attackDirection": "team 1 and team 2 are mirrored so the controlled team attacks +x",
+    "selfDim": TACTICAL_SELF_DIM,
+    "entityDim": TACTICAL_ENTITY_DIM,
+    "selfFeatures": [
+        "x", "y", "vx", "vy",
+        "ball_x", "ball_y", "ball_vx", "ball_vy",
+        "ball_dx", "ball_dy", "ball_dist", "ball_gap", "ball_in_reach",
+        "ball_rvx", "ball_rvy", "ball_pred6_dx", "ball_pred6_dy",
+        "opp_goal_dx", "opp_goal_dy", "own_goal_dx", "own_goal_dy",
+        "ball_opp_goal_dx", "ball_opp_goal_dy", "shot_alignment",
+        "is_closest_to_ball", "is_last_man", "race_margin_rival", "kick_armed",
+    ],
+    "entityFeatures": [
+        "relative_x", "relative_y", "vx", "vy",
+        "ball_relative_x", "ball_relative_y", "ball_dist", "ball_gap",
+        "ball_in_reach", "pass_alignment",
+    ],
 }
 
 
@@ -80,6 +115,20 @@ def action_from_input(value: int, team: int) -> int:
     elif team != 1:
         raise ValueError(f"equipo de jugador inválido: {team}")
     return MOVE_BY_DELTA[(dx, dy)] + (9 if value & 16 else 0)
+
+
+def flip_action_y(actions: np.ndarray) -> np.ndarray:
+    """Reflect action indices across the horizontal axis (y -> -y) while preserving kick bit."""
+    actions = np.asarray(actions, dtype=np.int64)
+    return Y_FLIP_MOVE[actions % 9] + 9 * (actions // 9)
+
+
+def mirror_states_y(states: np.ndarray) -> np.ndarray:
+    """Reflect raw (B, 7, 4) states across y -> -y, vy -> -vy."""
+    mirrored = np.asarray(states, dtype=np.float32).copy()
+    mirrored[:, :, 1] *= -1.0
+    mirrored[:, :, 3] *= -1.0
+    return mirrored
 
 
 def featurize(states: np.ndarray, slots: np.ndarray, score_diff: np.ndarray, elapsed: np.ndarray,
@@ -114,17 +163,158 @@ def featurize(states: np.ndarray, slots: np.ndarray, score_diff: np.ndarray, ela
     return own_features, mate_features, rival_features
 
 
-class X3Data:
-    """Split shards in memory; sampling is uniform over eligible player-ticks."""
+def featurize_tactical(
+    states: np.ndarray,
+    slots: np.ndarray,
+    field_half_w: float = 550.0,
+    field_half_h: float = 240.0,
+    goal_x: float = 557.5,
+    kick_cancel: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Build contact-aware, goal-oriented, and role-aware 3v3 observations (28 self, 10 entity).
 
-    def __init__(self, dataset: Path, split: str):
+    Strictly mirror-invariant across teams (both attack +x) and equivariant under y -> -y.
+    """
+    raw = np.asarray(states, dtype=np.float32).copy()
+    slots = np.asarray(slots, dtype=np.int64)
+    batch_size = len(raw)
+    orient = np.where(slots < 3, 1.0, -1.0).astype(np.float32)
+    raw[:, :, 0] *= orient[:, None]
+    raw[:, :, 2] *= orient[:, None]
+
+    w = max(float(field_half_w), 1.0)
+    h = max(float(field_half_h), 1.0)
+    gx = max(float(goal_x), w)
+    sr = 600.0
+
+    batch = np.arange(batch_size)
+    players_px = raw[:, 1:, :]
+    ball_px = raw[:, 0, :]
+    own_px = players_px[batch, slots]
+
+    local_slot = slots % 3
+    mates_idx = (slots // 3)[:, None] * 3 + (local_slot[:, None] + np.asarray([1, 2])) % 3
+    rival_slots = np.arange(3, dtype=np.int64)[None, :]
+    rivals_idx = np.where((slots < 3)[:, None], rival_slots + 3, rival_slots)
+    mates_px = players_px[batch[:, None], mates_idx]
+    rivals_px = players_px[batch[:, None], rivals_idx]
+
+    # Distances & contact margins in pixels
+    ball_delta_px = ball_px[:, :2] - own_px[:, :2]
+    ball_dist_px = np.hypot(ball_delta_px[:, 0], ball_delta_px[:, 1])
+    ball_gap = np.clip((ball_dist_px - CONTACT_DIST) / 8.0, -1.0, 4.0)
+    ball_in_reach = (ball_dist_px <= EFFECTIVE_KICK_DIST).astype(np.float32)
+
+    mate_ball_delta_px = ball_px[:, None, :2] - mates_px[:, :, :2]
+    mate_ball_dist_px = np.hypot(mate_ball_delta_px[:, :, 0], mate_ball_delta_px[:, :, 1])
+    rival_ball_delta_px = ball_px[:, None, :2] - rivals_px[:, :, :2]
+    rival_ball_dist_px = np.hypot(rival_ball_delta_px[:, :, 0], rival_ball_delta_px[:, :, 1])
+
+    # Projected 6-tick intercept geometry
+    pred_ball_px = ball_px[:, :2] + 6.0 * ball_px[:, 2:]
+    pred_own_px = own_px[:, :2] + 6.0 * own_px[:, 2:]
+    pred_delta_px = pred_ball_px - pred_own_px
+    pred_own_dist = np.hypot(pred_delta_px[:, 0], pred_delta_px[:, 1])
+    pred_mates_px = mates_px[:, :, :2] + 6.0 * mates_px[:, :, 2:]
+    pred_mate_dist = np.hypot(pred_ball_px[:, None, 0] - pred_mates_px[:, :, 0],
+                              pred_ball_px[:, None, 1] - pred_mates_px[:, :, 1])
+
+    # Team role indicators ("voy yo" engagement & last-man anchor)
+    is_closest_to_ball = (pred_own_dist <= pred_mate_dist.min(axis=1) + 1e-3).astype(np.float32)
+    is_last_man = (own_px[:, 0] <= mates_px[:, :, 0].min(axis=1) + 1e-3).astype(np.float32)
+    min_rival_dist = rival_ball_dist_px.min(axis=1)
+    race_margin_rival = np.clip((min_rival_dist - ball_dist_px) / 200.0, -1.0, 1.0)
+
+    # Goal vectors and shot alignment
+    opp_goal_dx = (gx - own_px[:, 0]) / w
+    opp_goal_dy = (0.0 - own_px[:, 1]) / h
+    own_goal_dx = (-gx - own_px[:, 0]) / w
+    own_goal_dy = (0.0 - own_px[:, 1]) / h
+    ball_opp_goal_x = gx - ball_px[:, 0]
+    ball_opp_goal_y = 0.0 - ball_px[:, 1]
+    ball_opp_goal_norm = np.hypot(ball_opp_goal_x, ball_opp_goal_y) + 1e-6
+    shot_alignment = (
+        (ball_delta_px[:, 0] * ball_opp_goal_x + ball_delta_px[:, 1] * ball_opp_goal_y)
+        / ((ball_dist_px + 1e-6) * ball_opp_goal_norm)
+    )
+
+    if kick_cancel is None:
+        kick_armed = np.ones(batch_size, dtype=np.float32)
+    else:
+        kick_armed = (~np.asarray(kick_cancel, dtype=bool)).astype(np.float32)
+
+    own_features = np.column_stack((
+        own_px[:, 0] / w,
+        own_px[:, 1] / h,
+        own_px[:, 2] / 6.0,
+        own_px[:, 3] / 6.0,
+        ball_px[:, 0] / w,
+        ball_px[:, 1] / h,
+        ball_px[:, 2] / 6.0,
+        ball_px[:, 3] / 6.0,
+        ball_delta_px[:, 0] / w,
+        ball_delta_px[:, 1] / h,
+        ball_dist_px / sr,
+        ball_gap,
+        ball_in_reach,
+        (ball_px[:, 2] - own_px[:, 2]) / 6.0,
+        (ball_px[:, 3] - own_px[:, 3]) / 6.0,
+        pred_delta_px[:, 0] / sr,
+        pred_delta_px[:, 1] / sr,
+        opp_goal_dx,
+        opp_goal_dy,
+        own_goal_dx,
+        own_goal_dy,
+        ball_opp_goal_x / w,
+        ball_opp_goal_y / h,
+        shot_alignment,
+        is_closest_to_ball,
+        is_last_man,
+        race_margin_rival,
+        kick_armed,
+    )).astype(np.float32)
+
+    def _entity_block(ent_px: np.ndarray, ent_ball_dist: np.ndarray) -> np.ndarray:
+        rel_own_x = (ent_px[:, :, 0] - own_px[:, None, 0]) / w
+        rel_own_y = (ent_px[:, :, 1] - own_px[:, None, 1]) / h
+        vx = ent_px[:, :, 2] / 6.0
+        vy = ent_px[:, :, 3] / 6.0
+        rel_ball_x = (ent_px[:, :, 0] - ball_px[:, None, 0]) / w
+        rel_ball_y = (ent_px[:, :, 1] - ball_px[:, None, 1]) / h
+        dist_norm = ent_ball_dist / sr
+        gap = np.clip((ent_ball_dist - CONTACT_DIST) / 8.0, -1.0, 4.0)
+        in_reach = (ent_ball_dist <= EFFECTIVE_KICK_DIST).astype(np.float32)
+        ball_to_ent_x = ent_px[:, :, 0] - ball_px[:, None, 0]
+        ball_to_ent_y = ent_px[:, :, 1] - ball_px[:, None, 1]
+        ball_to_ent_norm = np.hypot(ball_to_ent_x, ball_to_ent_y) + 1e-6
+        pass_align = (
+            (ball_delta_px[:, None, 0] * ball_to_ent_x + ball_delta_px[:, None, 1] * ball_to_ent_y)
+            / ((ball_dist_px[:, None] + 1e-6) * ball_to_ent_norm)
+        )
+        return np.stack((
+            rel_own_x, rel_own_y, vx, vy, rel_ball_x, rel_ball_y,
+            dist_norm, gap, in_reach, pass_align,
+        ), axis=-1).astype(np.float32)
+
+    mate_features = _entity_block(mates_px, mate_ball_dist_px)
+    rival_features = _entity_block(rivals_px, rival_ball_dist_px)
+    return own_features, mate_features, rival_features
+
+
+class X3Data:
+    """Split shards in memory; supports uniform and near-ball tactical sampling plus Y-mirroring."""
+
+    def __init__(self, dataset: Path, split: str, *, tactical: bool = False):
         manifest_path = dataset / "manifest.json"
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        if manifest.get("dataVersion") != DATA_VERSION:
+        if manifest.get("dataVersion") not in (DATA_VERSION, TACTICAL_DATA_VERSION):
             raise ValueError(f"versión de dataset incompatible: {manifest.get('dataVersion')}")
         if manifest.get("buildStatus") != "complete":
             raise ValueError(f"el dataset aún no está completo: {manifest_path}")
+        self.tactical = bool(tactical)
         self.shards = []
+        self.near_ball_pairs = []
+        offset = 0
         for row in manifest["shards"]:
             if row["split"] != split:
                 continue
@@ -132,25 +322,60 @@ class X3Data:
                 shard = {key: archive[key] for key in archive.files}
             if len(shard["states"]) != row["ticks"] or shard["states"].shape[1:] != (7, 4):
                 raise ValueError(f"shard corrupto o incompatible: {row['file']}")
-            if str(shard.get("dataVersion", "")) != DATA_VERSION \
+            if str(shard.get("dataVersion", "")) not in (DATA_VERSION, TACTICAL_DATA_VERSION) \
                     or str(shard.get("sourceSha256", "")) != row["sourceSha256"]:
                 raise ValueError(f"metadatos de shard incompatibles: {row['file']}")
             self.shards.append(shard)
+            # Pre-index player-ticks near the ball (<= NEAR_BALL_DIST_PX) for importance sampling
+            states_f32 = shard["states"].astype(np.float32)
+            dx = states_f32[:, 1:, 0] - states_f32[:, 0:1, 0]
+            dy = states_f32[:, 1:, 1] - states_f32[:, 0:1, 1]
+            near_rows, near_slots = np.nonzero((dx * dx + dy * dy) <= NEAR_BALL_DIST_PX ** 2)
+            if len(near_rows):
+                self.near_ball_pairs.append(
+                    np.column_stack((near_rows + offset, near_slots)).astype(np.int64)
+                )
+            offset += len(shard["states"])
         if not self.shards:
             raise ValueError(f"el split {split!r} no tiene transiciones válidas en {dataset}")
         self.ends = np.cumsum([len(shard["states"]) for shard in self.shards], dtype=np.int64)
         self.ticks = int(self.ends[-1])
+        self.near_ball_index = (
+            np.concatenate(self.near_ball_pairs, axis=0)
+            if self.near_ball_pairs else np.empty((0, 2), dtype=np.int64)
+        )
         stadium = load_stadium(STADIUM)
         self.field_half_w = float(stadium.field_half_w)
         self.field_half_h = float(stadium.field_half_h)
+        self.goal_x = float(stadium.goal_x)
 
-    def batch(self, indices: np.ndarray, slots: np.ndarray) -> tuple:
+    def sample_indices(self, count: int, rng: np.random.Generator,
+                       near_ball_frac: float = 0.0) -> tuple[np.ndarray, np.ndarray]:
+        """Sample (tick_indices, player_slots) with optional near-ball importance oversampling."""
+        near_count = int(round(count * float(np.clip(near_ball_frac, 0.0, 1.0))))
+        if near_count > 0 and len(self.near_ball_index) > 0:
+            chosen = self.near_ball_index[rng.integers(0, len(self.near_ball_index), size=near_count)]
+            rem = count - near_count
+            if rem > 0:
+                uni_idx = rng.integers(0, self.ticks, size=rem)
+                uni_slots = rng.integers(0, N_PLAYERS, size=rem)
+                indices = np.concatenate((chosen[:, 0], uni_idx))
+                slots = np.concatenate((chosen[:, 1], uni_slots))
+                perm = rng.permutation(count)
+                return indices[perm], slots[perm]
+            return chosen[:, 0], chosen[:, 1]
+        return rng.integers(0, self.ticks, size=count), rng.integers(0, N_PLAYERS, size=count)
+
+    def batch(self, indices: np.ndarray, slots: np.ndarray, *,
+              tactical: bool | None = None, mirror_mask: np.ndarray | None = None,
+              use_stride_prior: bool = True) -> tuple:
         indices = np.asarray(indices, dtype=np.int64)
         slots = np.asarray(slots, dtype=np.int64)
         if indices.shape != slots.shape or np.any(indices < 0) or np.any(indices >= self.ticks):
             raise ValueError("índices de muestras fuera de rango")
         if np.any((slots < 0) | (slots >= N_PLAYERS)):
             raise ValueError("slot de jugador fuera de rango")
+        use_tactical = self.tactical if tactical is None else bool(tactical)
         shard_ids = np.searchsorted(self.ends, indices, side="right")
         starts = np.concatenate(([0], self.ends[:-1]))
         local = indices - starts[shard_ids]
@@ -168,12 +393,30 @@ class X3Data:
             actor = slots[mask]
             states[mask] = shard["states"][row]
             actions[mask] = shard["actions"][row, actor]
-            prior[mask] = shard["prior_actions"][row, actor]
-            has_prior[mask] = shard["has_prior"][row]
-            changed[mask] = shard["changed"][row, actor]
+            if use_stride_prior and "stride3_prior_actions" in shard:
+                prior[mask] = shard["stride3_prior_actions"][row, actor]
+                has_prior[mask] = shard["stride3_has_prior"][row]
+                changed[mask] = shard["stride3_changed"][row, actor]
+            else:
+                prior[mask] = shard["prior_actions"][row, actor]
+                has_prior[mask] = shard["has_prior"][row]
+                changed[mask] = shard["changed"][row, actor]
             score_diff[mask] = shard["score_diff"][row]
             elapsed[mask] = shard["time"][row]
-        observation = featurize(states, slots, score_diff, elapsed, self.field_half_w, self.field_half_h)
+        if mirror_mask is not None:
+            mirror_mask = np.asarray(mirror_mask, dtype=bool)
+            if mirror_mask.any():
+                states[mirror_mask] = mirror_states_y(states[mirror_mask])
+                actions[mirror_mask] = flip_action_y(actions[mirror_mask])
+                prior[mirror_mask] = flip_action_y(prior[mirror_mask])
+        if use_tactical:
+            observation = featurize_tactical(
+                states, slots, self.field_half_w, self.field_half_h, self.goal_x
+            )
+        else:
+            observation = featurize(
+                states, slots, score_diff, elapsed, self.field_half_w, self.field_half_h
+            )
         return observation, actions, prior, has_prior, changed
 
     def fixed_indices(self, count: int, seed: int) -> tuple[np.ndarray, np.ndarray]:
@@ -239,10 +482,14 @@ def extract_recording(name: str, audit_row: dict, index_row: dict, cache: Path) 
     states, actions, prior_actions, has_prior, changed, frames, score_diff, elapsed = (
         [] for _ in range(8)
     )
+    stride3_prior_actions, stride3_has_prior, stride3_changed = [], [], []
     previous_frame = None
     previous_actions = None
     last_observed_frame = None
     stationary_frames = np.zeros(N_PLAYERS, dtype=np.int64)
+    held_kick_outside_frames = np.zeros(N_PLAYERS, dtype=np.int64)
+    recent_by_frame: dict[int, np.ndarray] = {}
+
     for previous, current in zip(ticks, ticks[1:]):
         span = _span_for(int(previous["frame"]), spans)
         if span is None or not transition_is_valid(
@@ -257,27 +504,48 @@ def extract_recording(name: str, audit_row: dict, index_row: dict, cache: Path) 
         if roster != tuple((player["id"], player["team"]) for player in next_ordered):
             continue
         state, label = _encode_tick(previous, ordered)
-        if last_observed_frame != int(previous["frame"]) - 1:
+        frame_no = int(previous["frame"])
+        if last_observed_frame != frame_no - 1:
             stationary_frames.fill(0)
-        for player_index, player in enumerate(ordered):
+            held_kick_outside_frames.fill(0)
+            recent_by_frame.clear()
+
+        ball_xy = state[0, :2]
+        cleaned_label = label.copy()
+        for player_index in range(N_PLAYERS):
             disc = state[player_index + 1]
             no_direction = int(label[player_index] % 9) == 0
             slow = float(np.hypot(disc[2], disc[3])) < AFK_SPEED_THRESHOLD
             stationary_frames[player_index] = (
                 stationary_frames[player_index] + 1 if no_direction and slow else 0
             )
+            dist_ball = float(np.hypot(disc[0] - ball_xy[0], disc[1] - ball_xy[1]))
+            if int(label[player_index]) >= 9 and dist_ball > EFFECTIVE_KICK_DIST + 12.0:
+                held_kick_outside_frames[player_index] += 1
+                if held_kick_outside_frames[player_index] > MAX_HELD_KICK_OUTSIDE_REACH:
+                    # Strip stale held-down kick bits far from the ball so BC does not learn kick-lock
+                    cleaned_label[player_index] = int(label[player_index] % 9)
+            else:
+                held_kick_outside_frames[player_index] = 0
+
         outside = np.any(np.abs(state[1:, 0]) > target_stadium.field_half_w + AFK_OUTSIDE_MARGIN) \
             or np.any(np.abs(state[1:, 1]) > target_stadium.field_half_h + AFK_OUTSIDE_MARGIN)
         if outside or np.any(stationary_frames >= AFK_STATIONARY_FRAMES):
-            last_observed_frame = int(previous["frame"])
+            last_observed_frame = frame_no
             continue
-        contiguous = previous_frame == int(previous["frame"]) - 1
+        contiguous = previous_frame == frame_no - 1
+        stride3_prev = recent_by_frame.get(frame_no - DECISION_STRIDE)
+        has_stride3 = stride3_prev is not None
+
         states.append(state)
-        actions.append(label)
+        actions.append(cleaned_label)
         prior_actions.append(previous_actions if contiguous else np.zeros(N_PLAYERS, dtype=np.uint8))
         has_prior.append(contiguous)
-        changed.append((label != previous_actions) if contiguous else np.zeros(N_PLAYERS, dtype=bool))
-        frames.append(int(previous["frame"]))
+        changed.append((cleaned_label != previous_actions) if contiguous else np.zeros(N_PLAYERS, dtype=bool))
+        stride3_prior_actions.append(stride3_prev if has_stride3 else np.zeros(N_PLAYERS, dtype=np.uint8))
+        stride3_has_prior.append(has_stride3)
+        stride3_changed.append((cleaned_label != stride3_prev) if has_stride3 else np.zeros(N_PLAYERS, dtype=bool))
+        frames.append(frame_no)
         scores = previous.get("score")
         if scores is None or len(scores) != 2 or scores[0] is None or scores[1] is None:
             raise ValueError(f"marcador inválido en {name}, frame {previous['frame']}")
@@ -285,9 +553,12 @@ def extract_recording(name: str, audit_row: dict, index_row: dict, cache: Path) 
         if previous.get("time") is None:
             raise ValueError(f"reloj faltante en {name}, frame {previous['frame']}")
         elapsed.append(float(previous["time"]))
-        previous_frame = int(previous["frame"])
-        previous_actions = label
-        last_observed_frame = int(previous["frame"])
+        previous_frame = frame_no
+        previous_actions = cleaned_label
+        last_observed_frame = frame_no
+        recent_by_frame[frame_no] = cleaned_label
+        if len(recent_by_frame) > 8:
+            recent_by_frame.pop(min(recent_by_frame), None)
 
     if not states:
         return _empty_shard()
@@ -297,6 +568,9 @@ def extract_recording(name: str, audit_row: dict, index_row: dict, cache: Path) 
         "prior_actions": np.asarray(prior_actions, dtype=np.uint8),
         "has_prior": np.asarray(has_prior, dtype=bool),
         "changed": np.asarray(changed, dtype=bool),
+        "stride3_prior_actions": np.asarray(stride3_prior_actions, dtype=np.uint8),
+        "stride3_has_prior": np.asarray(stride3_has_prior, dtype=bool),
+        "stride3_changed": np.asarray(stride3_changed, dtype=bool),
         "frame": np.asarray(frames, dtype=np.int32),
         "score_diff": np.asarray(score_diff, dtype=np.int16),
         "time": np.asarray(elapsed, dtype=np.float32),
@@ -311,6 +585,9 @@ def _empty_shard() -> dict:
         "prior_actions": np.empty((0, N_PLAYERS), dtype=np.uint8),
         "has_prior": np.empty(0, dtype=bool),
         "changed": np.empty((0, N_PLAYERS), dtype=bool),
+        "stride3_prior_actions": np.empty((0, N_PLAYERS), dtype=np.uint8),
+        "stride3_has_prior": np.empty(0, dtype=bool),
+        "stride3_changed": np.empty((0, N_PLAYERS), dtype=bool),
         "frame": np.empty(0, dtype=np.int32),
         "score_diff": np.empty(0, dtype=np.int16),
         "time": np.empty(0, dtype=np.float32),
@@ -346,7 +623,7 @@ def _load_existing_shard(path: Path, expected_sha256: str) -> dict:
         raise ValueError(f"shard existente con dimensiones incompatibles: {path}")
     version = str(data.get("dataVersion", ""))
     source_sha = str(data.get("sourceSha256", ""))
-    if version and version != DATA_VERSION:
+    if version and version not in (DATA_VERSION, TACTICAL_DATA_VERSION):
         raise ValueError(f"shard existente de otra versión: {path}")
     if source_sha and source_sha != expected_sha256:
         raise ValueError(f"shard existente de otro replay: {path}")
@@ -393,7 +670,7 @@ def build_dataset(cache: Path, out: Path, seed: int, workers: int) -> dict:
     processed = set()
     if manifest_path.exists():
         old = json.loads(manifest_path.read_text(encoding="utf-8"))
-        if old.get("dataVersion") != DATA_VERSION or old.get("seed") != seed:
+        if old.get("dataVersion") not in (DATA_VERSION, TACTICAL_DATA_VERSION) or old.get("seed") != seed:
             raise ValueError("el directorio ya contiene un dataset de otra versión/semilla; usa otro --out")
         if old.get("split", {}).get("assignments") != splits["assignments"]:
             raise ValueError("el split cambió; usa otro --out para no mezclar shards")
@@ -421,6 +698,7 @@ def build_dataset(cache: Path, out: Path, seed: int, workers: int) -> dict:
         "split": splits,
         "filter": FILTER_CONTRACT,
         "featureContract": FEATURE_CONTRACT,
+        "tacticalFeatureContract": TACTICAL_FEATURE_CONTRACT,
         "buildStatus": "building",
         "processedRecordings": sorted(processed),
         "emptyRecordings": sorted(set(processed) - set(existing_rows)),
@@ -502,6 +780,7 @@ def refresh_manifest(cache: Path, out: Path, seed: int) -> dict:
     manifest["split"] = splits
     manifest["filter"] = FILTER_CONTRACT
     manifest["featureContract"] = FEATURE_CONTRACT
+    manifest["tacticalFeatureContract"] = TACTICAL_FEATURE_CONTRACT
     manifest["shardCount"] = len(manifest["shards"])
     manifest["buildStatus"] = "complete" if set(splits["assignments"]) <= set(
         manifest.get("processedRecordings", [])) else "building"
