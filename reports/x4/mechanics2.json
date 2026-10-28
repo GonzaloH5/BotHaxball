@@ -1,0 +1,491 @@
+{
+ "humanos": {
+  "minutos_juego_abierto": 293.2,
+  "velocidad_patada_simple_p50": 6.56,
+  "rifle": {
+   "por_min": 0.048,
+   "n": 14,
+   "velocidad_p50": 4.0,
+   "horizontal_p50": 0.715,
+   "hacia_arco_rival": 0.5,
+   "gol_3s": 0.0
+  },
+  "usar": {
+   "por_min": 3.09,
+   "n": 906,
+   "resultados": {
+    "gol": 0.001,
+    "gol_en_contra": 0.001,
+    "nada": 0.22,
+    "rebote_propio": 0.277,
+    "rival_controla": 0.328,
+    "saque_a_favor": 0.163,
+    "saque_en_contra": 0.01
+   },
+   "favorable": 0.442,
+   "rival_patea_a_favor": 0.181
+  },
+  "cuerpear": {
+   "por_min": 3.565,
+   "n": 1045,
+   "duracion_s_p50": 0.3,
+   "resultados": {
+    "apoyo": 0.198,
+    "nada": 0.22,
+    "patea": 0.333,
+    "rival": 0.192,
+    "saque_a_favor": 0.011,
+    "saque_en_contra": 0.045
+   },
+   "conserva": 0.543
+  },
+  "saques": {
+   "lateral": {
+    "por_min": 3.142,
+    "n": 921,
+    "cede": 0.084,
+    "primer_toque_propio": 0.746,
+    "conserva_3s": 0.342
+   },
+   "corner": {
+    "por_min": 0.744,
+    "n": 218,
+    "cede": 0.0,
+    "primer_toque_propio": 0.766,
+    "conserva_3s": 0.179
+   },
+   "saque_de_arco": {
+    "por_min": 0.559,
+    "n": 164,
+    "cede": 0.0,
+    "primer_toque_propio": 0.78,
+    "conserva_3s": 0.463
+   }
+  }
+ },
+ "ejemplos_humanos": {
+  "rifles": [
+   {
+    "repeticion": "SanguREC-2-10-2026-14h28m.hbr2",
+    "tiempo_repeticion": "4:41",
+    "reloj": "4:11",
+    "marcador": "1-1",
+    "equipo": "rojo",
+    "speed": 1.4289624769935552,
+    "horizontal": 0.4883263146420829,
+    "forward": true,
+    "goal": false
+   },
+   {
+    "repeticion": "SanguREC-29-9-2026-17h56m.hbr2",
+    "tiempo_repeticion": "3:52",
+    "reloj": "3:15",
+    "marcador": "2-0",
+    "equipo": "azul",
+    "speed": 8.706587610454648,
+    "horizontal": 0.561482878338871,
+    "forward": false,
+    "goal": false
+   },
+   {
+    "repeticion": "SanguREC-29-9-2026-18h12m.hbr2",
+    "tiempo_repeticion": "1:39",
+    "reloj": "1:14",
+    "marcador": "0-0",
+    "equipo": "rojo",
+    "speed": 6.125822966309001,
+    "horizontal": 0.8208529647591717,
+    "forward": false,
+    "goal": false
+   },
+   {
+    "repeticion": "SanguREC-3-10-2026-13h35m.hbr2",
+    "tiempo_repeticion": "0:59",
+    "reloj": "0:09",
+    "marcador": "0-0",
+    "equipo": "rojo",
+    "speed": 3.1967215485102267,
+    "horizontal": 0.29627228052980575,
+    "forward": false,
+    "goal": false
+   },
+   {
+    "repeticion": "SanguREC-3-10-2026-13h57m.hbr2",
+    "tiempo_repeticion": "4:24",
+    "reloj": "3:56",
+    "marcador": "1-0",
+    "equipo": "rojo",
+    "speed": 5.272888303648436,
+    "horizontal": 0.9941420716944867,
+    "forward": false,
+    "goal": false
+   },
+   {
+    "repeticion": "SanguREC-3-10-2026-16h34m.hbr2",
+    "tiempo_repeticion": "2:30",
+    "reloj": "2:03",
+    "marcador": "1-0",
+    "equipo": "azul",
+    "speed": 5.82212269708264,
+    "horizontal": 0.243966006406591,
+    "forward": true,
+    "goal": false
+   },
+   {
+    "repeticion": "SanguREC-3-10-2026-17h13m.hbr2",
+    "tiempo_repeticion": "1:05",
+    "reloj": "0:46",
+    "marcador": "1-0",
+    "equipo": "rojo",
+    "speed": 6.795994826971178,
+    "horizontal": 0.9364633547114948,
+    "forward": false,
+    "goal": false
+   },
+   {
+    "repeticion": "SanguREC-3-10-2026-18h02m.hbr2",
+    "tiempo_repeticion": "3:06",
+    "reloj": "2:53",
+    "marcador": "0-0",
+    "equipo": "azul",
+    "speed": 1.1400934047140916,
+    "horizontal": 0.6839790440837831,
+    "forward": false,
+    "goal": false
+   },
+   {
+    "repeticion": "SanguREC-5-10-2026-19h18m.hbr2",
+    "tiempo_repeticion": "2:30",
+    "reloj": "2:17",
+    "marcador": "0-0",
+    "equipo": "azul",
+    "speed": 2.5431142677672818,
+    "horizontal": 0.08953588827578167,
+    "forward": true,
+    "goal": false
+   },
+   {
+    "repeticion": "SanguREC-5-10-2026-23h54m.hbr2",
+    "tiempo_repeticion": "2:51",
+    "reloj": "1:46",
+    "marcador": "1-1",
+    "equipo": "azul",
+    "speed": 11.43476722004165,
+    "horizontal": 0.9589788701039437,
+    "forward": false,
+    "goal": false
+   }
+  ],
+  "usos": [
+   {
+    "repeticion": "SanguREC-2-10-2026-15h01m.hbr2",
+    "tiempo_repeticion": "2:57",
+    "reloj": "2:43",
+    "marcador": "0-0",
+    "equipo": "rojo",
+    "result": "rival_controla",
+    "rival_kick_favor": true
+   },
+   {
+    "repeticion": "SanguREC-29-9-2026-18h12m.hbr2",
+    "tiempo_repeticion": "2:00",
+    "reloj": "1:27",
+    "marcador": "1-0",
+    "equipo": "azul",
+    "result": "nada",
+    "rival_kick_favor": false
+   },
+   {
+    "repeticion": "SanguREC-3-10-2026-13h16m.hbr2",
+    "tiempo_repeticion": "1:28",
+    "reloj": "1:02",
+    "marcador": "0-0",
+    "equipo": "rojo",
+    "result": "saque_a_favor",
+    "rival_kick_favor": true
+   },
+   {
+    "repeticion": "SanguREC-3-10-2026-13h35m.hbr2",
+    "tiempo_repeticion": "4:43",
+    "reloj": "3:37",
+    "marcador": "2-0",
+    "equipo": "azul",
+    "result": "rebote_propio",
+    "rival_kick_favor": false
+   },
+   {
+    "repeticion": "SanguREC-3-10-2026-13h57m.hbr2",
+    "tiempo_repeticion": "1:16",
+    "reloj": "0:57",
+    "marcador": "0-0",
+    "equipo": "rojo",
+    "result": "rebote_propio",
+    "rival_kick_favor": false
+   },
+   {
+    "repeticion": "SanguREC-3-10-2026-16h41m.hbr2",
+    "tiempo_repeticion": "3:51",
+    "reloj": "3:14",
+    "marcador": "0-0",
+    "equipo": "azul",
+    "result": "nada",
+    "rival_kick_favor": false
+   },
+   {
+    "repeticion": "SanguREC-3-10-2026-17h45m.hbr2",
+    "tiempo_repeticion": "1:21",
+    "reloj": "1:02",
+    "marcador": "0-0",
+    "equipo": "rojo",
+    "result": "rebote_propio",
+    "rival_kick_favor": false
+   },
+   {
+    "repeticion": "SanguREC-3-10-2026-17h57m.hbr2",
+    "tiempo_repeticion": "2:31",
+    "reloj": "2:09",
+    "marcador": "0-1",
+    "equipo": "azul",
+    "result": "rival_controla",
+    "rival_kick_favor": false
+   },
+   {
+    "repeticion": "SanguREC-3-10-2026-18h29m.hbr2",
+    "tiempo_repeticion": "0:57",
+    "reloj": "0:37",
+    "marcador": "0-0",
+    "equipo": "azul",
+    "result": "rebote_propio",
+    "rival_kick_favor": false
+   },
+   {
+    "repeticion": "SanguREC-5-10-2026-19h41m.hbr2",
+    "tiempo_repeticion": "4:24",
+    "reloj": "4:08",
+    "marcador": "0-0",
+    "equipo": "rojo",
+    "result": "nada",
+    "rival_kick_favor": false
+   }
+  ],
+  "cuerpeos": [
+   {
+    "repeticion": "SanguREC-29-9-2026-18h19m.hbr2",
+    "tiempo_repeticion": "1:30",
+    "reloj": "0:55",
+    "marcador": "0-0",
+    "equipo": "azul",
+    "samples": 4,
+    "result": "rival"
+   },
+   {
+    "repeticion": "SanguREC-3-10-2026-12h35m.hbr2",
+    "tiempo_repeticion": "2:02",
+    "reloj": "1:11",
+    "marcador": "0-1",
+    "equipo": "azul",
+    "samples": 6,
+    "result": "patea"
+   },
+   {
+    "repeticion": "SanguREC-3-10-2026-13h52m.hbr2",
+    "tiempo_repeticion": "0:25",
+    "reloj": "0:12",
+    "marcador": "0-0",
+    "equipo": "rojo",
+    "samples": 2,
+    "result": "rival"
+   },
+   {
+    "repeticion": "SanguREC-3-10-2026-16h41m.hbr2",
+    "tiempo_repeticion": "1:44",
+    "reloj": "1:06",
+    "marcador": "0-0",
+    "equipo": "azul",
+    "samples": 18,
+    "result": "rival"
+   },
+   {
+    "repeticion": "SanguREC-3-10-2026-17h13m.hbr2",
+    "tiempo_repeticion": "4:22",
+    "reloj": "3:58",
+    "marcador": "1-1",
+    "equipo": "azul",
+    "samples": 27,
+    "result": "patea"
+   },
+   {
+    "repeticion": "SanguREC-5-10-2026-17h50m.hbr2",
+    "tiempo_repeticion": "5:23",
+    "reloj": "4:32",
+    "marcador": "0-0",
+    "equipo": "azul",
+    "samples": 4,
+    "result": "rival"
+   },
+   {
+    "repeticion": "SanguREC-5-10-2026-18h01m.hbr2",
+    "tiempo_repeticion": "3:07",
+    "reloj": "2:28",
+    "marcador": "0-2",
+    "equipo": "rojo",
+    "samples": 5,
+    "result": "patea"
+   },
+   {
+    "repeticion": "SanguREC-5-10-2026-19h04m.hbr2",
+    "tiempo_repeticion": "1:08",
+    "reloj": "0:45",
+    "marcador": "0-0",
+    "equipo": "rojo",
+    "samples": 6,
+    "result": "nada"
+   },
+   {
+    "repeticion": "SanguREC-5-10-2026-19h04m.hbr2",
+    "tiempo_repeticion": "4:26",
+    "reloj": "3:58",
+    "marcador": "0-1",
+    "equipo": "rojo",
+    "samples": 3,
+    "result": "apoyo"
+   },
+   {
+    "repeticion": "SanguREC-5-10-2026-19h18m.hbr2",
+    "tiempo_repeticion": "1:24",
+    "reloj": "1:11",
+    "marcador": "0-0",
+    "equipo": "azul",
+    "samples": 8,
+    "result": "apoyo"
+   }
+  ]
+ },
+ "bc": {
+  "minutos_juego_abierto": 82.5,
+  "velocidad_patada_simple_p50": 6.47,
+  "rifle": {
+   "por_min": 0.024,
+   "n": 2,
+   "velocidad_p50": 3.9,
+   "horizontal_p50": 0.798,
+   "hacia_arco_rival": 1.0,
+   "gol_3s": 0.0
+  },
+  "usar": {
+   "por_min": 2.424,
+   "n": 200,
+   "resultados": {
+    "gol_en_contra": 0.005,
+    "nada": 0.33,
+    "rebote_propio": 0.295,
+    "rival_controla": 0.28,
+    "saque_a_favor": 0.085,
+    "saque_en_contra": 0.005
+   },
+   "favorable": 0.38,
+   "rival_patea_a_favor": 0.16
+  },
+  "cuerpear": {
+   "por_min": 2.073,
+   "n": 171,
+   "duracion_s_p50": 0.2,
+   "resultados": {
+    "apoyo": 0.099,
+    "nada": 0.24,
+    "patea": 0.216,
+    "rival": 0.304,
+    "saque_a_favor": 0.006,
+    "saque_en_contra": 0.135
+   },
+   "conserva": 0.322
+  },
+  "saques": {
+   "lateral": {
+    "por_min": 5.369,
+    "n": 443,
+    "cede": 0.312,
+    "primer_toque_propio": 0.46,
+    "conserva_3s": 0.251
+   },
+   "corner": {
+    "por_min": 0.691,
+    "n": 57,
+    "cede": 0.0,
+    "primer_toque_propio": 0.649,
+    "conserva_3s": 0.491
+   },
+   "saque_de_arco": {
+    "por_min": 1.151,
+    "n": 95,
+    "cede": 0.0,
+    "primer_toque_propio": 0.505,
+    "conserva_3s": 0.442
+   }
+  },
+  "spec": "runs/x4_bc/final_sangu_rsone/best.pt"
+ },
+ "rl_control/best": {
+  "minutos_juego_abierto": 99.7,
+  "velocidad_patada_simple_p50": 6.79,
+  "rifle": {
+   "por_min": 0.05,
+   "n": 5,
+   "velocidad_p50": 3.04,
+   "horizontal_p50": 0.698,
+   "hacia_arco_rival": 0.0,
+   "gol_3s": 0.0
+  },
+  "usar": {
+   "por_min": 2.717,
+   "n": 271,
+   "resultados": {
+    "nada": 0.295,
+    "rebote_propio": 0.266,
+    "rival_controla": 0.277,
+    "saque_a_favor": 0.144,
+    "saque_en_contra": 0.018
+   },
+   "favorable": 0.41,
+   "rival_patea_a_favor": 0.188
+  },
+  "cuerpear": {
+   "por_min": 2.065,
+   "n": 206,
+   "duracion_s_p50": 0.2,
+   "resultados": {
+    "apoyo": 0.15,
+    "nada": 0.218,
+    "patea": 0.238,
+    "rival": 0.248,
+    "saque_a_favor": 0.015,
+    "saque_en_contra": 0.131
+   },
+   "conserva": 0.403
+  },
+  "saques": {
+   "lateral": {
+    "por_min": 6.266,
+    "n": 625,
+    "cede": 0.072,
+    "primer_toque_propio": 0.334,
+    "conserva_3s": 0.152
+   },
+   "corner": {
+    "por_min": 0.642,
+    "n": 64,
+    "cede": 0.0,
+    "primer_toque_propio": 0.516,
+    "conserva_3s": 0.328
+   },
+   "saque_de_arco": {
+    "por_min": 1.223,
+    "n": 122,
+    "cede": 0.0,
+    "primer_toque_propio": 0.516,
+    "conserva_3s": 0.418
+   }
+  },
+  "spec": "runs/x4_estilo/rl_control/best.pt"
+ }
+}

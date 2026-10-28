@@ -1,0 +1,6173 @@
+{
+  "version": "x4-coop-preflight-1",
+  "learning": false,
+  "split": "train",
+  "map": "sanguchito_rs_x4",
+  "seed": 7,
+  "envs": 16,
+  "reserved_exercise_fraction": 0.5,
+  "requested_episodes_per_baseline": 64,
+  "requested_recordings": 8,
+  "train_recordings": [
+    "SanguREC-1-10-2026-20h09m.hbr2",
+    "SanguREC-1-10-2026-20h15m.hbr2",
+    "SanguREC-1-10-2026-20h21m.hbr2",
+    "SanguREC-1-10-2026-20h35m.hbr2",
+    "SanguREC-1-10-2026-20h44m.hbr2",
+    "SanguREC-1-10-2026-20h50m.hbr2",
+    "SanguREC-1-10-2026-20h56m.hbr2",
+    "SanguREC-1-10-2026-21h02m.hbr2"
+  ],
+  "valid_source_ticks": 151193,
+  "source_ticks": 170753,
+  "records_mined": 73,
+  "latency_distribution": {
+    "values": [
+      8,
+      9,
+      10,
+      11
+    ],
+    "weights": [
+      0.25,
+      0.25,
+      0.25,
+      0.25
+    ]
+  },
+  "observation_delay_mode": "mixed",
+  "observation_fixed_delay": 10,
+  "bc": {
+    "path": "runs/x4_bc/final_sangu_rsone/best.pt",
+    "sha256": "5e512b07b05c8eb01c8eacabf14cf1b6db21002889d28dec75d286f0238497dc"
+  },
+  "original": {
+    "path": "runs/x4_estilo/rl_control/best.pt",
+    "sha256": "075e4a256321af15d06615d201b7c45a101de7398fc25b2bed46ccff90d1079e"
+  },
+  "original_n_pass": 0,
+  "original_parameters_frozen": true,
+  "runtime": {
+    "torch": "2.14.1+cu130",
+    "numpy": "2.2.6",
+    "device": "cpu",
+    "threads": 2
+  },
+  "limitations": [
+    "Etapa0 hereda vuelo, velocidad y cola humana; éxito STILL cuantifica esa herencia.",
+    "La cola se reconstruye con entradas futuras inmediatas del registro humano.",
+    "Etapa0 no tiene defensores: el baseline no mide fuerza ni cooperación en 4v4.",
+    "Los lotes pareados no estiman la mezcla temporal de entrenamiento continuo.",
+    "La validación geométrica tolera 0.1 px de solape numérico; no certifica toda la física.",
+    "macro_kicks cuenta sólo macros todavía activos; no atribuye comandos tardíos tras cancelar.",
+    "Bootstrap por ejercicio; puede repetir fuente humana. No es intervalo poblacional humano."
+  ],
+  "technical_preflight_passed": true,
+  "stages": {
+    "human_reception": {
+      "stage": 0,
+      "resets": [
+        {
+          "active_exercises": 8,
+          "reserved_exercises": 8,
+          "active_fraction": 0.5,
+          "min_player_distance_px": 77.36896913403291,
+          "min_player_gap_px": 47.36896913403291,
+          "min_ball_gap_px": 12.863915163094433,
+          "overlapping_player_pairs": 0,
+          "overlapping_ball_pairs": 0,
+          "geometry_tolerance_px": 0.1,
+          "actor_control_slots": 16,
+          "finite_observation": true,
+          "finite_critic_input": true,
+          "critic_shape": [
+            16,
+            8,
+            333
+          ],
+          "critic_expected_dimension": 333,
+          "active_delays": [
+            [
+              11,
+              11,
+              8,
+              11,
+              8,
+              9,
+              10,
+              8
+            ],
+            [
+              10,
+              9,
+              10,
+              9,
+              8,
+              8,
+              9,
+              9
+            ],
+            [
+              10,
+              10,
+              10,
+              9,
+              10,
+              11,
+              8,
+              11
+            ],
+            [
+              8,
+              8,
+              11,
+              8,
+              10,
+              11,
+              11,
+              11
+            ],
+            [
+              9,
+              8,
+              9,
+              8,
+              10,
+              9,
+              10,
+              10
+            ],
+            [
+              9,
+              10,
+              8,
+              11,
+              9,
+              9,
+              9,
+              8
+            ],
+            [
+              11,
+              11,
+              10,
+              9,
+              9,
+              9,
+              11,
+              10
+            ],
+            [
+              9,
+              11,
+              8,
+              9,
+              9,
+              11,
+              11,
+              11
+            ]
+          ]
+        },
+        {
+          "active_exercises": 8,
+          "reserved_exercises": 8,
+          "active_fraction": 0.5,
+          "min_player_distance_px": 253.65742323025276,
+          "min_player_gap_px": 223.65742323025276,
+          "min_ball_gap_px": 15.857191678473832,
+          "overlapping_player_pairs": 0,
+          "overlapping_ball_pairs": 0,
+          "geometry_tolerance_px": 0.1,
+          "actor_control_slots": 16,
+          "finite_observation": true,
+          "finite_critic_input": true,
+          "critic_shape": [
+            16,
+            8,
+            333
+          ],
+          "critic_expected_dimension": 333,
+          "active_delays": [
+            [
+              9,
+              8,
+              8,
+              10,
+              10,
+              9,
+              9,
+              9
+            ],
+            [
+              8,
+              10,
+              10,
+              9,
+              11,
+              10,
+              9,
+              8
+            ],
+            [
+              10,
+              9,
+              10,
+              9,
+              8,
+              11,
+              10,
+              8
+            ],
+            [
+              11,
+              11,
+              10,
+              10,
+              11,
+              8,
+              9,
+              10
+            ],
+            [
+              8,
+              11,
+              8,
+              10,
+              9,
+              9,
+              8,
+              8
+            ],
+            [
+              11,
+              11,
+              9,
+              11,
+              9,
+              11,
+              9,
+              8
+            ],
+            [
+              10,
+              11,
+              11,
+              11,
+              8,
+              10,
+              11,
+              9
+            ],
+            [
+              8,
+              10,
+              10,
+              11,
+              10,
+              8,
+              8,
+              8
+            ]
+          ]
+        },
+        {
+          "active_exercises": 8,
+          "reserved_exercises": 8,
+          "active_fraction": 0.5,
+          "min_player_distance_px": 201.34538908859358,
+          "min_player_gap_px": 171.34538908859358,
+          "min_ball_gap_px": 18.65446833870289,
+          "overlapping_player_pairs": 0,
+          "overlapping_ball_pairs": 0,
+          "geometry_tolerance_px": 0.1,
+          "actor_control_slots": 16,
+          "finite_observation": true,
+          "finite_critic_input": true,
+          "critic_shape": [
+            16,
+            8,
+            333
+          ],
+          "critic_expected_dimension": 333,
+          "active_delays": [
+            [
+              11,
+              9,
+              8,
+              11,
+              9,
+              9,
+              8,
+              10
+            ],
+            [
+              10,
+              11,
+              8,
+              8,
+              10,
+              9,
+              8,
+              11
+            ],
+            [
+              9,
+              11,
+              11,
+              8,
+              10,
+              9,
+              9,
+              10
+            ],
+            [
+              8,
+              11,
+              9,
+              9,
+              10,
+              8,
+              8,
+              11
+            ],
+            [
+              11,
+              8,
+              10,
+              10,
+              10,
+              11,
+              9,
+              11
+            ],
+            [
+              8,
+              9,
+              11,
+              10,
+              8,
+              10,
+              8,
+              9
+            ],
+            [
+              9,
+              9,
+              8,
+              10,
+              11,
+              8,
+              8,
+              11
+            ],
+            [
+              11,
+              9,
+              10,
+              11,
+              11,
+              9,
+              11,
+              9
+            ]
+          ]
+        },
+        {
+          "active_exercises": 8,
+          "reserved_exercises": 8,
+          "active_fraction": 0.5,
+          "min_player_distance_px": 220.12117761036725,
+          "min_player_gap_px": 190.12117761036725,
+          "min_ball_gap_px": 12.863915163094433,
+          "overlapping_player_pairs": 0,
+          "overlapping_ball_pairs": 0,
+          "geometry_tolerance_px": 0.1,
+          "actor_control_slots": 16,
+          "finite_observation": true,
+          "finite_critic_input": true,
+          "critic_shape": [
+            16,
+            8,
+            333
+          ],
+          "critic_expected_dimension": 333,
+          "active_delays": [
+            [
+              11,
+              8,
+              8,
+              9,
+              10,
+              9,
+              10,
+              10
+            ],
+            [
+              10,
+              10,
+              10,
+              11,
+              9,
+              9,
+              9,
+              9
+            ],
+            [
+              10,
+              10,
+              10,
+              11,
+              10,
+              10,
+              10,
+              11
+            ],
+            [
+              8,
+              11,
+              11,
+              10,
+              9,
+              9,
+              11,
+              11
+            ],
+            [
+              10,
+              9,
+              9,
+              9,
+              11,
+              9,
+              11,
+              9
+            ],
+            [
+              9,
+              9,
+              9,
+              8,
+              11,
+              9,
+              8,
+              11
+            ],
+            [
+              8,
+              11,
+              10,
+              10,
+              9,
+              8,
+              10,
+              11
+            ],
+            [
+              9,
+              9,
+              11,
+              10,
+              8,
+              8,
+              9,
+              10
+            ]
+          ]
+        }
+      ],
+      "finite": true,
+      "active_exercises": 32,
+      "overlapping_player_pairs": 0,
+      "overlapping_ball_pairs": 0
+    },
+    "pass_and_retain": {
+      "stage": 1,
+      "resets": [
+        {
+          "active_exercises": 8,
+          "reserved_exercises": 8,
+          "active_fraction": 0.5,
+          "min_player_distance_px": 231.23438591738497,
+          "min_player_gap_px": 201.23438591738497,
+          "min_ball_gap_px": -3.437631053770929e-05,
+          "overlapping_player_pairs": 0,
+          "overlapping_ball_pairs": 0,
+          "geometry_tolerance_px": 0.1,
+          "actor_control_slots": 16,
+          "finite_observation": true,
+          "finite_critic_input": true,
+          "critic_shape": [
+            16,
+            8,
+            333
+          ],
+          "critic_expected_dimension": 333,
+          "active_delays": [
+            [
+              11,
+              11,
+              8,
+              11,
+              8,
+              9,
+              10,
+              8
+            ],
+            [
+              10,
+              9,
+              10,
+              9,
+              8,
+              8,
+              9,
+              9
+            ],
+            [
+              10,
+              10,
+              10,
+              9,
+              10,
+              11,
+              8,
+              11
+            ],
+            [
+              8,
+              8,
+              11,
+              8,
+              10,
+              11,
+              11,
+              11
+            ],
+            [
+              9,
+              8,
+              9,
+              8,
+              10,
+              9,
+              10,
+              10
+            ],
+            [
+              9,
+              10,
+              8,
+              11,
+              9,
+              9,
+              9,
+              8
+            ],
+            [
+              11,
+              11,
+              10,
+              9,
+              9,
+              9,
+              11,
+              10
+            ],
+            [
+              9,
+              11,
+              8,
+              9,
+              9,
+              11,
+              11,
+              11
+            ]
+          ]
+        },
+        {
+          "active_exercises": 8,
+          "reserved_exercises": 8,
+          "active_fraction": 0.5,
+          "min_player_distance_px": 207.39983159476816,
+          "min_player_gap_px": 177.39983159476816,
+          "min_ball_gap_px": 5.8075206727181694e-05,
+          "overlapping_player_pairs": 0,
+          "overlapping_ball_pairs": 0,
+          "geometry_tolerance_px": 0.1,
+          "actor_control_slots": 16,
+          "finite_observation": true,
+          "finite_critic_input": true,
+          "critic_shape": [
+            16,
+            8,
+            333
+          ],
+          "critic_expected_dimension": 333,
+          "active_delays": [
+            [
+              9,
+              8,
+              8,
+              10,
+              10,
+              9,
+              9,
+              9
+            ],
+            [
+              8,
+              10,
+              10,
+              9,
+              11,
+              10,
+              9,
+              8
+            ],
+            [
+              10,
+              9,
+              10,
+              9,
+              8,
+              11,
+              10,
+              8
+            ],
+            [
+              11,
+              11,
+              10,
+              10,
+              11,
+              8,
+              9,
+              10
+            ],
+            [
+              8,
+              11,
+              8,
+              10,
+              9,
+              9,
+              8,
+              8
+            ],
+            [
+              11,
+              11,
+              9,
+              11,
+              9,
+              11,
+              9,
+              8
+            ],
+            [
+              10,
+              11,
+              11,
+              11,
+              8,
+              10,
+              11,
+              9
+            ],
+            [
+              8,
+              10,
+              10,
+              11,
+              10,
+              8,
+              8,
+              8
+            ]
+          ]
+        },
+        {
+          "active_exercises": 8,
+          "reserved_exercises": 8,
+          "active_fraction": 0.5,
+          "min_player_distance_px": 233.9455195520398,
+          "min_player_gap_px": 203.9455195520398,
+          "min_ball_gap_px": -6.541016155026114e-05,
+          "overlapping_player_pairs": 0,
+          "overlapping_ball_pairs": 0,
+          "geometry_tolerance_px": 0.1,
+          "actor_control_slots": 16,
+          "finite_observation": true,
+          "finite_critic_input": true,
+          "critic_shape": [
+            16,
+            8,
+            333
+          ],
+          "critic_expected_dimension": 333,
+          "active_delays": [
+            [
+              11,
+              9,
+              8,
+              11,
+              9,
+              9,
+              8,
+              10
+            ],
+            [
+              10,
+              11,
+              8,
+              8,
+              10,
+              9,
+              8,
+              11
+            ],
+            [
+              9,
+              11,
+              11,
+              8,
+              10,
+              9,
+              9,
+              10
+            ],
+            [
+              8,
+              11,
+              9,
+              9,
+              10,
+              8,
+              8,
+              11
+            ],
+            [
+              11,
+              8,
+              10,
+              10,
+              10,
+              11,
+              9,
+              11
+            ],
+            [
+              8,
+              9,
+              11,
+              10,
+              8,
+              10,
+              8,
+              9
+            ],
+            [
+              9,
+              9,
+              8,
+              10,
+              11,
+              8,
+              8,
+              11
+            ],
+            [
+              11,
+              9,
+              10,
+              11,
+              11,
+              9,
+              11,
+              9
+            ]
+          ]
+        },
+        {
+          "active_exercises": 8,
+          "reserved_exercises": 8,
+          "active_fraction": 0.5,
+          "min_player_distance_px": 123.65419967456424,
+          "min_player_gap_px": 93.65419967456424,
+          "min_ball_gap_px": 6.969289394476164e-07,
+          "overlapping_player_pairs": 0,
+          "overlapping_ball_pairs": 0,
+          "geometry_tolerance_px": 0.1,
+          "actor_control_slots": 16,
+          "finite_observation": true,
+          "finite_critic_input": true,
+          "critic_shape": [
+            16,
+            8,
+            333
+          ],
+          "critic_expected_dimension": 333,
+          "active_delays": [
+            [
+              11,
+              8,
+              8,
+              9,
+              10,
+              9,
+              10,
+              10
+            ],
+            [
+              10,
+              10,
+              10,
+              11,
+              9,
+              9,
+              9,
+              9
+            ],
+            [
+              10,
+              10,
+              10,
+              11,
+              10,
+              10,
+              10,
+              11
+            ],
+            [
+              8,
+              11,
+              11,
+              10,
+              9,
+              9,
+              11,
+              11
+            ],
+            [
+              10,
+              9,
+              9,
+              9,
+              11,
+              9,
+              11,
+              9
+            ],
+            [
+              9,
+              9,
+              9,
+              8,
+              11,
+              9,
+              8,
+              11
+            ],
+            [
+              8,
+              11,
+              10,
+              10,
+              9,
+              8,
+              10,
+              11
+            ],
+            [
+              9,
+              9,
+              11,
+              10,
+              8,
+              8,
+              9,
+              10
+            ]
+          ]
+        }
+      ],
+      "finite": true,
+      "active_exercises": 32,
+      "overlapping_player_pairs": 0,
+      "overlapping_ball_pairs": 0
+    },
+    "escape_pressure": {
+      "stage": 2,
+      "resets": [
+        {
+          "active_exercises": 8,
+          "reserved_exercises": 8,
+          "active_fraction": 0.5,
+          "min_player_distance_px": 29.99993406263462,
+          "min_player_gap_px": -6.593736538107464e-05,
+          "min_ball_gap_px": -4.6037747104321625e-05,
+          "overlapping_player_pairs": 0,
+          "overlapping_ball_pairs": 0,
+          "geometry_tolerance_px": 0.1,
+          "actor_control_slots": 20,
+          "finite_observation": true,
+          "finite_critic_input": true,
+          "critic_shape": [
+            16,
+            8,
+            333
+          ],
+          "critic_expected_dimension": 333,
+          "active_delays": [
+            [
+              11,
+              11,
+              8,
+              11,
+              8,
+              9,
+              10,
+              8
+            ],
+            [
+              10,
+              9,
+              10,
+              9,
+              8,
+              8,
+              9,
+              9
+            ],
+            [
+              10,
+              10,
+              10,
+              9,
+              10,
+              11,
+              8,
+              11
+            ],
+            [
+              8,
+              8,
+              11,
+              8,
+              10,
+              11,
+              11,
+              11
+            ],
+            [
+              9,
+              8,
+              9,
+              8,
+              10,
+              9,
+              10,
+              10
+            ],
+            [
+              9,
+              10,
+              8,
+              11,
+              9,
+              9,
+              9,
+              8
+            ],
+            [
+              11,
+              11,
+              10,
+              9,
+              9,
+              9,
+              11,
+              10
+            ],
+            [
+              9,
+              11,
+              8,
+              9,
+              9,
+              11,
+              11,
+              11
+            ]
+          ]
+        },
+        {
+          "active_exercises": 8,
+          "reserved_exercises": 8,
+          "active_fraction": 0.5,
+          "min_player_distance_px": 32.89474308166767,
+          "min_player_gap_px": 2.89474308166767,
+          "min_ball_gap_px": -5.058746199182451e-05,
+          "overlapping_player_pairs": 0,
+          "overlapping_ball_pairs": 0,
+          "geometry_tolerance_px": 0.1,
+          "actor_control_slots": 19,
+          "finite_observation": true,
+          "finite_critic_input": true,
+          "critic_shape": [
+            16,
+            8,
+            333
+          ],
+          "critic_expected_dimension": 333,
+          "active_delays": [
+            [
+              9,
+              8,
+              8,
+              10,
+              10,
+              9,
+              9,
+              9
+            ],
+            [
+              8,
+              10,
+              10,
+              9,
+              11,
+              10,
+              9,
+              8
+            ],
+            [
+              10,
+              9,
+              10,
+              9,
+              8,
+              11,
+              10,
+              8
+            ],
+            [
+              11,
+              11,
+              10,
+              10,
+              11,
+              8,
+              9,
+              10
+            ],
+            [
+              8,
+              11,
+              8,
+              10,
+              9,
+              9,
+              8,
+              8
+            ],
+            [
+              11,
+              11,
+              9,
+              11,
+              9,
+              11,
+              9,
+              8
+            ],
+            [
+              10,
+              11,
+              11,
+              11,
+              8,
+              10,
+              11,
+              9
+            ],
+            [
+              8,
+              10,
+              10,
+              11,
+              10,
+              8,
+              8,
+              8
+            ]
+          ]
+        },
+        {
+          "active_exercises": 8,
+          "reserved_exercises": 8,
+          "active_fraction": 0.5,
+          "min_player_distance_px": 30.000022006043274,
+          "min_player_gap_px": 2.200604327384781e-05,
+          "min_ball_gap_px": -1.1300030902106073e-05,
+          "overlapping_player_pairs": 0,
+          "overlapping_ball_pairs": 0,
+          "geometry_tolerance_px": 0.1,
+          "actor_control_slots": 19,
+          "finite_observation": true,
+          "finite_critic_input": true,
+          "critic_shape": [
+            16,
+            8,
+            333
+          ],
+          "critic_expected_dimension": 333,
+          "active_delays": [
+            [
+              11,
+              9,
+              8,
+              11,
+              9,
+              9,
+              8,
+              10
+            ],
+            [
+              10,
+              11,
+              8,
+              8,
+              10,
+              9,
+              8,
+              11
+            ],
+            [
+              9,
+              11,
+              11,
+              8,
+              10,
+              9,
+              9,
+              10
+            ],
+            [
+              8,
+              11,
+              9,
+              9,
+              10,
+              8,
+              8,
+              11
+            ],
+            [
+              11,
+              8,
+              10,
+              10,
+              10,
+              11,
+              9,
+              11
+            ],
+            [
+              8,
+              9,
+              11,
+              10,
+              8,
+              10,
+              8,
+              9
+            ],
+            [
+              9,
+              9,
+              8,
+              10,
+              11,
+              8,
+              8,
+              11
+            ],
+            [
+              11,
+              9,
+              10,
+              11,
+              11,
+              9,
+              11,
+              9
+            ]
+          ]
+        },
+        {
+          "active_exercises": 8,
+          "reserved_exercises": 8,
+          "active_fraction": 0.5,
+          "min_player_distance_px": 48.2564428134261,
+          "min_player_gap_px": 18.256442813426098,
+          "min_ball_gap_px": -1.0341715242390137e-05,
+          "overlapping_player_pairs": 0,
+          "overlapping_ball_pairs": 0,
+          "geometry_tolerance_px": 0.1,
+          "actor_control_slots": 19,
+          "finite_observation": true,
+          "finite_critic_input": true,
+          "critic_shape": [
+            16,
+            8,
+            333
+          ],
+          "critic_expected_dimension": 333,
+          "active_delays": [
+            [
+              11,
+              8,
+              8,
+              9,
+              10,
+              9,
+              10,
+              10
+            ],
+            [
+              10,
+              10,
+              10,
+              11,
+              9,
+              9,
+              9,
+              9
+            ],
+            [
+              10,
+              10,
+              10,
+              11,
+              10,
+              10,
+              10,
+              11
+            ],
+            [
+              8,
+              11,
+              11,
+              10,
+              9,
+              9,
+              11,
+              11
+            ],
+            [
+              10,
+              9,
+              9,
+              9,
+              11,
+              9,
+              11,
+              9
+            ],
+            [
+              9,
+              9,
+              9,
+              8,
+              11,
+              9,
+              8,
+              11
+            ],
+            [
+              8,
+              11,
+              10,
+              10,
+              9,
+              8,
+              10,
+              11
+            ],
+            [
+              9,
+              9,
+              11,
+              10,
+              8,
+              8,
+              9,
+              10
+            ]
+          ]
+        }
+      ],
+      "finite": true,
+      "active_exercises": 32,
+      "overlapping_player_pairs": 0,
+      "overlapping_ball_pairs": 0
+    },
+    "finish_advantage": {
+      "stage": 3,
+      "resets": [
+        {
+          "active_exercises": 8,
+          "reserved_exercises": 8,
+          "active_fraction": 0.5,
+          "min_player_distance_px": 30.000041596562635,
+          "min_player_gap_px": 4.15965626352488e-05,
+          "min_ball_gap_px": -3.437631053770929e-05,
+          "overlapping_player_pairs": 0,
+          "overlapping_ball_pairs": 0,
+          "geometry_tolerance_px": 0.1,
+          "actor_control_slots": 24,
+          "finite_observation": true,
+          "finite_critic_input": true,
+          "critic_shape": [
+            16,
+            8,
+            333
+          ],
+          "critic_expected_dimension": 333,
+          "active_delays": [
+            [
+              11,
+              11,
+              8,
+              11,
+              8,
+              9,
+              10,
+              8
+            ],
+            [
+              10,
+              9,
+              10,
+              9,
+              8,
+              8,
+              9,
+              9
+            ],
+            [
+              10,
+              10,
+              10,
+              9,
+              10,
+              11,
+              8,
+              11
+            ],
+            [
+              8,
+              8,
+              11,
+              8,
+              10,
+              11,
+              11,
+              11
+            ],
+            [
+              9,
+              8,
+              9,
+              8,
+              10,
+              9,
+              10,
+              10
+            ],
+            [
+              9,
+              10,
+              8,
+              11,
+              9,
+              9,
+              9,
+              8
+            ],
+            [
+              11,
+              11,
+              10,
+              9,
+              9,
+              9,
+              11,
+              10
+            ],
+            [
+              9,
+              11,
+              8,
+              9,
+              9,
+              11,
+              11,
+              11
+            ]
+          ]
+        },
+        {
+          "active_exercises": 8,
+          "reserved_exercises": 8,
+          "active_fraction": 0.5,
+          "min_player_distance_px": 30.09494484054784,
+          "min_player_gap_px": 0.09494484054783925,
+          "min_ball_gap_px": 5.8075206727181694e-05,
+          "overlapping_player_pairs": 0,
+          "overlapping_ball_pairs": 0,
+          "geometry_tolerance_px": 0.1,
+          "actor_control_slots": 24,
+          "finite_observation": true,
+          "finite_critic_input": true,
+          "critic_shape": [
+            16,
+            8,
+            333
+          ],
+          "critic_expected_dimension": 333,
+          "active_delays": [
+            [
+              9,
+              8,
+              8,
+              10,
+              10,
+              9,
+              9,
+              9
+            ],
+            [
+              8,
+              10,
+              10,
+              9,
+              11,
+              10,
+              9,
+              8
+            ],
+            [
+              10,
+              9,
+              10,
+              9,
+              8,
+              11,
+              10,
+              8
+            ],
+            [
+              11,
+              11,
+              10,
+              10,
+              11,
+              8,
+              9,
+              10
+            ],
+            [
+              8,
+              11,
+              8,
+              10,
+              9,
+              9,
+              8,
+              8
+            ],
+            [
+              11,
+              11,
+              9,
+              11,
+              9,
+              11,
+              9,
+              8
+            ],
+            [
+              10,
+              11,
+              11,
+              11,
+              8,
+              10,
+              11,
+              9
+            ],
+            [
+              8,
+              10,
+              10,
+              11,
+              10,
+              8,
+              8,
+              8
+            ]
+          ]
+        },
+        {
+          "active_exercises": 8,
+          "reserved_exercises": 8,
+          "active_fraction": 0.5,
+          "min_player_distance_px": 29.9999557763633,
+          "min_player_gap_px": -4.4223636699314284e-05,
+          "min_ball_gap_px": -6.541016155026114e-05,
+          "overlapping_player_pairs": 0,
+          "overlapping_ball_pairs": 0,
+          "geometry_tolerance_px": 0.1,
+          "actor_control_slots": 24,
+          "finite_observation": true,
+          "finite_critic_input": true,
+          "critic_shape": [
+            16,
+            8,
+            333
+          ],
+          "critic_expected_dimension": 333,
+          "active_delays": [
+            [
+              11,
+              9,
+              8,
+              11,
+              9,
+              9,
+              8,
+              10
+            ],
+            [
+              10,
+              11,
+              8,
+              8,
+              10,
+              9,
+              8,
+              11
+            ],
+            [
+              9,
+              11,
+              11,
+              8,
+              10,
+              9,
+              9,
+              10
+            ],
+            [
+              8,
+              11,
+              9,
+              9,
+              10,
+              8,
+              8,
+              11
+            ],
+            [
+              11,
+              8,
+              10,
+              10,
+              10,
+              11,
+              9,
+              11
+            ],
+            [
+              8,
+              9,
+              11,
+              10,
+              8,
+              10,
+              8,
+              9
+            ],
+            [
+              9,
+              9,
+              8,
+              10,
+              11,
+              8,
+              8,
+              11
+            ],
+            [
+              11,
+              9,
+              10,
+              11,
+              11,
+              9,
+              11,
+              9
+            ]
+          ]
+        },
+        {
+          "active_exercises": 8,
+          "reserved_exercises": 8,
+          "active_fraction": 0.5,
+          "min_player_distance_px": 43.20423276288999,
+          "min_player_gap_px": 13.204232762889987,
+          "min_ball_gap_px": 6.969289394476164e-07,
+          "overlapping_player_pairs": 0,
+          "overlapping_ball_pairs": 0,
+          "geometry_tolerance_px": 0.1,
+          "actor_control_slots": 24,
+          "finite_observation": true,
+          "finite_critic_input": true,
+          "critic_shape": [
+            16,
+            8,
+            333
+          ],
+          "critic_expected_dimension": 333,
+          "active_delays": [
+            [
+              11,
+              8,
+              8,
+              9,
+              10,
+              9,
+              10,
+              10
+            ],
+            [
+              10,
+              10,
+              10,
+              11,
+              9,
+              9,
+              9,
+              9
+            ],
+            [
+              10,
+              10,
+              10,
+              11,
+              10,
+              10,
+              10,
+              11
+            ],
+            [
+              8,
+              11,
+              11,
+              10,
+              9,
+              9,
+              11,
+              11
+            ],
+            [
+              10,
+              9,
+              9,
+              9,
+              11,
+              9,
+              11,
+              9
+            ],
+            [
+              9,
+              9,
+              9,
+              8,
+              11,
+              9,
+              8,
+              11
+            ],
+            [
+              8,
+              11,
+              10,
+              10,
+              9,
+              8,
+              10,
+              11
+            ],
+            [
+              9,
+              9,
+              11,
+              10,
+              8,
+              8,
+              9,
+              10
+            ]
+          ]
+        }
+      ],
+      "finite": true,
+      "active_exercises": 32,
+      "overlapping_player_pairs": 0,
+      "overlapping_ball_pairs": 0
+    },
+    "transfer_4v4": {
+      "stage": 4,
+      "resets": [
+        {
+          "active_exercises": 2,
+          "reserved_exercises": 2,
+          "active_fraction": 0.125,
+          "min_player_distance_px": 30.129919517304973,
+          "min_player_gap_px": 0.1299195173049732,
+          "min_ball_gap_px": -3.437631053770929e-05,
+          "overlapping_player_pairs": 0,
+          "overlapping_ball_pairs": 0,
+          "geometry_tolerance_px": 0.1,
+          "actor_control_slots": 6,
+          "finite_observation": true,
+          "finite_critic_input": true,
+          "critic_shape": [
+            16,
+            8,
+            333
+          ],
+          "critic_expected_dimension": 333,
+          "active_delays": [
+            [
+              10,
+              10,
+              10,
+              9,
+              10,
+              11,
+              8,
+              11
+            ],
+            [
+              9,
+              11,
+              8,
+              9,
+              9,
+              11,
+              11,
+              11
+            ]
+          ]
+        },
+        {
+          "active_exercises": 2,
+          "reserved_exercises": 2,
+          "active_fraction": 0.125,
+          "min_player_distance_px": 32.89474308166767,
+          "min_player_gap_px": 2.89474308166767,
+          "min_ball_gap_px": 3.639164201802764,
+          "overlapping_player_pairs": 0,
+          "overlapping_ball_pairs": 0,
+          "geometry_tolerance_px": 0.1,
+          "actor_control_slots": 6,
+          "finite_observation": true,
+          "finite_critic_input": true,
+          "critic_shape": [
+            16,
+            8,
+            333
+          ],
+          "critic_expected_dimension": 333,
+          "active_delays": [
+            [
+              9,
+              8,
+              8,
+              10,
+              10,
+              9,
+              9,
+              9
+            ],
+            [
+              10,
+              9,
+              10,
+              9,
+              8,
+              11,
+              10,
+              8
+            ]
+          ]
+        },
+        {
+          "active_exercises": 2,
+          "reserved_exercises": 2,
+          "active_fraction": 0.125,
+          "min_player_distance_px": 85.2817672247203,
+          "min_player_gap_px": 55.2817672247203,
+          "min_ball_gap_px": 0.34043041491740667,
+          "overlapping_player_pairs": 0,
+          "overlapping_ball_pairs": 0,
+          "geometry_tolerance_px": 0.1,
+          "actor_control_slots": 6,
+          "finite_observation": true,
+          "finite_critic_input": true,
+          "critic_shape": [
+            16,
+            8,
+            333
+          ],
+          "critic_expected_dimension": 333,
+          "active_delays": [
+            [
+              9,
+              11,
+              11,
+              8,
+              10,
+              9,
+              9,
+              10
+            ],
+            [
+              9,
+              9,
+              8,
+              10,
+              11,
+              8,
+              8,
+              11
+            ]
+          ]
+        },
+        {
+          "active_exercises": 2,
+          "reserved_exercises": 2,
+          "active_fraction": 0.125,
+          "min_player_distance_px": 53.617286865089014,
+          "min_player_gap_px": 23.617286865089014,
+          "min_ball_gap_px": 5.690779225275833e-05,
+          "overlapping_player_pairs": 0,
+          "overlapping_ball_pairs": 0,
+          "geometry_tolerance_px": 0.1,
+          "actor_control_slots": 6,
+          "finite_observation": true,
+          "finite_critic_input": true,
+          "critic_shape": [
+            16,
+            8,
+            333
+          ],
+          "critic_expected_dimension": 333,
+          "active_delays": [
+            [
+              11,
+              8,
+              8,
+              9,
+              10,
+              9,
+              10,
+              10
+            ],
+            [
+              10,
+              9,
+              9,
+              9,
+              11,
+              9,
+              11,
+              9
+            ]
+          ]
+        }
+      ],
+      "finite": true,
+      "active_exercises": 8,
+      "overlapping_player_pairs": 0,
+      "overlapping_ball_pairs": 0
+    }
+  },
+  "baseline_stage0": {
+    "still": {
+      "episodes": 64,
+      "successes": 0,
+      "success_rate": 0.0,
+      "received": 45,
+      "reception_rate": 0.703125,
+      "control_survival_after_reception": 0.0,
+      "duration_seconds_mean": 10.409895833333334,
+      "unfinished": 0,
+      "exercise_fraction_of_live_decisions": 0.4337565104166667,
+      "controlled_ball_fraction": 0.04870544090056285,
+      "actor_control_slot_samples": 26650,
+      "actor_forward_samples": 0,
+      "live_exercise_decisions": 13325,
+      "all_row_decisions": 30720,
+      "controlled_ball_decisions": 649,
+      "macro_starts": 0,
+      "macro_busy_samples": 0,
+      "macro_kicks": 0,
+      "human_receptions": 45,
+      "receptions_before_new_commands": 0,
+      "policy_passes": 0,
+      "finite_observation": true,
+      "finite_critic_input": true,
+      "curriculum_rewards_zero_sum": true,
+      "state_results": [
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 1,
+          "row": 4,
+          "scenario_seed": 1007
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 0,
+          "row": 5,
+          "scenario_seed": 1007
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 1,
+          "row": 6,
+          "scenario_seed": 1007
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 0,
+          "row": 7,
+          "scenario_seed": 1007
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 146,
+          "retained_ticks": 0,
+          "goal": 1,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 1,
+          "row": 10,
+          "scenario_seed": 1007
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 1,
+          "row": 12,
+          "scenario_seed": 1007
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 0,
+          "row": 13,
+          "scenario_seed": 1007
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 1,
+          "row": 14,
+          "scenario_seed": 1007
+        },
+        {
+          "success": false,
+          "received": false,
+          "duration_ticks": 33,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": true,
+          "timeout": false,
+          "attacking_team": 0,
+          "row": 0,
+          "scenario_seed": 1008
+        },
+        {
+          "success": false,
+          "received": false,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 0,
+          "row": 2,
+          "scenario_seed": 1008
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 0,
+          "row": 3,
+          "scenario_seed": 1008
+        },
+        {
+          "success": false,
+          "received": false,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 0,
+          "row": 6,
+          "scenario_seed": 1008
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 0,
+          "row": 7,
+          "scenario_seed": 1008
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 1,
+          "row": 10,
+          "scenario_seed": 1008
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 1,
+          "row": 12,
+          "scenario_seed": 1008
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 1,
+          "row": 15,
+          "scenario_seed": 1008
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 0,
+          "row": 0,
+          "scenario_seed": 1009
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 0,
+          "row": 2,
+          "scenario_seed": 1009
+        },
+        {
+          "success": false,
+          "received": false,
+          "duration_ticks": 330,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": true,
+          "timeout": false,
+          "attacking_team": 0,
+          "row": 3,
+          "scenario_seed": 1009
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 0,
+          "row": 7,
+          "scenario_seed": 1009
+        },
+        {
+          "success": false,
+          "received": false,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 1,
+          "row": 8,
+          "scenario_seed": 1009
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 0,
+          "row": 10,
+          "scenario_seed": 1009
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 1,
+          "row": 12,
+          "scenario_seed": 1009
+        },
+        {
+          "success": false,
+          "received": false,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 0,
+          "row": 13,
+          "scenario_seed": 1009
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 114,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": true,
+          "timeout": false,
+          "attacking_team": 1,
+          "row": 0,
+          "scenario_seed": 1010
+        },
+        {
+          "success": false,
+          "received": false,
+          "duration_ticks": 150,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": true,
+          "timeout": false,
+          "attacking_team": 0,
+          "row": 4,
+          "scenario_seed": 1010
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 0,
+          "row": 7,
+          "scenario_seed": 1010
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 0,
+          "row": 9,
+          "scenario_seed": 1010
+        },
+        {
+          "success": false,
+          "received": false,
+          "duration_ticks": 141,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": true,
+          "timeout": false,
+          "attacking_team": 1,
+          "row": 10,
+          "scenario_seed": 1010
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 1,
+          "row": 11,
+          "scenario_seed": 1010
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 0,
+          "row": 13,
+          "scenario_seed": 1010
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 1,
+          "row": 15,
+          "scenario_seed": 1010
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 0,
+          "row": 1,
+          "scenario_seed": 1011
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 1,
+          "row": 2,
+          "scenario_seed": 1011
+        },
+        {
+          "success": false,
+          "received": false,
+          "duration_ticks": 330,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": true,
+          "timeout": false,
+          "attacking_team": 0,
+          "row": 3,
+          "scenario_seed": 1011
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 0,
+          "row": 6,
+          "scenario_seed": 1011
+        },
+        {
+          "success": false,
+          "received": false,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 1,
+          "row": 8,
+          "scenario_seed": 1011
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 0,
+          "row": 10,
+          "scenario_seed": 1011
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 1,
+          "row": 11,
+          "scenario_seed": 1011
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 0,
+          "row": 13,
+          "scenario_seed": 1011
+        },
+        {
+          "success": false,
+          "received": false,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 0,
+          "row": 4,
+          "scenario_seed": 1012
+        },
+        {
+          "success": false,
+          "received": false,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 0,
+          "row": 6,
+          "scenario_seed": 1012
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 0,
+          "row": 8,
+          "scenario_seed": 1012
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 0,
+          "row": 9,
+          "scenario_seed": 1012
+        },
+        {
+          "success": false,
+          "received": false,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 1,
+          "row": 11,
+          "scenario_seed": 1012
+        },
+        {
+          "success": false,
+          "received": false,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 0,
+          "row": 12,
+          "scenario_seed": 1012
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 0,
+          "row": 13,
+          "scenario_seed": 1012
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 1,
+          "row": 15,
+          "scenario_seed": 1012
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 1,
+          "row": 2,
+          "scenario_seed": 1013
+        },
+        {
+          "success": false,
+          "received": false,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 1,
+          "row": 3,
+          "scenario_seed": 1013
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 0,
+          "row": 4,
+          "scenario_seed": 1013
+        },
+        {
+          "success": false,
+          "received": false,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 1,
+          "row": 5,
+          "scenario_seed": 1013
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 69,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": true,
+          "timeout": false,
+          "attacking_team": 0,
+          "row": 11,
+          "scenario_seed": 1013
+        },
+        {
+          "success": false,
+          "received": false,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 1,
+          "row": 12,
+          "scenario_seed": 1013
+        },
+        {
+          "success": false,
+          "received": false,
+          "duration_ticks": 150,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": true,
+          "timeout": false,
+          "attacking_team": 0,
+          "row": 14,
+          "scenario_seed": 1013
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 126,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": true,
+          "timeout": false,
+          "attacking_team": 0,
+          "row": 15,
+          "scenario_seed": 1013
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 1,
+          "row": 0,
+          "scenario_seed": 1014
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 225,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": true,
+          "timeout": false,
+          "attacking_team": 0,
+          "row": 2,
+          "scenario_seed": 1014
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 0,
+          "row": 6,
+          "scenario_seed": 1014
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 0,
+          "row": 7,
+          "scenario_seed": 1014
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 1,
+          "row": 8,
+          "scenario_seed": 1014
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 1,
+          "row": 12,
+          "scenario_seed": 1014
+        },
+        {
+          "success": false,
+          "received": false,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 1,
+          "row": 14,
+          "scenario_seed": 1014
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 0,
+          "row": 15,
+          "scenario_seed": 1014
+        }
+      ]
+    },
+    "original": {
+      "episodes": 64,
+      "successes": 29,
+      "success_rate": 0.453125,
+      "received": 63,
+      "reception_rate": 0.984375,
+      "control_survival_after_reception": 0.4603174603174603,
+      "duration_seconds_mean": 5.1578125,
+      "unfinished": 0,
+      "exercise_fraction_of_live_decisions": 0.24524940617577198,
+      "controlled_ball_fraction": 0.41404358353510895,
+      "actor_control_slot_samples": 13216,
+      "actor_forward_samples": 13216,
+      "live_exercise_decisions": 6608,
+      "all_row_decisions": 26944,
+      "controlled_ball_decisions": 2736,
+      "macro_starts": 0,
+      "macro_busy_samples": 0,
+      "macro_kicks": 0,
+      "human_receptions": 63,
+      "receptions_before_new_commands": 1,
+      "policy_passes": 0,
+      "finite_observation": true,
+      "finite_critic_input": true,
+      "curriculum_rewards_zero_sum": true,
+      "state_results": [
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 396,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": true,
+          "timeout": false,
+          "attacking_team": 1,
+          "row": 4,
+          "scenario_seed": 1007
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 549,
+          "retained_ticks": 45,
+          "goal": 1,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 0,
+          "row": 5,
+          "scenario_seed": 1007
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 147,
+          "retained_ticks": 96,
+          "goal": 0,
+          "out": true,
+          "timeout": false,
+          "attacking_team": 1,
+          "row": 6,
+          "scenario_seed": 1007
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 310,
+          "retained_ticks": 0,
+          "goal": 1,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 0,
+          "row": 7,
+          "scenario_seed": 1007
+        },
+        {
+          "success": true,
+          "received": true,
+          "duration_ticks": 138,
+          "retained_ticks": 120,
+          "goal": 0,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 1,
+          "row": 10,
+          "scenario_seed": 1007
+        },
+        {
+          "success": true,
+          "received": true,
+          "duration_ticks": 138,
+          "retained_ticks": 120,
+          "goal": 0,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 1,
+          "row": 12,
+          "scenario_seed": 1007
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 418,
+          "retained_ticks": 0,
+          "goal": 1,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 0,
+          "row": 13,
+          "scenario_seed": 1007
+        },
+        {
+          "success": true,
+          "received": true,
+          "duration_ticks": 138,
+          "retained_ticks": 120,
+          "goal": 0,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 1,
+          "row": 14,
+          "scenario_seed": 1007
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 42,
+          "retained_ticks": 21,
+          "goal": 0,
+          "out": true,
+          "timeout": false,
+          "attacking_team": 0,
+          "row": 0,
+          "scenario_seed": 1008
+        },
+        {
+          "success": true,
+          "received": true,
+          "duration_ticks": 138,
+          "retained_ticks": 120,
+          "goal": 0,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 0,
+          "row": 2,
+          "scenario_seed": 1008
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 102,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": true,
+          "timeout": false,
+          "attacking_team": 0,
+          "row": 3,
+          "scenario_seed": 1008
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 352,
+          "retained_ticks": 0,
+          "goal": 1,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 0,
+          "row": 6,
+          "scenario_seed": 1008
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 699,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": true,
+          "timeout": false,
+          "attacking_team": 0,
+          "row": 7,
+          "scenario_seed": 1008
+        },
+        {
+          "success": true,
+          "received": true,
+          "duration_ticks": 141,
+          "retained_ticks": 120,
+          "goal": 0,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 1,
+          "row": 10,
+          "scenario_seed": 1008
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 1,
+          "row": 12,
+          "scenario_seed": 1008
+        },
+        {
+          "success": true,
+          "received": true,
+          "duration_ticks": 183,
+          "retained_ticks": 120,
+          "goal": 0,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 1,
+          "row": 15,
+          "scenario_seed": 1008
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 585,
+          "retained_ticks": 0,
+          "goal": 1,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 0,
+          "row": 0,
+          "scenario_seed": 1009
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 148,
+          "retained_ticks": 0,
+          "goal": 1,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 0,
+          "row": 2,
+          "scenario_seed": 1009
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 654,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": true,
+          "timeout": false,
+          "attacking_team": 0,
+          "row": 3,
+          "scenario_seed": 1009
+        },
+        {
+          "success": true,
+          "received": true,
+          "duration_ticks": 324,
+          "retained_ticks": 120,
+          "goal": 0,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 0,
+          "row": 7,
+          "scenario_seed": 1009
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 485,
+          "retained_ticks": 0,
+          "goal": -1,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 1,
+          "row": 8,
+          "scenario_seed": 1009
+        },
+        {
+          "success": true,
+          "received": true,
+          "duration_ticks": 138,
+          "retained_ticks": 120,
+          "goal": 0,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 0,
+          "row": 10,
+          "scenario_seed": 1009
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 467,
+          "retained_ticks": 0,
+          "goal": -1,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 1,
+          "row": 12,
+          "scenario_seed": 1009
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 156,
+          "retained_ticks": 93,
+          "goal": 0,
+          "out": true,
+          "timeout": false,
+          "attacking_team": 0,
+          "row": 13,
+          "scenario_seed": 1009
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 224,
+          "retained_ticks": 0,
+          "goal": -1,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 1,
+          "row": 0,
+          "scenario_seed": 1010
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 90,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": true,
+          "timeout": false,
+          "attacking_team": 0,
+          "row": 4,
+          "scenario_seed": 1010
+        },
+        {
+          "success": true,
+          "received": true,
+          "duration_ticks": 549,
+          "retained_ticks": 120,
+          "goal": 0,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 0,
+          "row": 7,
+          "scenario_seed": 1010
+        },
+        {
+          "success": true,
+          "received": true,
+          "duration_ticks": 138,
+          "retained_ticks": 120,
+          "goal": 0,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 0,
+          "row": 9,
+          "scenario_seed": 1010
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 1,
+          "row": 10,
+          "scenario_seed": 1010
+        },
+        {
+          "success": false,
+          "received": false,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 1,
+          "row": 11,
+          "scenario_seed": 1010
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 134,
+          "retained_ticks": 0,
+          "goal": 1,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 0,
+          "row": 13,
+          "scenario_seed": 1010
+        },
+        {
+          "success": true,
+          "received": true,
+          "duration_ticks": 141,
+          "retained_ticks": 120,
+          "goal": 0,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 1,
+          "row": 15,
+          "scenario_seed": 1010
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 187,
+          "retained_ticks": 0,
+          "goal": 1,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 0,
+          "row": 1,
+          "scenario_seed": 1011
+        },
+        {
+          "success": true,
+          "received": true,
+          "duration_ticks": 198,
+          "retained_ticks": 120,
+          "goal": 0,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 1,
+          "row": 2,
+          "scenario_seed": 1011
+        },
+        {
+          "success": true,
+          "received": true,
+          "duration_ticks": 537,
+          "retained_ticks": 120,
+          "goal": 0,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 0,
+          "row": 3,
+          "scenario_seed": 1011
+        },
+        {
+          "success": true,
+          "received": true,
+          "duration_ticks": 234,
+          "retained_ticks": 120,
+          "goal": 0,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 0,
+          "row": 6,
+          "scenario_seed": 1011
+        },
+        {
+          "success": true,
+          "received": true,
+          "duration_ticks": 135,
+          "retained_ticks": 120,
+          "goal": 0,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 1,
+          "row": 8,
+          "scenario_seed": 1011
+        },
+        {
+          "success": true,
+          "received": true,
+          "duration_ticks": 138,
+          "retained_ticks": 120,
+          "goal": 0,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 0,
+          "row": 10,
+          "scenario_seed": 1011
+        },
+        {
+          "success": true,
+          "received": true,
+          "duration_ticks": 141,
+          "retained_ticks": 120,
+          "goal": 0,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 1,
+          "row": 11,
+          "scenario_seed": 1011
+        },
+        {
+          "success": true,
+          "received": true,
+          "duration_ticks": 138,
+          "retained_ticks": 120,
+          "goal": 0,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 0,
+          "row": 13,
+          "scenario_seed": 1011
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 540,
+          "retained_ticks": 0,
+          "goal": 1,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 0,
+          "row": 4,
+          "scenario_seed": 1012
+        },
+        {
+          "success": true,
+          "received": true,
+          "duration_ticks": 147,
+          "retained_ticks": 120,
+          "goal": 0,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 0,
+          "row": 6,
+          "scenario_seed": 1012
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 193,
+          "retained_ticks": 0,
+          "goal": 1,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 0,
+          "row": 8,
+          "scenario_seed": 1012
+        },
+        {
+          "success": true,
+          "received": true,
+          "duration_ticks": 138,
+          "retained_ticks": 120,
+          "goal": 0,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 0,
+          "row": 9,
+          "scenario_seed": 1012
+        },
+        {
+          "success": true,
+          "received": true,
+          "duration_ticks": 141,
+          "retained_ticks": 120,
+          "goal": 0,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 1,
+          "row": 11,
+          "scenario_seed": 1012
+        },
+        {
+          "success": true,
+          "received": true,
+          "duration_ticks": 138,
+          "retained_ticks": 120,
+          "goal": 0,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 0,
+          "row": 12,
+          "scenario_seed": 1012
+        },
+        {
+          "success": true,
+          "received": true,
+          "duration_ticks": 471,
+          "retained_ticks": 120,
+          "goal": 0,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 0,
+          "row": 13,
+          "scenario_seed": 1012
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 579,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": true,
+          "timeout": false,
+          "attacking_team": 1,
+          "row": 15,
+          "scenario_seed": 1012
+        },
+        {
+          "success": true,
+          "received": true,
+          "duration_ticks": 177,
+          "retained_ticks": 120,
+          "goal": 0,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 1,
+          "row": 2,
+          "scenario_seed": 1013
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 377,
+          "retained_ticks": 0,
+          "goal": -1,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 1,
+          "row": 3,
+          "scenario_seed": 1013
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 338,
+          "retained_ticks": 0,
+          "goal": 1,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 0,
+          "row": 4,
+          "scenario_seed": 1013
+        },
+        {
+          "success": true,
+          "received": true,
+          "duration_ticks": 186,
+          "retained_ticks": 120,
+          "goal": 0,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 1,
+          "row": 5,
+          "scenario_seed": 1013
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 75,
+          "retained_ticks": 51,
+          "goal": 0,
+          "out": true,
+          "timeout": false,
+          "attacking_team": 0,
+          "row": 11,
+          "scenario_seed": 1013
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 573,
+          "retained_ticks": 3,
+          "goal": 0,
+          "out": true,
+          "timeout": false,
+          "attacking_team": 1,
+          "row": 12,
+          "scenario_seed": 1013
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 138,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": true,
+          "timeout": false,
+          "attacking_team": 0,
+          "row": 14,
+          "scenario_seed": 1013
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 120,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": true,
+          "timeout": false,
+          "attacking_team": 0,
+          "row": 15,
+          "scenario_seed": 1013
+        },
+        {
+          "success": true,
+          "received": true,
+          "duration_ticks": 504,
+          "retained_ticks": 120,
+          "goal": 0,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 1,
+          "row": 0,
+          "scenario_seed": 1014
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 720,
+          "retained_ticks": 0,
+          "goal": 0,
+          "out": false,
+          "timeout": true,
+          "attacking_team": 0,
+          "row": 2,
+          "scenario_seed": 1014
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 117,
+          "retained_ticks": 0,
+          "goal": 1,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 0,
+          "row": 6,
+          "scenario_seed": 1014
+        },
+        {
+          "success": true,
+          "received": true,
+          "duration_ticks": 444,
+          "retained_ticks": 120,
+          "goal": 0,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 0,
+          "row": 7,
+          "scenario_seed": 1014
+        },
+        {
+          "success": true,
+          "received": true,
+          "duration_ticks": 573,
+          "retained_ticks": 120,
+          "goal": 0,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 1,
+          "row": 8,
+          "scenario_seed": 1014
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 582,
+          "retained_ticks": 0,
+          "goal": -1,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 1,
+          "row": 12,
+          "scenario_seed": 1014
+        },
+        {
+          "success": true,
+          "received": true,
+          "duration_ticks": 417,
+          "retained_ticks": 120,
+          "goal": 0,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 1,
+          "row": 14,
+          "scenario_seed": 1014
+        },
+        {
+          "success": false,
+          "received": true,
+          "duration_ticks": 126,
+          "retained_ticks": 0,
+          "goal": 1,
+          "out": false,
+          "timeout": false,
+          "attacking_team": 0,
+          "row": 15,
+          "scenario_seed": 1014
+        }
+      ]
+    }
+  },
+  "baseline_stage1_still": {
+    "episodes": 64,
+    "successes": 0,
+    "success_rate": 0.0,
+    "received": 0,
+    "reception_rate": 0.0,
+    "control_survival_after_reception": null,
+    "duration_seconds_mean": 11.66953125,
+    "unfinished": 0,
+    "exercise_fraction_of_live_decisions": 0.48623046875,
+    "controlled_ball_fraction": 0.0783289817232376,
+    "actor_control_slot_samples": 29874,
+    "actor_forward_samples": 0,
+    "live_exercise_decisions": 14937,
+    "all_row_decisions": 30720,
+    "controlled_ball_decisions": 1170,
+    "macro_starts": 0,
+    "macro_busy_samples": 0,
+    "macro_kicks": 0,
+    "human_receptions": 0,
+    "receptions_before_new_commands": 0,
+    "policy_passes": 0,
+    "finite_observation": true,
+    "finite_critic_input": true,
+    "curriculum_rewards_zero_sum": true,
+    "state_results": [
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 1,
+        "row": 2,
+        "scenario_seed": 100007
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 0,
+        "row": 4,
+        "scenario_seed": 100007
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 0,
+        "row": 5,
+        "scenario_seed": 100007
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 0,
+        "row": 7,
+        "scenario_seed": 100007
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 0,
+        "row": 8,
+        "scenario_seed": 100007
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 0,
+        "row": 9,
+        "scenario_seed": 100007
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 0,
+        "row": 14,
+        "scenario_seed": 100007
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 0,
+        "row": 15,
+        "scenario_seed": 100007
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 1,
+        "row": 0,
+        "scenario_seed": 100008
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 0,
+        "row": 6,
+        "scenario_seed": 100008
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 0,
+        "row": 9,
+        "scenario_seed": 100008
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 0,
+        "row": 10,
+        "scenario_seed": 100008
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 1,
+        "row": 11,
+        "scenario_seed": 100008
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 1,
+        "row": 12,
+        "scenario_seed": 100008
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 0,
+        "row": 14,
+        "scenario_seed": 100008
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 0,
+        "row": 15,
+        "scenario_seed": 100008
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 0,
+        "row": 1,
+        "scenario_seed": 100009
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 0,
+        "row": 2,
+        "scenario_seed": 100009
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 0,
+        "row": 3,
+        "scenario_seed": 100009
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 0,
+        "row": 4,
+        "scenario_seed": 100009
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 1,
+        "row": 5,
+        "scenario_seed": 100009
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 0,
+        "row": 6,
+        "scenario_seed": 100009
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 0,
+        "row": 7,
+        "scenario_seed": 100009
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 0,
+        "row": 15,
+        "scenario_seed": 100009
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 0,
+        "row": 0,
+        "scenario_seed": 100010
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 0,
+        "row": 1,
+        "scenario_seed": 100010
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 1,
+        "row": 2,
+        "scenario_seed": 100010
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 1,
+        "row": 3,
+        "scenario_seed": 100010
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 1,
+        "row": 5,
+        "scenario_seed": 100010
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 0,
+        "row": 10,
+        "scenario_seed": 100010
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 0,
+        "row": 12,
+        "scenario_seed": 100010
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 1,
+        "row": 14,
+        "scenario_seed": 100010
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 0,
+        "row": 1,
+        "scenario_seed": 100011
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 0,
+        "row": 5,
+        "scenario_seed": 100011
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 1,
+        "row": 6,
+        "scenario_seed": 100011
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 1,
+        "row": 8,
+        "scenario_seed": 100011
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 105,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": true,
+        "timeout": false,
+        "attacking_team": 0,
+        "row": 10,
+        "scenario_seed": 100011
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 66,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": true,
+        "timeout": false,
+        "attacking_team": 0,
+        "row": 12,
+        "scenario_seed": 100011
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 1,
+        "row": 13,
+        "scenario_seed": 100011
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 0,
+        "row": 14,
+        "scenario_seed": 100011
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 1,
+        "row": 1,
+        "scenario_seed": 100012
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 1,
+        "row": 2,
+        "scenario_seed": 100012
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 0,
+        "row": 3,
+        "scenario_seed": 100012
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 0,
+        "row": 4,
+        "scenario_seed": 100012
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 0,
+        "row": 6,
+        "scenario_seed": 100012
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 0,
+        "row": 8,
+        "scenario_seed": 100012
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 0,
+        "row": 14,
+        "scenario_seed": 100012
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 0,
+        "row": 15,
+        "scenario_seed": 100012
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 0,
+        "row": 2,
+        "scenario_seed": 100013
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 1,
+        "row": 5,
+        "scenario_seed": 100013
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 1,
+        "row": 7,
+        "scenario_seed": 100013
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 0,
+        "row": 10,
+        "scenario_seed": 100013
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 0,
+        "row": 11,
+        "scenario_seed": 100013
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 1,
+        "row": 12,
+        "scenario_seed": 100013
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 0,
+        "row": 13,
+        "scenario_seed": 100013
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 0,
+        "row": 15,
+        "scenario_seed": 100013
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 1,
+        "row": 1,
+        "scenario_seed": 100014
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 1,
+        "row": 2,
+        "scenario_seed": 100014
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 1,
+        "row": 3,
+        "scenario_seed": 100014
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 0,
+        "row": 4,
+        "scenario_seed": 100014
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 1,
+        "row": 6,
+        "scenario_seed": 100014
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 0,
+        "row": 9,
+        "scenario_seed": 100014
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 1,
+        "row": 11,
+        "scenario_seed": 100014
+      },
+      {
+        "success": false,
+        "received": false,
+        "duration_ticks": 720,
+        "retained_ticks": 0,
+        "goal": 0,
+        "out": false,
+        "timeout": true,
+        "attacking_team": 0,
+        "row": 14,
+        "scenario_seed": 100014
+      }
+    ],
+    "no_free_reward_verified": true
+  },
+  "stage1_batches": [
+    {
+      "seed": 100007,
+      "selected_rows": [
+        2,
+        4,
+        5,
+        7,
+        8,
+        9,
+        14,
+        15
+      ],
+      "identical_states": true,
+      "reset": {
+        "active_exercises": 8,
+        "reserved_exercises": 8,
+        "active_fraction": 0.5,
+        "min_player_distance_px": 123.65419967456424,
+        "min_player_gap_px": 93.65419967456424,
+        "min_ball_gap_px": 2.5243119790019364e-05,
+        "overlapping_player_pairs": 0,
+        "overlapping_ball_pairs": 0,
+        "geometry_tolerance_px": 0.1,
+        "actor_control_slots": 16,
+        "finite_observation": true,
+        "finite_critic_input": true,
+        "critic_shape": [
+          16,
+          8,
+          333
+        ],
+        "critic_expected_dimension": 333,
+        "active_delays": [
+          [
+            10,
+            10,
+            11,
+            8,
+            10,
+            8,
+            9,
+            8
+          ],
+          [
+            10,
+            8,
+            8,
+            11,
+            11,
+            8,
+            8,
+            11
+          ],
+          [
+            8,
+            11,
+            11,
+            8,
+            8,
+            9,
+            9,
+            10
+          ],
+          [
+            10,
+            9,
+            9,
+            9,
+            11,
+            9,
+            9,
+            11
+          ],
+          [
+            9,
+            10,
+            11,
+            10,
+            10,
+            9,
+            9,
+            10
+          ],
+          [
+            8,
+            10,
+            10,
+            9,
+            8,
+            8,
+            10,
+            11
+          ],
+          [
+            10,
+            8,
+            11,
+            8,
+            11,
+            10,
+            9,
+            8
+          ],
+          [
+            11,
+            9,
+            10,
+            9,
+            8,
+            10,
+            10,
+            11
+          ]
+        ]
+      }
+    },
+    {
+      "seed": 100008,
+      "selected_rows": [
+        0,
+        6,
+        9,
+        10,
+        11,
+        12,
+        14,
+        15
+      ],
+      "identical_states": true,
+      "reset": {
+        "active_exercises": 8,
+        "reserved_exercises": 8,
+        "active_fraction": 0.5,
+        "min_player_distance_px": 153.07749302053335,
+        "min_player_gap_px": 123.07749302053335,
+        "min_ball_gap_px": -5.7104314471700945e-05,
+        "overlapping_player_pairs": 0,
+        "overlapping_ball_pairs": 0,
+        "geometry_tolerance_px": 0.1,
+        "actor_control_slots": 16,
+        "finite_observation": true,
+        "finite_critic_input": true,
+        "critic_shape": [
+          16,
+          8,
+          333
+        ],
+        "critic_expected_dimension": 333,
+        "active_delays": [
+          [
+            11,
+            11,
+            10,
+            10,
+            9,
+            10,
+            8,
+            11
+          ],
+          [
+            11,
+            10,
+            10,
+            10,
+            8,
+            9,
+            11,
+            9
+          ],
+          [
+            10,
+            8,
+            10,
+            9,
+            10,
+            9,
+            8,
+            9
+          ],
+          [
+            8,
+            8,
+            8,
+            8,
+            9,
+            9,
+            8,
+            8
+          ],
+          [
+            11,
+            11,
+            10,
+            9,
+            11,
+            9,
+            9,
+            11
+          ],
+          [
+            10,
+            9,
+            10,
+            11,
+            8,
+            11,
+            11,
+            9
+          ],
+          [
+            11,
+            11,
+            9,
+            10,
+            10,
+            10,
+            9,
+            10
+          ],
+          [
+            9,
+            11,
+            8,
+            11,
+            8,
+            9,
+            11,
+            10
+          ]
+        ]
+      }
+    },
+    {
+      "seed": 100009,
+      "selected_rows": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        15
+      ],
+      "identical_states": true,
+      "reset": {
+        "active_exercises": 8,
+        "reserved_exercises": 8,
+        "active_fraction": 0.5,
+        "min_player_distance_px": 178.18005949540168,
+        "min_player_gap_px": 148.18005949540168,
+        "min_ball_gap_px": -4.121470491469381e-05,
+        "overlapping_player_pairs": 0,
+        "overlapping_ball_pairs": 0,
+        "geometry_tolerance_px": 0.1,
+        "actor_control_slots": 16,
+        "finite_observation": true,
+        "finite_critic_input": true,
+        "critic_shape": [
+          16,
+          8,
+          333
+        ],
+        "critic_expected_dimension": 333,
+        "active_delays": [
+          [
+            10,
+            9,
+            11,
+            8,
+            10,
+            11,
+            8,
+            9
+          ],
+          [
+            11,
+            10,
+            10,
+            10,
+            11,
+            10,
+            11,
+            9
+          ],
+          [
+            11,
+            9,
+            8,
+            8,
+            10,
+            10,
+            10,
+            10
+          ],
+          [
+            8,
+            9,
+            11,
+            8,
+            11,
+            8,
+            11,
+            10
+          ],
+          [
+            11,
+            8,
+            8,
+            10,
+            10,
+            8,
+            11,
+            10
+          ],
+          [
+            11,
+            11,
+            9,
+            11,
+            8,
+            9,
+            10,
+            11
+          ],
+          [
+            11,
+            9,
+            11,
+            10,
+            10,
+            11,
+            9,
+            8
+          ],
+          [
+            11,
+            11,
+            10,
+            11,
+            9,
+            9,
+            9,
+            11
+          ]
+        ]
+      }
+    },
+    {
+      "seed": 100010,
+      "selected_rows": [
+        0,
+        1,
+        2,
+        3,
+        5,
+        10,
+        12,
+        14
+      ],
+      "identical_states": true,
+      "reset": {
+        "active_exercises": 8,
+        "reserved_exercises": 8,
+        "active_fraction": 0.5,
+        "min_player_distance_px": 212.1818677680894,
+        "min_player_gap_px": 182.1818677680894,
+        "min_ball_gap_px": -1.0341715242390137e-05,
+        "overlapping_player_pairs": 0,
+        "overlapping_ball_pairs": 0,
+        "geometry_tolerance_px": 0.1,
+        "actor_control_slots": 16,
+        "finite_observation": true,
+        "finite_critic_input": true,
+        "critic_shape": [
+          16,
+          8,
+          333
+        ],
+        "critic_expected_dimension": 333,
+        "active_delays": [
+          [
+            9,
+            9,
+            8,
+            10,
+            9,
+            8,
+            11,
+            8
+          ],
+          [
+            10,
+            9,
+            8,
+            9,
+            9,
+            8,
+            9,
+            10
+          ],
+          [
+            10,
+            10,
+            10,
+            9,
+            11,
+            10,
+            11,
+            9
+          ],
+          [
+            10,
+            8,
+            8,
+            8,
+            8,
+            10,
+            8,
+            9
+          ],
+          [
+            11,
+            11,
+            8,
+            8,
+            8,
+            8,
+            10,
+            8
+          ],
+          [
+            8,
+            10,
+            9,
+            10,
+            10,
+            11,
+            8,
+            11
+          ],
+          [
+            10,
+            11,
+            9,
+            9,
+            10,
+            8,
+            9,
+            8
+          ],
+          [
+            9,
+            9,
+            9,
+            9,
+            10,
+            11,
+            10,
+            8
+          ]
+        ]
+      }
+    },
+    {
+      "seed": 100011,
+      "selected_rows": [
+        1,
+        5,
+        6,
+        8,
+        10,
+        12,
+        13,
+        14
+      ],
+      "identical_states": true,
+      "reset": {
+        "active_exercises": 8,
+        "reserved_exercises": 8,
+        "active_fraction": 0.5,
+        "min_player_distance_px": 209.62855518137783,
+        "min_player_gap_px": 179.62855518137783,
+        "min_ball_gap_px": -1.860112548968118e-05,
+        "overlapping_player_pairs": 0,
+        "overlapping_ball_pairs": 0,
+        "geometry_tolerance_px": 0.1,
+        "actor_control_slots": 16,
+        "finite_observation": true,
+        "finite_critic_input": true,
+        "critic_shape": [
+          16,
+          8,
+          333
+        ],
+        "critic_expected_dimension": 333,
+        "active_delays": [
+          [
+            9,
+            10,
+            10,
+            8,
+            8,
+            11,
+            11,
+            10
+          ],
+          [
+            11,
+            8,
+            9,
+            9,
+            11,
+            11,
+            9,
+            8
+          ],
+          [
+            11,
+            11,
+            9,
+            10,
+            8,
+            8,
+            10,
+            11
+          ],
+          [
+            10,
+            11,
+            9,
+            9,
+            11,
+            10,
+            9,
+            11
+          ],
+          [
+            10,
+            11,
+            11,
+            10,
+            11,
+            9,
+            8,
+            10
+          ],
+          [
+            11,
+            11,
+            8,
+            10,
+            8,
+            10,
+            11,
+            10
+          ],
+          [
+            8,
+            8,
+            10,
+            10,
+            11,
+            9,
+            10,
+            11
+          ],
+          [
+            9,
+            8,
+            11,
+            11,
+            11,
+            9,
+            10,
+            8
+          ]
+        ]
+      }
+    },
+    {
+      "seed": 100012,
+      "selected_rows": [
+        1,
+        2,
+        3,
+        4,
+        6,
+        8,
+        14,
+        15
+      ],
+      "identical_states": true,
+      "reset": {
+        "active_exercises": 8,
+        "reserved_exercises": 8,
+        "active_fraction": 0.5,
+        "min_player_distance_px": 260.2652436221091,
+        "min_player_gap_px": 230.2652436221091,
+        "min_ball_gap_px": -2.8304757922370527e-05,
+        "overlapping_player_pairs": 0,
+        "overlapping_ball_pairs": 0,
+        "geometry_tolerance_px": 0.1,
+        "actor_control_slots": 16,
+        "finite_observation": true,
+        "finite_critic_input": true,
+        "critic_shape": [
+          16,
+          8,
+          333
+        ],
+        "critic_expected_dimension": 333,
+        "active_delays": [
+          [
+            10,
+            9,
+            11,
+            10,
+            10,
+            9,
+            8,
+            8
+          ],
+          [
+            10,
+            9,
+            10,
+            8,
+            9,
+            11,
+            8,
+            11
+          ],
+          [
+            9,
+            11,
+            8,
+            10,
+            11,
+            11,
+            8,
+            9
+          ],
+          [
+            9,
+            8,
+            10,
+            10,
+            11,
+            9,
+            9,
+            8
+          ],
+          [
+            8,
+            11,
+            9,
+            10,
+            8,
+            11,
+            9,
+            10
+          ],
+          [
+            9,
+            8,
+            8,
+            10,
+            9,
+            9,
+            8,
+            8
+          ],
+          [
+            10,
+            8,
+            9,
+            10,
+            10,
+            11,
+            8,
+            8
+          ],
+          [
+            10,
+            9,
+            11,
+            11,
+            9,
+            9,
+            10,
+            10
+          ]
+        ]
+      }
+    },
+    {
+      "seed": 100013,
+      "selected_rows": [
+        2,
+        5,
+        7,
+        10,
+        11,
+        12,
+        13,
+        15
+      ],
+      "identical_states": true,
+      "reset": {
+        "active_exercises": 8,
+        "reserved_exercises": 8,
+        "active_fraction": 0.5,
+        "min_player_distance_px": 212.67031222461867,
+        "min_player_gap_px": 182.67031222461867,
+        "min_ball_gap_px": -4.605180057026814e-05,
+        "overlapping_player_pairs": 0,
+        "overlapping_ball_pairs": 0,
+        "geometry_tolerance_px": 0.1,
+        "actor_control_slots": 16,
+        "finite_observation": true,
+        "finite_critic_input": true,
+        "critic_shape": [
+          16,
+          8,
+          333
+        ],
+        "critic_expected_dimension": 333,
+        "active_delays": [
+          [
+            8,
+            9,
+            9,
+            9,
+            8,
+            11,
+            10,
+            10
+          ],
+          [
+            10,
+            9,
+            8,
+            10,
+            9,
+            11,
+            8,
+            11
+          ],
+          [
+            8,
+            11,
+            9,
+            10,
+            11,
+            11,
+            8,
+            9
+          ],
+          [
+            9,
+            8,
+            8,
+            8,
+            10,
+            11,
+            10,
+            9
+          ],
+          [
+            8,
+            8,
+            11,
+            8,
+            8,
+            11,
+            8,
+            8
+          ],
+          [
+            11,
+            10,
+            11,
+            9,
+            10,
+            10,
+            10,
+            11
+          ],
+          [
+            10,
+            10,
+            10,
+            11,
+            9,
+            9,
+            11,
+            8
+          ],
+          [
+            9,
+            10,
+            9,
+            8,
+            10,
+            11,
+            10,
+            9
+          ]
+        ]
+      }
+    },
+    {
+      "seed": 100014,
+      "selected_rows": [
+        1,
+        2,
+        3,
+        4,
+        6,
+        9,
+        11,
+        14
+      ],
+      "identical_states": true,
+      "reset": {
+        "active_exercises": 8,
+        "reserved_exercises": 8,
+        "active_fraction": 0.5,
+        "min_player_distance_px": 210.35351549598786,
+        "min_player_gap_px": 180.35351549598786,
+        "min_ball_gap_px": -7.441163590016231e-05,
+        "overlapping_player_pairs": 0,
+        "overlapping_ball_pairs": 0,
+        "geometry_tolerance_px": 0.1,
+        "actor_control_slots": 16,
+        "finite_observation": true,
+        "finite_critic_input": true,
+        "critic_shape": [
+          16,
+          8,
+          333
+        ],
+        "critic_expected_dimension": 333,
+        "active_delays": [
+          [
+            11,
+            10,
+            11,
+            10,
+            8,
+            11,
+            9,
+            11
+          ],
+          [
+            11,
+            10,
+            9,
+            11,
+            11,
+            8,
+            10,
+            9
+          ],
+          [
+            11,
+            10,
+            9,
+            11,
+            11,
+            10,
+            11,
+            10
+          ],
+          [
+            8,
+            11,
+            10,
+            10,
+            10,
+            10,
+            9,
+            11
+          ],
+          [
+            11,
+            11,
+            11,
+            8,
+            8,
+            11,
+            9,
+            8
+          ],
+          [
+            10,
+            10,
+            11,
+            8,
+            8,
+            9,
+            9,
+            11
+          ],
+          [
+            11,
+            11,
+            10,
+            10,
+            9,
+            11,
+            9,
+            9
+          ],
+          [
+            10,
+            10,
+            8,
+            11,
+            11,
+            8,
+            10,
+            10
+          ]
+        ]
+      }
+    }
+  ],
+  "paired_success_difference": {
+    "original_minus_still": 0.453125,
+    "ic90": [
+      0.359375,
+      0.5625
+    ],
+    "bootstrap_unit": "paired exercise; repeated source examples are not independent humans"
+  },
+  "batches": [
+    {
+      "seed": 1007,
+      "selected_rows": [
+        4,
+        5,
+        6,
+        7,
+        10,
+        12,
+        13,
+        14
+      ],
+      "identical_states": true,
+      "reset": {
+        "active_exercises": 8,
+        "reserved_exercises": 8,
+        "active_fraction": 0.5,
+        "min_player_distance_px": 252.15286491624798,
+        "min_player_gap_px": 222.15286491624798,
+        "min_ball_gap_px": 24.793144318550254,
+        "overlapping_player_pairs": 0,
+        "overlapping_ball_pairs": 0,
+        "geometry_tolerance_px": 0.1,
+        "actor_control_slots": 16,
+        "finite_observation": true,
+        "finite_critic_input": true,
+        "critic_shape": [
+          16,
+          8,
+          333
+        ],
+        "critic_expected_dimension": 333,
+        "active_delays": [
+          [
+            10,
+            11,
+            8,
+            10,
+            8,
+            10,
+            11,
+            10
+          ],
+          [
+            10,
+            9,
+            8,
+            9,
+            8,
+            9,
+            11,
+            9
+          ],
+          [
+            10,
+            11,
+            9,
+            10,
+            8,
+            10,
+            10,
+            11
+          ],
+          [
+            9,
+            10,
+            8,
+            10,
+            9,
+            9,
+            11,
+            9
+          ],
+          [
+            8,
+            10,
+            8,
+            9,
+            11,
+            10,
+            9,
+            10
+          ],
+          [
+            8,
+            8,
+            8,
+            8,
+            10,
+            9,
+            10,
+            10
+          ],
+          [
+            9,
+            10,
+            9,
+            11,
+            9,
+            10,
+            9,
+            9
+          ],
+          [
+            8,
+            9,
+            8,
+            10,
+            11,
+            10,
+            10,
+            9
+          ]
+        ]
+      }
+    },
+    {
+      "seed": 1008,
+      "selected_rows": [
+        0,
+        2,
+        3,
+        6,
+        7,
+        10,
+        12,
+        15
+      ],
+      "identical_states": true,
+      "reset": {
+        "active_exercises": 8,
+        "reserved_exercises": 8,
+        "active_fraction": 0.5,
+        "min_player_distance_px": 77.36896913403291,
+        "min_player_gap_px": 47.36896913403291,
+        "min_ball_gap_px": 9.514973918537017,
+        "overlapping_player_pairs": 0,
+        "overlapping_ball_pairs": 0,
+        "geometry_tolerance_px": 0.1,
+        "actor_control_slots": 16,
+        "finite_observation": true,
+        "finite_critic_input": true,
+        "critic_shape": [
+          16,
+          8,
+          333
+        ],
+        "critic_expected_dimension": 333,
+        "active_delays": [
+          [
+            8,
+            8,
+            8,
+            9,
+            8,
+            11,
+            10,
+            11
+          ],
+          [
+            8,
+            10,
+            10,
+            8,
+            11,
+            11,
+            9,
+            11
+          ],
+          [
+            8,
+            8,
+            9,
+            9,
+            10,
+            8,
+            8,
+            8
+          ],
+          [
+            8,
+            8,
+            10,
+            9,
+            8,
+            11,
+            10,
+            9
+          ],
+          [
+            9,
+            10,
+            9,
+            10,
+            8,
+            8,
+            9,
+            11
+          ],
+          [
+            8,
+            11,
+            11,
+            8,
+            10,
+            11,
+            10,
+            8
+          ],
+          [
+            9,
+            8,
+            10,
+            10,
+            11,
+            9,
+            11,
+            9
+          ],
+          [
+            8,
+            10,
+            9,
+            9,
+            11,
+            8,
+            9,
+            10
+          ]
+        ]
+      }
+    },
+    {
+      "seed": 1009,
+      "selected_rows": [
+        0,
+        2,
+        3,
+        7,
+        8,
+        10,
+        12,
+        13
+      ],
+      "identical_states": true,
+      "reset": {
+        "active_exercises": 8,
+        "reserved_exercises": 8,
+        "active_fraction": 0.5,
+        "min_player_distance_px": 217.65556848594193,
+        "min_player_gap_px": 187.65556848594193,
+        "min_ball_gap_px": 21.89272674970003,
+        "overlapping_player_pairs": 0,
+        "overlapping_ball_pairs": 0,
+        "geometry_tolerance_px": 0.1,
+        "actor_control_slots": 16,
+        "finite_observation": true,
+        "finite_critic_input": true,
+        "critic_shape": [
+          16,
+          8,
+          333
+        ],
+        "critic_expected_dimension": 333,
+        "active_delays": [
+          [
+            11,
+            11,
+            9,
+            11,
+            8,
+            8,
+            11,
+            9
+          ],
+          [
+            8,
+            11,
+            8,
+            9,
+            11,
+            8,
+            10,
+            8
+          ],
+          [
+            10,
+            10,
+            8,
+            10,
+            11,
+            11,
+            10,
+            8
+          ],
+          [
+            11,
+            8,
+            8,
+            8,
+            9,
+            9,
+            9,
+            10
+          ],
+          [
+            10,
+            8,
+            10,
+            11,
+            9,
+            10,
+            8,
+            11
+          ],
+          [
+            10,
+            8,
+            9,
+            10,
+            9,
+            8,
+            9,
+            9
+          ],
+          [
+            9,
+            10,
+            8,
+            8,
+            8,
+            11,
+            10,
+            10
+          ],
+          [
+            8,
+            11,
+            10,
+            8,
+            9,
+            8,
+            10,
+            9
+          ]
+        ]
+      }
+    },
+    {
+      "seed": 1010,
+      "selected_rows": [
+        0,
+        4,
+        7,
+        9,
+        10,
+        11,
+        13,
+        15
+      ],
+      "identical_states": true,
+      "reset": {
+        "active_exercises": 8,
+        "reserved_exercises": 8,
+        "active_fraction": 0.5,
+        "min_player_distance_px": 81.55030396454161,
+        "min_player_gap_px": 51.55030396454161,
+        "min_ball_gap_px": 18.65446833870289,
+        "overlapping_player_pairs": 0,
+        "overlapping_ball_pairs": 0,
+        "geometry_tolerance_px": 0.1,
+        "actor_control_slots": 16,
+        "finite_observation": true,
+        "finite_critic_input": true,
+        "critic_shape": [
+          16,
+          8,
+          333
+        ],
+        "critic_expected_dimension": 333,
+        "active_delays": [
+          [
+            11,
+            8,
+            11,
+            8,
+            9,
+            11,
+            10,
+            10
+          ],
+          [
+            10,
+            11,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10
+          ],
+          [
+            10,
+            10,
+            11,
+            11,
+            9,
+            9,
+            11,
+            9
+          ],
+          [
+            11,
+            8,
+            9,
+            8,
+            9,
+            8,
+            11,
+            11
+          ],
+          [
+            9,
+            9,
+            11,
+            10,
+            10,
+            10,
+            10,
+            10
+          ],
+          [
+            10,
+            10,
+            9,
+            10,
+            9,
+            9,
+            8,
+            8
+          ],
+          [
+            10,
+            9,
+            11,
+            9,
+            8,
+            9,
+            9,
+            9
+          ],
+          [
+            11,
+            11,
+            11,
+            11,
+            11,
+            9,
+            9,
+            11
+          ]
+        ]
+      }
+    },
+    {
+      "seed": 1011,
+      "selected_rows": [
+        1,
+        2,
+        3,
+        6,
+        8,
+        10,
+        11,
+        13
+      ],
+      "identical_states": true,
+      "reset": {
+        "active_exercises": 8,
+        "reserved_exercises": 8,
+        "active_fraction": 0.5,
+        "min_player_distance_px": 217.65556848594193,
+        "min_player_gap_px": 187.65556848594193,
+        "min_ball_gap_px": 8.132827990897368,
+        "overlapping_player_pairs": 0,
+        "overlapping_ball_pairs": 0,
+        "geometry_tolerance_px": 0.1,
+        "actor_control_slots": 16,
+        "finite_observation": true,
+        "finite_critic_input": true,
+        "critic_shape": [
+          16,
+          8,
+          333
+        ],
+        "critic_expected_dimension": 333,
+        "active_delays": [
+          [
+            11,
+            11,
+            8,
+            8,
+            8,
+            10,
+            9,
+            11
+          ],
+          [
+            11,
+            10,
+            11,
+            10,
+            11,
+            10,
+            9,
+            10
+          ],
+          [
+            11,
+            9,
+            8,
+            8,
+            8,
+            9,
+            9,
+            9
+          ],
+          [
+            8,
+            9,
+            11,
+            8,
+            9,
+            8,
+            10,
+            9
+          ],
+          [
+            11,
+            10,
+            8,
+            11,
+            11,
+            9,
+            9,
+            8
+          ],
+          [
+            10,
+            11,
+            11,
+            9,
+            8,
+            10,
+            9,
+            11
+          ],
+          [
+            10,
+            11,
+            8,
+            11,
+            11,
+            10,
+            9,
+            8
+          ],
+          [
+            9,
+            10,
+            10,
+            9,
+            8,
+            9,
+            9,
+            9
+          ]
+        ]
+      }
+    },
+    {
+      "seed": 1012,
+      "selected_rows": [
+        4,
+        6,
+        8,
+        9,
+        11,
+        12,
+        13,
+        15
+      ],
+      "identical_states": true,
+      "reset": {
+        "active_exercises": 8,
+        "reserved_exercises": 8,
+        "active_fraction": 0.5,
+        "min_player_distance_px": 232.274346543446,
+        "min_player_gap_px": 202.274346543446,
+        "min_ball_gap_px": 12.863915163094433,
+        "overlapping_player_pairs": 0,
+        "overlapping_ball_pairs": 0,
+        "geometry_tolerance_px": 0.1,
+        "actor_control_slots": 16,
+        "finite_observation": true,
+        "finite_critic_input": true,
+        "critic_shape": [
+          16,
+          8,
+          333
+        ],
+        "critic_expected_dimension": 333,
+        "active_delays": [
+          [
+            11,
+            8,
+            10,
+            10,
+            8,
+            11,
+            9,
+            8
+          ],
+          [
+            9,
+            11,
+            8,
+            11,
+            11,
+            11,
+            11,
+            11
+          ],
+          [
+            11,
+            9,
+            8,
+            10,
+            9,
+            8,
+            8,
+            10
+          ],
+          [
+            11,
+            10,
+            8,
+            11,
+            10,
+            8,
+            9,
+            11
+          ],
+          [
+            8,
+            8,
+            9,
+            10,
+            10,
+            10,
+            8,
+            10
+          ],
+          [
+            10,
+            9,
+            10,
+            11,
+            8,
+            8,
+            9,
+            8
+          ],
+          [
+            9,
+            10,
+            8,
+            9,
+            11,
+            8,
+            8,
+            9
+          ],
+          [
+            10,
+            9,
+            8,
+            10,
+            9,
+            11,
+            9,
+            9
+          ]
+        ]
+      }
+    },
+    {
+      "seed": 1013,
+      "selected_rows": [
+        2,
+        3,
+        4,
+        5,
+        11,
+        12,
+        14,
+        15
+      ],
+      "identical_states": true,
+      "reset": {
+        "active_exercises": 8,
+        "reserved_exercises": 8,
+        "active_fraction": 0.5,
+        "min_player_distance_px": 135.9683368082208,
+        "min_player_gap_px": 105.96833680822081,
+        "min_ball_gap_px": 17.866665551422905,
+        "overlapping_player_pairs": 0,
+        "overlapping_ball_pairs": 0,
+        "geometry_tolerance_px": 0.1,
+        "actor_control_slots": 16,
+        "finite_observation": true,
+        "finite_critic_input": true,
+        "critic_shape": [
+          16,
+          8,
+          333
+        ],
+        "critic_expected_dimension": 333,
+        "active_delays": [
+          [
+            8,
+            9,
+            8,
+            11,
+            8,
+            9,
+            11,
+            8
+          ],
+          [
+            10,
+            9,
+            10,
+            10,
+            9,
+            10,
+            11,
+            8
+          ],
+          [
+            9,
+            11,
+            11,
+            10,
+            11,
+            9,
+            11,
+            11
+          ],
+          [
+            9,
+            11,
+            9,
+            10,
+            9,
+            8,
+            9,
+            8
+          ],
+          [
+            8,
+            8,
+            11,
+            9,
+            11,
+            11,
+            8,
+            10
+          ],
+          [
+            9,
+            8,
+            9,
+            8,
+            10,
+            11,
+            10,
+            8
+          ],
+          [
+            9,
+            11,
+            8,
+            9,
+            10,
+            8,
+            11,
+            10
+          ],
+          [
+            8,
+            10,
+            9,
+            9,
+            8,
+            11,
+            10,
+            11
+          ]
+        ]
+      }
+    },
+    {
+      "seed": 1014,
+      "selected_rows": [
+        0,
+        2,
+        6,
+        7,
+        8,
+        12,
+        14,
+        15
+      ],
+      "identical_states": true,
+      "reset": {
+        "active_exercises": 8,
+        "reserved_exercises": 8,
+        "active_fraction": 0.5,
+        "min_player_distance_px": 77.36896913403291,
+        "min_player_gap_px": 47.36896913403291,
+        "min_ball_gap_px": 4.2569847438116035,
+        "overlapping_player_pairs": 0,
+        "overlapping_ball_pairs": 0,
+        "geometry_tolerance_px": 0.1,
+        "actor_control_slots": 16,
+        "finite_observation": true,
+        "finite_critic_input": true,
+        "critic_shape": [
+          16,
+          8,
+          333
+        ],
+        "critic_expected_dimension": 333,
+        "active_delays": [
+          [
+            8,
+            10,
+            9,
+            8,
+            8,
+            8,
+            8,
+            11
+          ],
+          [
+            9,
+            10,
+            11,
+            11,
+            9,
+            10,
+            11,
+            8
+          ],
+          [
+            8,
+            9,
+            8,
+            11,
+            9,
+            11,
+            9,
+            9
+          ],
+          [
+            10,
+            11,
+            8,
+            11,
+            10,
+            8,
+            8,
+            11
+          ],
+          [
+            8,
+            11,
+            9,
+            10,
+            11,
+            9,
+            8,
+            11
+          ],
+          [
+            8,
+            10,
+            9,
+            8,
+            8,
+            11,
+            9,
+            9
+          ],
+          [
+            11,
+            10,
+            10,
+            9,
+            8,
+            11,
+            8,
+            8
+          ],
+          [
+            11,
+            10,
+            8,
+            11,
+            8,
+            11,
+            9,
+            11
+          ]
+        ]
+      }
+    }
+  ],
+  "elapsed_seconds": 6.317
+}

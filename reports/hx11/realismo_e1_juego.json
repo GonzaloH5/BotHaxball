@@ -1,0 +1,307 @@
+{
+ "sinteticos": "runs/hx11_l0/realismo/e1_juego.npz",
+ "meta": {
+  "modelo": "C:/hxpod/runs/l0_quienva_e1/model.pt",
+  "juegos": 200,
+  "segundos": 90,
+  "temp": 0.7,
+  "renovar": 0.33,
+  "renovar_patada": 0.33,
+  "regla_saques": true,
+  "regla_lateral": true,
+  "regla_juego": true,
+  "retardo": null,
+  "segundos_reloj": 1565
+ },
+ "clips": {
+  "sintetico": 200,
+  "prueba": 256,
+  "entrenamiento": 256
+ },
+ "dentro_del_techo": 0.182,
+ "colectivas_a_mas_de_2_techos": [
+  "cambios_posesion_min",
+  "pases_min",
+  "pase_completo"
+ ],
+ "c2st_auc": 0.987,
+ "c2st_rasgos": [
+  [
+   "cambios_tecla",
+   0.3909
+  ],
+  [
+   "jug_quietos",
+   0.2278
+  ],
+  [
+   "pelota_parada",
+   0.16
+  ],
+  [
+   "juego_abierto",
+   0.114
+  ],
+  [
+   "vel_jug_media",
+   0.0546
+  ],
+  [
+   "vel_jug_p90",
+   0.0411
+  ],
+  [
+   "pelota_x",
+   0.0171
+  ],
+  [
+   "dispersion_x",
+   0.0153
+  ]
+ ],
+ "pasa": false,
+ "metricas": [
+  {
+   "familia": "colectiva",
+   "metrica": "goles_10min",
+   "sintetico": 0.999814849102018,
+   "prueba": 0.9111208811551278,
+   "entrenamiento": 1.1193770825620142,
+   "d": 0.1377546744759719,
+   "techo": 0.2627550879442102,
+   "veces_techo": 0.5242702455498057,
+   "dentro": true
+  },
+  {
+   "familia": "colectiva",
+   "metrica": "remates_min",
+   "sintetico": 0.01945304677528558,
+   "prueba": 0.017371988260967874,
+   "entrenamiento": 0.01807068267099924,
+   "d": 0.007453473151907158,
+   "techo": 0.007875537229724517,
+   "veces_techo": 0.9464082175595121,
+   "dentro": true
+  },
+  {
+   "familia": "colectiva",
+   "metrica": "cambios_posesion_min",
+   "sintetico": 18.377868024711002,
+   "prueba": 14.006556651101395,
+   "entrenamiento": 14.603872043211037,
+   "d": 4.359623074551269,
+   "techo": 1.0034706805244349,
+   "veces_techo": 4.344544548399599,
+   "dentro": false
+  },
+  {
+   "familia": "colectiva",
+   "metrica": "pases_min",
+   "sintetico": 8.317476383512675,
+   "prueba": 11.861518414729911,
+   "entrenamiento": 11.429096534778246,
+   "d": 3.764435868733993,
+   "techo": 0.48568942058165687,
+   "veces_techo": 7.750705922780327,
+   "dentro": false
+  },
+  {
+   "familia": "colectiva",
+   "metrica": "pase_completo",
+   "sintetico": 0.3118307651018402,
+   "prueba": 0.4648940746217797,
+   "entrenamiento": 0.4530114795979949,
+   "d": 0.15311989523173372,
+   "techo": 0.015432590917006123,
+   "veces_techo": 9.92185278902206,
+   "dentro": false
+  },
+  {
+   "familia": "tactica",
+   "metrica": "largo_equipo",
+   "sintetico": 1071.2161917114258,
+   "prueba": 868.9145921894149,
+   "entrenamiento": 882.863644096795,
+   "d": 202.09375251580232,
+   "techo": 19.089966735839848,
+   "veces_techo": 10.586385786434498,
+   "dentro": false
+  },
+  {
+   "familia": "tactica",
+   "metrica": "ancho_equipo",
+   "sintetico": 970.8544830322265,
+   "prueba": 966.3017468022365,
+   "entrenamiento": 1000.3512205589475,
+   "d": 30.92771018868058,
+   "techo": 34.521243272468226,
+   "veces_techo": 0.8959037177362149,
+   "dentro": true
+  },
+  {
+   "familia": "tactica",
+   "metrica": "profundidad",
+   "sintetico": 454.1010076904297,
+   "prueba": 411.92496792662376,
+   "entrenamiento": 422.6733004352239,
+   "d": 42.182738196529556,
+   "techo": 11.067937275900771,
+   "veces_techo": 3.811255624693309,
+   "dentro": false
+  },
+  {
+   "familia": "tactica",
+   "metrica": "vecino_mas_cercano",
+   "sintetico": 250.44937309265137,
+   "prueba": 239.2946049110562,
+   "entrenamiento": 244.66981193963,
+   "d": 11.141786113757993,
+   "techo": 6.0268034298265745,
+   "veces_techo": 1.8487057431834317,
+   "dentro": false
+  },
+  {
+   "familia": "tactica",
+   "metrica": "cortes_10min",
+   "sintetico": 2.5218825039280524,
+   "prueba": 2.055050073787399,
+   "entrenamiento": 3.0459486546562387,
+   "d": 0.48805177061715216,
+   "techo": 0.9976821905051508,
+   "veces_techo": 0.4891856096679842,
+   "dentro": true
+  },
+  {
+   "familia": "temporal",
+   "metrica": "duracion_posesion_s",
+   "sintetico": 2.4701013079491028,
+   "prueba": 3.271907807218532,
+   "entrenamiento": 3.2460320842638697,
+   "d": 0.8028885298371711,
+   "techo": 0.10689469443521502,
+   "veces_techo": 7.511023199788204,
+   "dentro": false
+  },
+  {
+   "familia": "temporal",
+   "metrica": "juego_abierto",
+   "sintetico": 0.6807868913164228,
+   "prueba": 0.7296530798778231,
+   "entrenamiento": 0.7124285565531285,
+   "d": 0.05624577471738767,
+   "techo": 0.022079255702236688,
+   "veces_techo": 2.5474488576935963,
+   "dentro": false
+  },
+  {
+   "familia": "temporal",
+   "metrica": "espera_saque",
+   "sintetico": 303.2696335078534,
+   "prueba": 198.73,
+   "entrenamiento": 214.276,
+   "d": 104.32983830845775,
+   "techo": 17.153009950248755,
+   "veces_techo": 6.082305007171336,
+   "dentro": false
+  },
+  {
+   "familia": "temporal",
+   "metrica": "laterales_10min",
+   "sintetico": 21.829290872060728,
+   "prueba": 19.497986856719727,
+   "entrenamiento": 19.654179007774896,
+   "d": 2.7258089806492225,
+   "techo": 0.9034796399343503,
+   "veces_techo": 3.0170120721782823,
+   "dentro": false
+  },
+  {
+   "familia": "temporal",
+   "metrica": "lateral_repetido",
+   "sintetico": 0.17048809523809524,
+   "prueba": 0.015011160714285713,
+   "entrenamiento": 0.017159598214285712,
+   "d": 0.15517448471926082,
+   "techo": 0.004809879175550812,
+   "veces_techo": 32.26161802733657,
+   "dentro": false
+  },
+  {
+   "familia": "mecanica",
+   "metrica": "cargadas_min",
+   "sintetico": 0.26301295748945597,
+   "prueba": 0.22777269397094155,
+   "entrenamiento": 0.23766277475338704,
+   "d": 0.07955123977317509,
+   "techo": 0.047791736715403356,
+   "veces_techo": 1.664539630499253,
+   "dentro": false
+  },
+  {
+   "familia": "mecanica",
+   "metrica": "contacto_s_jug_min",
+   "sintetico": 0.3413079224708231,
+   "prueba": 0.5863358417911038,
+   "entrenamiento": 0.6151395109888385,
+   "d": 0.24485071505893682,
+   "techo": 0.032935406582519144,
+   "veces_techo": 7.434270302553187,
+   "dentro": false
+  },
+  {
+   "familia": "mecanica",
+   "metrica": "racha_p90",
+   "sintetico": 26.576000000000004,
+   "prueba": 57.20273437500001,
+   "entrenamiento": 63.09023437500001,
+   "d": 30.63984577114428,
+   "techo": 6.133258706467665,
+   "veces_techo": 4.995687812554498,
+   "dentro": false
+  },
+  {
+   "familia": "mecanica",
+   "metrica": "vel_jugador",
+   "sintetico": 1.8721761816740037,
+   "prueba": 2.1508625390482883,
+   "entrenamiento": 2.149344364489157,
+   "d": 0.2783971730067362,
+   "techo": 0.006316702217604954,
+   "veces_techo": 44.073183033835264,
+   "dentro": false
+  },
+  {
+   "familia": "mecanica",
+   "metrica": "vel_pelota",
+   "sintetico": 3.2940310867130758,
+   "prueba": 4.450891045028088,
+   "entrenamiento": 4.493512893286277,
+   "d": 1.1558586133319644,
+   "techo": 0.05270474081015706,
+   "veces_techo": 21.93082814874998,
+   "dentro": false
+  },
+  {
+   "familia": "mecanica",
+   "metrica": "cambios_tecla_s",
+   "sintetico": 4.900602414067923,
+   "prueba": 3.454125235524528,
+   "entrenamiento": 3.315243732255445,
+   "d": 1.4516527831530084,
+   "techo": 0.13783724070257122,
+   "veces_techo": 10.531644247619717,
+   "dentro": false
+  },
+  {
+   "familia": "mecanica",
+   "metrica": "mas_cercano_abierto",
+   "sintetico": 67.9002926826477,
+   "prueba": 55.3598160238827,
+   "entrenamiento": 55.378064268217315,
+   "d": 12.944198187453187,
+   "techo": 1.2074753348981557,
+   "veces_techo": 10.720051841510255,
+   "dentro": false
+  }
+ ]
+}

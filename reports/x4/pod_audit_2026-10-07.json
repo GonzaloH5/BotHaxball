@@ -1,0 +1,296 @@
+{
+  "audit_time_local": "2026-10-07",
+  "runs": {
+    "control": {
+      "decisions": 98304000,
+      "updates": 1500,
+      "rollout_windows": {
+        "first100": {
+          "updates": 100,
+          "macro_starts": 0,
+          "macro_kicks": 0,
+          "kick_per_start_approx": 0,
+          "starts_per_update": 0,
+          "learner_samples": 47348968,
+          "nonfinite_skipped": 0
+        },
+        "last100": {
+          "updates": 100,
+          "macro_starts": 0,
+          "macro_kicks": 0,
+          "kick_per_start_approx": 0,
+          "starts_per_update": 0,
+          "learner_samples": 47232336,
+          "nonfinite_skipped": 0
+        },
+        "all": {
+          "updates": 1500,
+          "macro_starts": 0,
+          "macro_kicks": 0,
+          "kick_per_start_approx": 0,
+          "starts_per_update": 0,
+          "learner_samples": 707768072,
+          "nonfinite_skipped": 0
+        }
+      },
+      "index_initial": 0.7459,
+      "index_final": 0.691,
+      "index_final_ic90": [
+        0.6573,
+        0.7319
+      ],
+      "final_approved": false,
+      "final_metrics_agent_human": {
+        "pases_por_min": [
+          5.5688,
+          12.7574
+        ],
+        "precision_pase": [
+          0.4262,
+          0.6862
+        ],
+        "pases_por_posesion": [
+          0.1812,
+          0.5846
+        ],
+        "paredes_por_min": [
+          0.1499,
+          0.7675
+        ],
+        "desmarques_utiles_frac": [
+          0.0238,
+          0.1006
+        ],
+        "retencion_tras_recibir": [
+          0.4231,
+          0.5829
+        ],
+        "retencion_bajo_presion": [
+          0.3506,
+          0.4758
+        ],
+        "pase_con_linea_progresiva": [
+          0.393,
+          0.6038
+        ],
+        "perdida_sin_pase_bajo_presion": [
+          0.6501,
+          0.5184
+        ]
+      },
+      "index_last3_mean": 0.6778333333333332
+    },
+    "pase": {
+      "decisions": 98304000,
+      "updates": 1500,
+      "rollout_windows": {
+        "first100": {
+          "updates": 100,
+          "macro_starts": 29466,
+          "macro_kicks": 11881,
+          "kick_per_start_approx": 0.4032104798751103,
+          "starts_per_update": 294.66,
+          "learner_samples": 46902889,
+          "nonfinite_skipped": 0
+        },
+        "last100": {
+          "updates": 100,
+          "macro_starts": 1053,
+          "macro_kicks": 243,
+          "kick_per_start_approx": 0.23076923076923078,
+          "starts_per_update": 10.53,
+          "learner_samples": 47271367,
+          "nonfinite_skipped": 0
+        },
+        "all": {
+          "updates": 1500,
+          "macro_starts": 39194,
+          "macro_kicks": 15348,
+          "kick_per_start_approx": 0.39159054957391437,
+          "starts_per_update": 26.129333333333335,
+          "learner_samples": 707330508,
+          "nonfinite_skipped": 0
+        }
+      },
+      "index_initial": 0.6594,
+      "index_final": 0.6356,
+      "index_final_ic90": [
+        0.5814,
+        0.691
+      ],
+      "final_approved": false,
+      "final_metrics_agent_human": {
+        "pases_por_min": [
+          6.095,
+          12.7574
+        ],
+        "precision_pase": [
+          0.4499,
+          0.6862
+        ],
+        "pases_por_posesion": [
+          0.1806,
+          0.5846
+        ],
+        "paredes_por_min": [
+          0.2002,
+          0.7675
+        ],
+        "desmarques_utiles_frac": [
+          0.0141,
+          0.1006
+        ],
+        "retencion_tras_recibir": [
+          0.3869,
+          0.5829
+        ],
+        "retencion_bajo_presion": [
+          0.2468,
+          0.4758
+        ],
+        "pase_con_linea_progresiva": [
+          0.3172,
+          0.6038
+        ],
+        "perdida_sin_pase_bajo_presion": [
+          0.6847,
+          0.5184
+        ]
+      },
+      "index_last3_mean": 0.6707000000000001
+    }
+  },
+  "verdict": {
+    "pase_vs_control": {
+      "wins": 84,
+      "draws": 108,
+      "losses": 64,
+      "goals_for": 145,
+      "goals_against": 114,
+      "matches": 256,
+      "score": 0.5391,
+      "a": "runs/x4_pase/pase/last.pt",
+      "b": "runs/x4_pase/control/last.pt",
+      "approx_ci95_iid": [
+        0.49273783756220574,
+        0.5853871624377942
+      ]
+    },
+    "pase_vs_bc": {
+      "wins": 186,
+      "draws": 66,
+      "losses": 4,
+      "goals_for": 318,
+      "goals_against": 15,
+      "matches": 256,
+      "score": 0.8555,
+      "a": "runs/x4_pase/pase/last.pt",
+      "b": "runs/x4_bc/final_sangu_rsone/best.pt",
+      "approx_ci95_iid": [
+        0.825666022408907,
+        0.885271477591093
+      ]
+    },
+    "control_vs_bc": {
+      "wins": 183,
+      "draws": 70,
+      "losses": 3,
+      "goals_for": 339,
+      "goals_against": 6,
+      "matches": 256,
+      "score": 0.8516,
+      "a": "runs/x4_pase/control/last.pt",
+      "b": "runs/x4_bc/final_sangu_rsone/best.pt",
+      "approx_ci95_iid": [
+        0.8220492947925643,
+        0.8810757052074357
+      ]
+    },
+    "pase_vs_inicio": {
+      "wins": 75,
+      "draws": 91,
+      "losses": 90,
+      "goals_for": 144,
+      "goals_against": 159,
+      "matches": 256,
+      "score": 0.4707,
+      "a": "runs/x4_pase/pase/last.pt",
+      "b": "runs/x4_estilo/rl_control/best.pt",
+      "approx_ci95_iid": [
+        0.4216611093410917,
+        0.5197451406589083
+      ]
+    },
+    "control_vs_inicio": {
+      "wins": 74,
+      "draws": 109,
+      "losses": 73,
+      "goals_for": 132,
+      "goals_against": 133,
+      "matches": 256,
+      "score": 0.502,
+      "a": "runs/x4_pase/control/last.pt",
+      "b": "runs/x4_estilo/rl_control/best.pt",
+      "approx_ci95_iid": [
+        0.45554019269664264,
+        0.5483660573033573
+      ]
+    },
+    "veredicto": "sin_mejora",
+    "criterios": {
+      "pase_vs_control_ge_055": false,
+      "pase_vs_bc_ge_08": true
+    }
+  },
+  "probe": {
+    "description": "Self-play de diagnóstico; 16 partidos de 1 minuto por checkpoint, semilla de entorno 812, generador Torch 9167, latencia 8–11 ticks, máximo 2200 decisiones, sin entrenamiento.",
+    "update100": {
+      "player_decisions": 182784,
+      "offered_player_decisions": 9480,
+      "conditional_pass_probability": 0.001549885019460122,
+      "offered_fraction": 0.05186449579831933,
+      "macro_starts": 18,
+      "macro_kicks_while_active": 6,
+      "macro_mask_abort": 7,
+      "macro_timeout": 3,
+      "macro_busy_decisions": 125,
+      "finished": 16,
+      "gate_bias": -3.099834680557251
+    },
+    "final": {
+      "player_decisions": 192384,
+      "offered_player_decisions": 9031,
+      "conditional_pass_probability": 0.0008196101811258896,
+      "offered_fraction": 0.046942573186959415,
+      "macro_starts": 7,
+      "macro_kicks_while_active": 0,
+      "macro_mask_abort": 3,
+      "macro_timeout": 0,
+      "macro_busy_decisions": 5,
+      "finished": 16,
+      "gate_bias": -3.103712797164917
+    },
+    "limitations": [
+      "Una sola semilla y muestra pequeña; es una sonda de uso de acciones, no una evaluación de fuerza.",
+      "Macro_kicks sólo cuenta patadas mientras la macro está activa; la latencia puede hacer que una patada emitida se ejecute después de cancelarse la macro.",
+      "Las llamadas a la política incluyen decisiones que después son ignoradas por el compromiso de una macro activa."
+    ]
+  },
+  "provenance": {
+    "remote_root": "/workspace/HaxballRL",
+    "run_meta_git_head": "4a2037f025bd37d1bf1680dd298aa4df248aa9c0",
+    "inspected_remote_head": "b6d1213",
+    "local_head": "a2028ab985cab0f20acf8de7ad92753b25bf40ab",
+    "source_files": [
+      "runs/x4_pase/veredicto.json",
+      "runs/x4_pase/control/log.jsonl",
+      "runs/x4_pase/pase/log.jsonl",
+      "runs/x4_pase/control/eval.jsonl",
+      "runs/x4_pase/pase/eval.jsonl",
+      "runs/x4_pase/pase/run_meta.jsonl"
+    ],
+    "run_pass_ready": false,
+    "no_active_training": true,
+    "gpu_util_percent_after_probe": 0
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "pid": 5407,
+  "command": [
+    "/workspace/venv/bin/python",
+    "-u",
+    "-m",
+    "learn.x4_coop_continue",
+    "--source-run",
+    "/workspace/HaxballRL_coop_refine_20261007/runs/x4_coop_refine_200_20261007",
+    "--root",
+    "/workspace/HaxballRL_coop_refine_20261007/runs/x4_coop_finish_600_20261008",
+    "--updates",
+    "200",
+    "--wall-hours",
+    "2"
+  ],
+  "driver_log": "/workspace/HaxballRL_coop_refine_20261007/runs/x4_coop_continue_driver_20261008.out",
+  "output": "/workspace/HaxballRL_coop_refine_20261007/runs/x4_coop_finish_600_20261008",
+  "git_commit": "aeed052932c47a9dccb793fad7c1259c2e307437"
+}

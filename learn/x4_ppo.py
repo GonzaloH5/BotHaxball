@@ -49,6 +49,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from env.rs4z import kernel as K
+from env.rs4z import contract as C
 from env.rs4z import obs_v2, obs_v3
 from env.rs4z.core import MIRROR_ACTION, RS4ZEnv
 from learn import x4_style as XS
@@ -60,7 +61,8 @@ TEAM = np.array([0, 0, 0, 0, 1, 1, 1, 1])
 # orden de los 8 jugadores visto desde cada lugar: él, compañeros, rivales (por lugar)
 ORDER = np.array([[p] + [q for q in range(8) if q != p and TEAM[q] == TEAM[p]] + [q for q in range(8) if TEAM[q] != TEAM[p]]
                   for p in range(8)])
-CRITIC_IN = obs_v3.OBS_DIM + obs_v2.CRITIC_DIM + 8 * 18 + 1 + 3 + 1     # + λ efectivo + tipo de rival + φ propio
+COOP_CRITIC_DIM = 4
+CRITIC_IN = obs_v3.OBS_DIM + obs_v2.CRITIC_DIM + 8 * 18 + 1 + 3 + 1 + COOP_CRITIC_DIM
 N_REGIONS = 10
 
 
@@ -73,6 +75,22 @@ class Critic(nn.Module):
 
     def forward(self, x):
         return self.net(x).squeeze(-1)
+
+
+def load_critic_weights(model, state):
+    """Older critics retain exactly their value function: new task columns start at zero."""
+    state = dict(state)
+    key = "net.0.weight"
+    old, new = state[key], model.state_dict()[key]
+    expanded = old.shape != new.shape
+    if expanded:
+        if old.shape[0] != new.shape[0] or old.shape[1] + COOP_CRITIC_DIM != new.shape[1]:
+            raise RuntimeError(f"critic incompatible: {tuple(old.shape)} -> {tuple(new.shape)}")
+        padded = torch.zeros_like(new)
+        padded[:, :old.shape[1]] = old
+        state[key] = padded
+    model.load_state_dict(state)
+    return expanded
 
 
 class RunningNorm:
@@ -124,7 +142,7 @@ def upcoming_actions(env):
 class StateBank:
     """Estados de juego abierto y de inicio de saque de las grabaciones de entrenamiento."""
 
-    def __init__(self, data, seed=0):
+    def __init__(self, data, seed=0, *, open_sampler="uniform", restore_history=False):
         from learn.x4_data import STATE_OPEN
         self.d = data
         self.rng = np.random.default_rng(seed)
@@ -133,11 +151,37 @@ class StateBank:
         self.open = v[open_]
         rs = (data.state[v] == 1) & (data.rkind[v] > 0) & (data.rage[v] == 0) & (data.rteam[v] >= 0)
         self.restart = v[rs]
+        if open_sampler not in ("uniform", "pressure_pass"):
+            raise ValueError("unknown human open sampler")
+        if open_sampler == "pressure_pass" and not restore_history:
+            raise ValueError("pressure_pass requires restored source action history")
+        self.open_sampler, self.restore_history = open_sampler, bool(restore_history)
+        self.pressure = None
+        self.start_counts = dict(uniform_open=0, pressure_pass=0, restart=0)
+        if open_sampler == "pressure_pass":
+            from learn.x4_pressure_starts import PressureStartBank
+            self.pressure = PressureStartBank(data, seed=seed)
 
     def apply(self, env, row, restart_frac=0.3):
         d = self.d
         use_restart = len(self.restart) and self.rng.random() < restart_frac
-        t = int(self.rng.choice(self.restart if use_restart else self.open))
+        use_pressure = False
+        if not use_restart and self.restore_history:
+            # Consume the same treatment coin in both A/B branches.
+            use_pressure = self.rng.random() < 0.5 and self.open_sampler == "pressure_pass"
+        for attempt in range(256):
+            t = self.pressure.sample(self.rng) if use_pressure else \
+                int(self.rng.choice(self.restart if use_restart else self.open))
+            if not self.restore_history:
+                break
+            from learn.x4_pressure_starts import valid_source_window
+            if valid_source_window(d, t, env.delay[row], env.H):
+                # Pending calls are not represented in XD: never use an exterior
+                # ball as an ordinary open-play state in the opted-in experiment.
+                if use_restart or (abs(d.ball[t, 0]) <= C.LINE_W and abs(d.ball[t, 1]) <= C.LINE_H):
+                    break
+        else:
+            raise ValueError("no coherent human source window for requested start kind")
         held = ((d.inp[t] & 16) != 0) & ~d.kicking[t]
         env.radius[row, 0] = d.ball_r[t]
         env.rf[row, K.RF_KSTR] = d.kstr[t]
@@ -145,6 +189,10 @@ class StateBank:
                   kick_held=held, last_touch=-1, mass_phase=0 if abs(d.mass[t] - 0.5) < 1e-6 else 1)
         if use_restart:
             env.start_restart(row, int(d.rkind[t]), int(d.rteam[t]), restart_spot(env, int(d.rkind[t]), d.ball[t, :2]))
+        if self.restore_history:
+            from learn.x4_pressure_starts import restore_source_history
+            restore_source_history(env, row, d, t)
+        self.start_counts["restart" if use_restart else "pressure_pass" if use_pressure else "uniform_open"] += 1
         return t
 
 
@@ -186,6 +234,8 @@ class Arena:
         self.ep_goals = np.zeros((n, 2))
         self.passes = PassTracker(n)
         self.macro = MacroState(n)                # macro-acciones de pase en curso (--pass-macro o rivales con pases)
+        self.coop = None
+        self.macro_trace = None
         self.restart_all()
 
     def _delays(self, k):
@@ -227,6 +277,10 @@ class Arena:
             self.regions[r] = False
             self.ep_goals[r] = 0
         self.passes.reset(rows)
+        if self.coop is not None:
+            self.coop.reset(self, rows)
+        if self.macro_trace is not None:
+            self.macro_trace.reset(rows)
 
     def restart_all(self):
         self.new_match(np.arange(self.N))
@@ -457,6 +511,10 @@ def parse_args(argv=None):
     ap.add_argument("--critic-warmup", type=int, default=20, help="actualizaciones sólo del crítico al empezar")
     ap.add_argument("--human-starts", type=float, default=0.4)
     ap.add_argument("--human-restart-frac", type=float, default=0.3)
+    ap.add_argument("--human-open-sampler", choices=("uniform", "pressure_pass"), default="uniform",
+                    help="pressure_pass: reemplazar la mitad de los arranques humanos abiertos por pases bajo presión")
+    ap.add_argument("--human-restore-history", action="store_true",
+                    help="restaurar colas de acciones de la fuente humana; opt-in para el ensayo A/B")
     ap.add_argument("--pool-frac", type=float, default=0.2)
     ap.add_argument("--pool", default="", help="checkpoints extra del pool, separados por coma (la BC está salvo --no-pool-bc)")
     ap.add_argument("--pool-bc", action=argparse.BooleanOptionalAction, default=True,
@@ -520,6 +578,24 @@ def parse_args(argv=None):
     ap.add_argument("--pass-ready", action=argparse.BooleanOptionalAction, default=False,
                     help="con --pass-macro, \"pase listo\": el pase sólo se ofrece si el controlador patea en los próximos "
                          "9 ticks con ≤ 8° (la política conserva el movimiento; el macro es la puntería)")
+    ap.add_argument("--macro-trace", action=argparse.BooleanOptionalAction, default=False,
+                    help="rastrear patadas de macros incluso después de cancelarse, a través de la cola")
+    ap.add_argument("--coop-frac", type=float, default=0.0,
+                    help="fracción de ejercicios cooperativos desde pases humanos de train (máximo 0.5)")
+    ap.add_argument("--coop-min-episodes", type=int, default=256,
+                    help="mínimo de episodios por ventana antes de subir la dificultad")
+    ap.add_argument("--coop-threshold", type=float, default=0.35,
+                    help="mínimo de éxito conservador para avanzar el currículo")
+    ap.add_argument("--coop-bank-limit", type=int, default=12000,
+                    help="máximo de ejemplos de pase real del split train")
+    ap.add_argument("--coop-start-stage", type=int, choices=range(5), default=0)
+    ap.add_argument("--coop-transfer-frac", type=float, default=None)
+    ap.add_argument("--coop-replay-frac", type=float, default=0.0)
+    ap.add_argument("--coop-mastery-windows", type=int, default=1)
+    ap.add_argument("--coop-min-stage-updates", type=int, default=0)
+    ap.add_argument("--coop-possession-retention", action="store_true")
+    ap.add_argument("--coop-finish-frac", type=float, default=0.0)
+    ap.add_argument("--coop-reward-cooperative-goals", action="store_true")
     ap.add_argument("--bf16", action=argparse.BooleanOptionalAction, default=True,
                     help="pasadas hacia adelante del aprendizaje en bfloat16 (autocast; log_softmax y pérdidas siguen "
                          "en fp32). En el A4000 (2026-10-07, 1024×64): aprendizaje 1,90 → 1,29–1,39 s por "
@@ -533,6 +609,27 @@ def parse_args(argv=None):
     a.match_minutes = (lo, hi)
     a.map_mix = [(m.split(":")[0], float(m.split(":")[1])) for m in a.maps.split(",")]
     a.forfeit_reasons = tuple(int(x) for x in a.forfeit_reasons.split(",") if x)
+    if a.human_open_sampler == "pressure_pass" and (
+            not a.human_restore_history or not a.bank_recordings or a.human_starts <= 0):
+        ap.error("pressure_pass necesita --human-restore-history y un banco humano activo de train")
+    if a.human_restore_history and (not 0 <= a.human_starts <= 1 or not 0 <= a.human_restart_frac <= 1):
+        ap.error("fracciones de arranques humanos inválidas")
+    if not 0 <= a.coop_frac <= 0.5:
+        ap.error("--coop-frac debe quedar entre 0 y 0.5: conservar al menos 50% de partidos")
+    if a.coop_min_episodes < 32 or not 0 < a.coop_threshold < 1 or a.coop_bank_limit < 1:
+        ap.error("configuración de currículo inválida")
+    if (a.coop_min_episodes > 512 or not 0 <= a.coop_replay_frac <= 1
+            or a.coop_mastery_windows < 1 or a.coop_min_stage_updates < 0
+            or (a.coop_transfer_frac is not None and not 0 <= a.coop_transfer_frac <= a.coop_frac)):
+        ap.error("configuración de repaso/avance inválida")
+    if not 0 <= a.coop_finish_frac <= 1 or a.coop_finish_frac + a.coop_replay_frac > 1:
+        ap.error("la suma de repaso y definición debe quedar entre 0 y 1")
+    if a.coop_frac and (a.shaping_kind != "none" or a.style_coef or a.pass_bonus or a.auto_pass_arm_update):
+        ap.error("el currículo necesita --shaping-kind none --style-coef 0 --pass-bonus 0 --auto-pass-arm-update 0")
+    if a.coop_frac and any(m != "sanguchito_rs_x4" for m, _ in a.map_mix):
+        ap.error("el currículo sólo está validado para sanguchito_rs_x4")
+    if a.coop_frac and not a.bank_recordings:
+        ap.error("el currículo necesita --bank-recordings > 0 (split train)")
     return a
 
 
@@ -568,17 +665,42 @@ class Trainer:
         self.bc_slot = 0 if a.pool_bc else -1       # lugar de la BC en el pool (el crítico distingue BC de snapshot)
         self.pool_wins = np.full(len(self.pool), 0.5)   # tasa de victoria del aprendiz contra cada miembro
         bank = None
-        if a.bank_recordings and a.human_starts > 0:
+        if a.bank_recordings and (a.human_starts > 0 or a.coop_frac > 0):
             from learn import x4_data as XD
             names = XD.split_names(a.splits, "train", None, ("sanguchito_rs_x4",))[:a.bank_recordings]
             if names:
-                bank = StateBank(XD.load(names, maps=("sanguchito_rs_x4",)), seed=a.seed)
+                bank = StateBank(XD.load(names, maps=("sanguchito_rs_x4",)), seed=a.seed,
+                                 open_sampler=a.human_open_sampler, restore_history=a.human_restore_history)
         self.bank = bank
         total = sum(w for _, w in a.map_mix)
         self.arenas = []
         for m, w in a.map_mix:
             n = max(1, int(round(a.envs * w / total)))
             self.arenas.append(Arena(m, n, a, self.rng, bank if m == "sanguchito_rs_x4" else None, len(self.pool)))
+        self.coop_defenders = None
+        if a.coop_frac:
+            if bank is None:
+                raise SystemExit("no hay estados humanos de entrenamiento para el currículo")
+            from learn.x4_coop_curriculum import CoopBank, CoopCurriculum
+            coop_bank = CoopBank(bank.d, limit=a.coop_bank_limit)
+            from learn.x4_scripted import ScriptedPolicy
+            reference = load_policy(a.init, self.dev) if a.init else self.bc
+            self.coop_defenders = (self.bc, reference, ScriptedPolicy())
+            for ar in self.arenas:
+                ar.coop = CoopCurriculum(coop_bank, ar.N, self.rng, frac=a.coop_frac,
+                                        min_episodes=a.coop_min_episodes, threshold=a.coop_threshold,
+                                        start_stage=a.coop_start_stage, transfer_frac=a.coop_transfer_frac,
+                                        replay_frac=a.coop_replay_frac, mastery_windows=a.coop_mastery_windows,
+                                        min_stage_updates=a.coop_min_stage_updates,
+                                        possession_retention=a.coop_possession_retention,
+                                        finish_frac=a.coop_finish_frac,
+                                        reward_cooperative_goals=a.coop_reward_cooperative_goals)
+                ar.new_match(np.arange(ar.N))
+            print(f"currículo: {len(coop_bank.records)} pases humanos de train", flush=True)
+        if a.macro_trace:
+            from learn.x4_macro_trace import MacroTrace
+            for ar in self.arenas:
+                ar.macro_trace = MacroTrace(ar.env, retention_ticks=120)
         self.style = None
         if a.style_coef > 0:
             if not Path(a.style_bank).exists():
@@ -632,7 +754,7 @@ class Trainer:
             ck = torch.load(a.init, map_location="cpu")
             load_weights(self.policy, ck["model"])
             if "critic" in ck:
-                self.critic.load_state_dict(ck["critic"])
+                load_critic_weights(self.critic, ck["critic"])
             if "vnorm" in ck:
                 self.vnorm.mean, self.vnorm.sq, self.vnorm.w = ck["vnorm"]
             print(f"política inicializada desde {a.init} (ancla: {a.bc})", flush=True)
@@ -665,7 +787,9 @@ class Trainer:
             except Exception:  # noqa: BLE001
                 return None
         files = ["env/rs4z/kernel.py", "env/rs4z/core.py", "env/rs4z/obs_v3.py", "env/rs4z/contract.py",
-                 "learn/x4_ppo.py", "learn/x4_epv.py", "tools/x4_pass_chain.py"]
+                 "learn/x4_ppo.py", "learn/x4_epv.py", "tools/x4_pass_chain.py",
+                 "learn/x4_coop_curriculum.py", "learn/x4_macro_trace.py", "learn/x4_policy.py",
+                 "learn/x4_pass_macro.py"]
         sha = {f: hashlib.sha256((ROOT / f).read_bytes()).hexdigest()[:16] for f in files if (ROOT / f).exists()}
         try:
             import numba
@@ -687,6 +811,13 @@ class Trainer:
                     omp=os.environ.get("OMP_NUM_THREADS"), numba_env=os.environ.get("NUMBA_NUM_THREADS"))
         with open(self.out / "run_meta.jsonl", "a", encoding="utf-8") as fh:
             fh.write(json.dumps(meta) + "\n")
+        if self.bank is not None and self.bank.restore_history:
+            manifest = dict(open_sampler=self.bank.open_sampler, restore_history=True,
+                            train_recordings=list(self.bank.d.names), human_starts=self.a.human_starts,
+                            human_restart_frac=self.a.human_restart_frac,
+                            pressure=self.bank.pressure.manifest if self.bank.pressure is not None else None)
+            from learn.x4_coop_run import atomic_json
+            atomic_json(self.out / "human_start_bank.json", manifest)
         if meta["git_dirty"]:
             print(f"AVISO: cambios sin commitear en env/, learn/ o tools/:\n{meta['git_dirty']}", flush=True)
 
@@ -702,11 +833,20 @@ class Trainer:
                 print(f"no pude cargar {c}: {type(e).__name__}: {e}", flush=True)
         if ck is None:
             raise SystemExit(f"--resume: ningún checkpoint legible en {self.out}")
+        if ck.get("coop_state"):
+            previous = ck.get("args", {})
+            for key in ("bc", "init"):
+                old, new = previous.get(key), getattr(self.a, key)
+                if (Path(old).resolve() if old else None) != (Path(new).resolve() if new else None):
+                    raise SystemExit(f"--resume del currículo exige conservar --{key}: {old!r}")
+            if not self.a.coop_frac:
+                raise SystemExit("--resume del currículo exige --coop-frac > 0")
         self.policy.load_state_dict(ck["model"])
-        self.critic.load_state_dict(ck["critic"])
+        expanded_critic = load_critic_weights(self.critic, ck["critic"])
         if "opt_pi" in ck:
             self.opt_pi.load_state_dict(ck["opt_pi"])
-            self.opt_v.load_state_dict(ck["opt_v"])
+            if not expanded_critic:
+                self.opt_v.load_state_dict(ck["opt_v"])
         self.vnorm.mean, self.vnorm.sq, self.vnorm.w = ck["vnorm"]
         self.update, self.decisions = int(ck["update"]), int(ck["decisions"])
         self.best_score = float(ck.get("best_score", -1.0))
@@ -748,6 +888,11 @@ class Trainer:
             ar.pool_size = len(self.pool)
         if self.style is not None and ck.get("style"):
             self.style.load_state_dict(ck["style"])
+        coop_state = ck.get("coop_state", {})
+        for ar in self.arenas:
+            if ar.coop is not None and ar.map in coop_state:
+                ar.coop.load_state_dict(coop_state[ar.map])
+                ar.new_match(np.arange(ar.N), self.pfsp())
         print(f"reanudando desde {path}: actualización {self.update}, {self.decisions} decisiones, "
               f"pool {len(self.pool)}", flush=True)
 
@@ -778,6 +923,11 @@ class Trainer:
         pm = torch.from_numpy(offered.reshape(N * 8, -1)).to(self.dev) if offered is not None else None
         logits = self.policy(o, pm)
         dist = torch.distributions.Categorical(logits=logits, validate_args=False)
+        arena.last_pass_stats = (0, 0.0)
+        if self.n_pass and offered is not None:
+            eligible = offered.any(-1) & arena.learner & arena.env.active & ~arena.macro.running()
+            em = torch.from_numpy(eligible.reshape(-1)).to(self.dev)
+            arena.last_pass_stats = (int(eligible.sum()), float(dist.probs[em, 18:].sum().item()))
         a = dist.sample()
         logp = dist.log_prob(a)
         obs_bc = self.bc_view(arena, obs)
@@ -794,6 +944,25 @@ class Trainer:
             sub = acts[rows]
             sub[sel] = oa
             acts[rows] = sub
+        if arena.coop is not None:
+            for k, defender in enumerate(self.coop_defenders):
+                rows = np.flatnonzero(arena.coop.active & (arena.coop.defender_kind == k))
+                if not len(rows):
+                    continue
+                sel = ~arena.learner[rows] & arena.env.active[rows]
+                if not sel.any():
+                    continue
+                ob_np = obs_bc[rows][sel]
+                if isinstance(defender, nn.Module):
+                    ob_def = torch.from_numpy(ob_np).to(self.dev)
+                    pm_def = torch.from_numpy(offered[rows][sel]).to(self.dev) if offered is not None else None
+                    da = torch.distributions.Categorical(logits=defender(ob_def, pm_def),
+                                                         validate_args=False).sample().cpu().numpy()
+                else:
+                    da = defender(ob_np, self.rng)
+                sub = acts[rows]
+                sub[sel] = da
+                acts[rows] = sub
         return acts, logp.view(N, 8).cpu().numpy(), bc_logp.view(N, 8, 18).cpu().numpy(), v.view(N, 8).cpu().numpy()
 
     def lam_eff(self, arena):
@@ -817,7 +986,10 @@ class Trainer:
         if phi is None:
             phi = self.epv.phi_env(env) if self.epv is not None else np.zeros(arena.N)
         ph = (np.asarray(phi, np.float32)[:, None] * np.where(TEAM == 0, 1.0, -1.0)[None, :]).astype(np.float32)[..., None]
-        return np.concatenate([obs, c, up, lam, kind, ph], -1).astype(np.float32)
+        task = np.zeros((arena.N, 8, COOP_CRITIC_DIM), np.float32)
+        if arena.coop is not None:
+            task[:] = arena.coop.descriptor()[:, None, :]
+        return np.concatenate([obs, c, up, lam, kind, ph, task], -1).astype(np.float32)
 
     # -------------------------------------------------------------- rollout
     def rollout(self):
@@ -828,7 +1000,8 @@ class Trainer:
                      forfeits_by={v: 0 for v in FORFEIT_NAMES.values()}, epv_shaping=0.0, lambda_eff=[],
                      dist_ball=0.0, dist_n=0, still=0, kick=0, acts_n=0, kickoff_steps=0,
                      style_r=0.0, style_n=0, style_abs=0.0, style_slots=0, macro_starts=0, macro_kicks=0,
-                     macro_busy=0)
+                     macro_busy=0, pass_offered=0, pass_probability_sum=0.0,
+                     coop={}, coop_actor_samples=0, coop_decisions=0, macro_trace={}, curriculum_changes=[])
         use_macro = bool(self.n_pass) or any(getattr(m, "n_pass", 0) for _, m in self.pool)
         style_on = self.style is not None and self.update > a.style_warmup
         shaping_scale = 1.0
@@ -856,6 +1029,9 @@ class Trainer:
                 crit = self.critic_input(arena, obs, phi)
                 table = pass_table(env, ready_only=a.pass_ready) if use_macro else None
                 acts, logp, bc_logp, v = self.act(arena, obs, crit, table)
+                offered_n, offered_mass = arena.last_pass_stats
+                stats["pass_offered"] += offered_n
+                stats["pass_probability_sum"] += offered_mass
                 ob[t], cr[t], ac[t], lp[t], bl[t], vv[t] = obs, crit, acts, logp, bc_logp, v
                 lm[t] = arena.learner & env.active
                 if table is not None:
@@ -863,6 +1039,7 @@ class Trainer:
                     # la pérdida (la acción de la política fue la que empezó el pase)
                     sampled = acts
                     acts, busy = arena.macro.apply(sampled, table)
+                    trace_starts = ~busy & (sampled >= 18) & arena.macro.running()
                     stats["macro_starts"] += int((~busy & (sampled >= 18) & lm[t]).sum())
                     stats["macro_busy"] += int((busy & lm[t]).sum())
                     lm[t] &= ~busy
@@ -879,7 +1056,27 @@ class Trainer:
                 stats["kick"] += int(((acts >= 9) & lm[t]).sum())
                 stats["acts_n"] += int(lm[t].sum())
                 stats["kickoff_steps"] += int((env.ri[:, K.RI_KO] != 0).sum())
+                task_rows = arena.coop.active.copy() if arena.coop is not None else np.zeros(N, bool)
+                stats["coop_decisions"] += int(task_rows.sum())
+                stats["coop_actor_samples"] += int(lm[t][task_rows].sum())
+                if arena.coop is not None:
+                    arena.coop.before_step(env)
+                if arena.macro_trace is not None:
+                    arena.macro_trace.before_step(env, arena.macro, acts,
+                                                  sampled=sampled if table is not None else None,
+                                                  starts=trace_starts if table is not None else None)
                 ev = env.step(acts)
+                if arena.macro_trace is not None:
+                    trace_delta = arena.macro_trace.after_step(env, ev)
+                    trace_mask = arena.learner & env.active
+                    for key, value in trace_delta.items():
+                        stats["macro_trace"][key] = stats["macro_trace"].get(key, 0) + int(value[trace_mask].sum())
+                task_reward, task_done = np.zeros((N, 2)), np.zeros(N, bool)
+                if arena.coop is not None:
+                    task_reward, task_done, task_stats = arena.coop.step(env, ev)
+                    for key, value in task_stats.items():
+                        if isinstance(value, (int, float, np.number)):
+                            stats["coop"][key] = stats["coop"].get(key, 0) + value
                 goal = ev["goal"]
                 if table is not None:
                     stats["macro_kicks"] += int((arena.macro.running() & ev["kicked"] & arena.learner).sum())
@@ -923,11 +1120,12 @@ class Trainer:
                             team_r[rows, 0] += sr[:n_r]
                             team_r[rows, 1] += sr[n_r:]
                             stats["style_abs"] += float(np.abs(sr).sum())
+                team_r[task_rows] = task_reward[task_rows]
                 rw[t] = team_r[:, TEAM]
                 arena.ep_goals[:, 0] += goal > 0
                 arena.ep_goals[:, 1] += goal < 0
-                stats["goals"] += int((goal != 0).sum())
-                done = ev["match_end"]
+                stats["goals"] += int(((goal != 0) & ~task_rows).sum())
+                done = ev["match_end"] | task_done
                 dn[t] = done
                 ends = np.flatnonzero(done)
                 for r in ends:
@@ -937,7 +1135,7 @@ class Trainer:
                         diff = arena.ep_goals[r, side] - arena.ep_goals[r, 1 - side]
                         res = 1.0 if diff > 0 else (0.5 if diff == 0 else 0.0)
                         self.pool_wins[k] = 0.97 * self.pool_wins[k] + 0.03 * res
-                stats["matches"] += len(ends)
+                stats["matches"] += int((done & ~task_rows).sum())
                 arena.new_match(ends, pfsp)
                 if arena.style_hist is not None:
                     arena.style_hist.reset(ends, env)
@@ -950,6 +1148,11 @@ class Trainer:
             buf.append((ob, cr, ac, lp, bl, vv, rw, dn, lm, la, last_v, pc))
             stats["decisions"] += T * N
             stats["lambda_eff"].append(float(la.mean()))
+            if arena.coop is not None:
+                change = (arena.coop.advance(learning_updates=max(0, self.update - 1 - a.critic_warmup))
+                          if a.coop_min_stage_updates else arena.coop.advance())
+                if change:
+                    stats["curriculum_changes"].append(change)
         self.decisions += stats["decisions"]
         return buf, stats
 
@@ -1084,7 +1287,7 @@ class Trainer:
         me = ModelPolicy(self.policy, self.dev, "aprendiz", generator=gen)
         bc = ModelPolicy(self.bc, self.dev, "bc", generator=gen)
         self.policy.eval()
-        w = dr = l = gf = ga = 0
+        w = dr = l = gf = ga = finished = 0
         od = a.delay_feature_fixed if a.delay_feature != "true" else None      # como el bot en la sala
         vs_bc_eps = []                  # (episodio, equipo del aprendiz) para la cadena de pase contra un rival fijo
         rec_n = 0 if strength_only or self.pass_ref is None else min(8, a.eval_matches)
@@ -1093,6 +1296,7 @@ class Trainer:
                      delays=delays, seed=1000 + self.update * 2 + side + 100_000 * seed_offset, record=rec_n,
                      obs_delay=od)
             vs_bc_eps += [(ep, side) for ep in r["episodes"]]
+            finished += r["finished"]
             g = r["goals"] if side == 0 else r["goals"][:, ::-1]
             d = g[:, 0] - g[:, 1]
             w += int((d > 0).sum()); dr += int((d == 0).sum()); l += int((d < 0).sum())
@@ -1101,7 +1305,8 @@ class Trainer:
         if strength_only:
             self.policy.train()
             return dict(vs_bc=dict(wins=w, draws=dr, losses=l, score=round((w + 0.5 * dr) / n, 3),
-                                   goal_diff=round((gf - ga) / n, 3)))
+                                   goal_diff=round((gf - ga) / n, 3), finished=finished,
+                                   valid_for_strength=finished == 2 * a.eval_matches))
         selfplay = play(me, me, map_name="sanguchito_rs_x4", matches=a.eval_selfplay, minutes=a.eval_minutes,
                         delays=delays, seed=77 + self.update, record=a.eval_selfplay, obs_delay=od)
         self.last_eval_episodes = selfplay["episodes"]
@@ -1114,7 +1319,8 @@ class Trainer:
         w1 = hum.get("w1_norm", {})
         vals = [w1[k] for k in key if w1.get(k) is not None]
         out = dict(vs_bc=dict(wins=w, draws=dr, losses=l, score=round((w + 0.5 * dr) / n, 3),
-                              goal_diff=round((gf - ga) / n, 3)),
+                              goal_diff=round((gf - ga) / n, 3), finished=finished,
+                              valid_for_strength=finished == 2 * a.eval_matches),
                    selfplay_safety=float(selfplay["safety"].mean()),
                    selfplay_kickoff_safety=float(selfplay["safety_kickoff"].mean()),
                    human_w1_mean=round(float(np.mean(vals)), 3) if vals else None,
@@ -1210,6 +1416,8 @@ class Trainer:
                         pass_arm_decided=bool(self.pass_arm_decided),
                         pool_names=[n for n, _ in self.pool[self.n_fixed_pool:]],
                         style=self.style.state_dict() if self.style is not None else None,
+                        critic_in=CRITIC_IN,
+                        coop_state={ar.map: ar.coop.state_dict() for ar in self.arenas if ar.coop is not None},
                         args={k: plain(v) for k, v in vars(self.a).items()}),
                    tmp)
         os.replace(tmp, self.out / name)          # atómico: un corte durante la escritura no rompe --resume
@@ -1393,8 +1601,16 @@ class Trainer:
                        kickoff_frac=round(stats["kickoff_steps"] / max(1, stats["decisions"]), 4),
                        macro_starts=stats["macro_starts"], macro_kicks=stats["macro_kicks"],
                        macro_busy_frac=round(stats["macro_busy"] / max(1, stats["acts_n"] + stats["macro_busy"]), 4),
+                       pass_offered_decisions=stats["pass_offered"],
+                       pass_probability_when_offered=stats["pass_probability_sum"] / max(1, stats["pass_offered"]),
+                       macro_trace=stats["macro_trace"], coop=stats["coop"],
+                       coop_actor_samples=stats["coop_actor_samples"], coop_decisions=stats["coop_decisions"],
+                       curriculum_stage={ar.map: int(ar.coop.stage) for ar in self.arenas if ar.coop is not None},
+                       curriculum_changes=stats["curriculum_changes"],
                        pool_wins={n: round(float(w), 3) for (n, _), w in zip(self.pool, self.pool_wins)},
                        **{k: (round(v, 5) if isinstance(v, float) else v) for k, v in info.items()})
+            if self.bank is not None and self.bank.restore_history:
+                row["human_start_counts"] = dict(self.bank.start_counts)
             self.log.write(json.dumps(row) + "\n")
             self.log.flush()
             print(json.dumps(row), flush=True)

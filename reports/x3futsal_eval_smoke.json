@@ -1,0 +1,1171 @@
+{
+  "version": "x3-closed-loop-eval-2",
+  "stadium": "Futsal x3  by Bazinga from HaxMaps",
+  "stadiumIdentity": "6096065c7d8fcf73d2677a468424675e14a4f7f2b52d2178936e65b45b0cbc5b",
+  "seed": 20261028,
+  "minutesPerMatch": 0.02,
+  "matchesPerSidePerLatency": 1,
+  "decisionFrames": 3,
+  "latencyIsControlledScenarioNotClientMeasurement": true,
+  "kickoffSafetyTicks": 300,
+  "policies": [
+    "changed_v1/best",
+    "baseline/best",
+    "scripted",
+    "repeat"
+  ],
+  "results": {
+    "changed_v1/best vs baseline/best": {
+      "0": {
+        "framesPerDecision": 3,
+        "simulatedLatencyMs": 0.0,
+        "firstPolicy": {
+          "matches": 2,
+          "wins": 0,
+          "draws": 2,
+          "losses": 0,
+          "winRate": 0.0,
+          "goalFor": 0,
+          "goalAgainst": 0,
+          "goalDifferencePerMatch": 0.0,
+          "kicksPerMatch": 0.0,
+          "shotsPerMatch": 0.0,
+          "completedPassesPerMatch": 0.0,
+          "turnoversPerMatch": 0.0,
+          "touchesPerMatch": 0.0,
+          "movementDecisionsPerMatch": 0.0,
+          "meanPlayerSpeedPerMatch": 0.0,
+          "meanTeamSpreadPerMatch": 73.33333333333333,
+          "safetyKickoffsPerMatch": 0.0
+        },
+        "secondPolicy": {
+          "matches": 2,
+          "wins": 0,
+          "draws": 2,
+          "losses": 0,
+          "winRate": 0.0,
+          "goalFor": 0,
+          "goalAgainst": 0,
+          "goalDifferencePerMatch": 0.0,
+          "kicksPerMatch": 0.0,
+          "shotsPerMatch": 0.0,
+          "completedPassesPerMatch": 0.0,
+          "turnoversPerMatch": 0.0,
+          "touchesPerMatch": 0.0,
+          "movementDecisionsPerMatch": 0.0,
+          "meanPlayerSpeedPerMatch": 0.0,
+          "meanTeamSpreadPerMatch": 73.33333333333333,
+          "safetyKickoffsPerMatch": 0.0
+        },
+        "firstPolicyBySide": {
+          "red": {
+            "matches": 1,
+            "wins": 0,
+            "draws": 1,
+            "losses": 0,
+            "winRate": 0.0,
+            "goalFor": 0,
+            "goalAgainst": 0,
+            "goalDifferencePerMatch": 0.0,
+            "kicksPerMatch": 0.0,
+            "shotsPerMatch": 0.0,
+            "completedPassesPerMatch": 0.0,
+            "turnoversPerMatch": 0.0,
+            "touchesPerMatch": 0.0,
+            "movementDecisionsPerMatch": 0.0,
+            "meanPlayerSpeedPerMatch": 0.0,
+            "meanTeamSpreadPerMatch": 73.33333333333333,
+            "safetyKickoffsPerMatch": 0.0
+          },
+          "blue": {
+            "matches": 1,
+            "wins": 0,
+            "draws": 1,
+            "losses": 0,
+            "winRate": 0.0,
+            "goalFor": 0,
+            "goalAgainst": 0,
+            "goalDifferencePerMatch": 0.0,
+            "kicksPerMatch": 0.0,
+            "shotsPerMatch": 0.0,
+            "completedPassesPerMatch": 0.0,
+            "turnoversPerMatch": 0.0,
+            "touchesPerMatch": 0.0,
+            "movementDecisionsPerMatch": 0.0,
+            "meanPlayerSpeedPerMatch": 0.0,
+            "meanTeamSpreadPerMatch": 73.33333333333333,
+            "safetyKickoffsPerMatch": 0.0
+          }
+        },
+        "secondPolicyBySide": {
+          "red": {
+            "matches": 1,
+            "wins": 0,
+            "draws": 1,
+            "losses": 0,
+            "winRate": 0.0,
+            "goalFor": 0,
+            "goalAgainst": 0,
+            "goalDifferencePerMatch": 0.0,
+            "kicksPerMatch": 0.0,
+            "shotsPerMatch": 0.0,
+            "completedPassesPerMatch": 0.0,
+            "turnoversPerMatch": 0.0,
+            "touchesPerMatch": 0.0,
+            "movementDecisionsPerMatch": 0.0,
+            "meanPlayerSpeedPerMatch": 0.0,
+            "meanTeamSpreadPerMatch": 73.33333333333333,
+            "safetyKickoffsPerMatch": 0.0
+          },
+          "blue": {
+            "matches": 1,
+            "wins": 0,
+            "draws": 1,
+            "losses": 0,
+            "winRate": 0.0,
+            "goalFor": 0,
+            "goalAgainst": 0,
+            "goalDifferencePerMatch": 0.0,
+            "kicksPerMatch": 0.0,
+            "shotsPerMatch": 0.0,
+            "completedPassesPerMatch": 0.0,
+            "turnoversPerMatch": 0.0,
+            "touchesPerMatch": 0.0,
+            "movementDecisionsPerMatch": 0.0,
+            "meanPlayerSpeedPerMatch": 0.0,
+            "meanTeamSpreadPerMatch": 73.33333333333333,
+            "safetyKickoffsPerMatch": 0.0
+          }
+        },
+        "games": [
+          {
+            "goals": [
+              0,
+              0
+            ],
+            "ticks": 72,
+            "safetyKickoffs": 0,
+            "teams": [
+              {
+                "kicks": 0,
+                "shots": 0,
+                "completedPasses": 0,
+                "turnovers": 0,
+                "touches": 0,
+                "movementDecisions": 0,
+                "meanPlayerSpeed": 0.0,
+                "safetyKickoffs": 0,
+                "meanTeamSpread": 73.33333333333333
+              },
+              {
+                "kicks": 0,
+                "shots": 0,
+                "completedPasses": 0,
+                "turnovers": 0,
+                "touches": 0,
+                "movementDecisions": 0,
+                "meanPlayerSpeed": 0.0,
+                "safetyKickoffs": 0,
+                "meanTeamSpread": 73.33333333333333
+              }
+            ],
+            "firstPolicyTeam": 0
+          },
+          {
+            "goals": [
+              0,
+              0
+            ],
+            "ticks": 72,
+            "safetyKickoffs": 0,
+            "teams": [
+              {
+                "kicks": 0,
+                "shots": 0,
+                "completedPasses": 0,
+                "turnovers": 0,
+                "touches": 0,
+                "movementDecisions": 0,
+                "meanPlayerSpeed": 0.0,
+                "safetyKickoffs": 0,
+                "meanTeamSpread": 73.33333333333333
+              },
+              {
+                "kicks": 0,
+                "shots": 0,
+                "completedPasses": 0,
+                "turnovers": 0,
+                "touches": 0,
+                "movementDecisions": 0,
+                "meanPlayerSpeed": 0.0,
+                "safetyKickoffs": 0,
+                "meanTeamSpread": 73.33333333333333
+              }
+            ],
+            "firstPolicyTeam": 1
+          }
+        ]
+      }
+    },
+    "changed_v1/best vs scripted": {
+      "0": {
+        "framesPerDecision": 3,
+        "simulatedLatencyMs": 0.0,
+        "firstPolicy": {
+          "matches": 2,
+          "wins": 0,
+          "draws": 2,
+          "losses": 0,
+          "winRate": 0.0,
+          "goalFor": 0,
+          "goalAgainst": 0,
+          "goalDifferencePerMatch": 0.0,
+          "kicksPerMatch": 0.0,
+          "shotsPerMatch": 0.0,
+          "completedPassesPerMatch": 0.0,
+          "turnoversPerMatch": 0.0,
+          "touchesPerMatch": 0.0,
+          "movementDecisionsPerMatch": 0.0,
+          "meanPlayerSpeedPerMatch": 0.0,
+          "meanTeamSpreadPerMatch": 73.33333333333333,
+          "safetyKickoffsPerMatch": 0.0
+        },
+        "secondPolicy": {
+          "matches": 2,
+          "wins": 0,
+          "draws": 2,
+          "losses": 0,
+          "winRate": 0.0,
+          "goalFor": 0,
+          "goalAgainst": 0,
+          "goalDifferencePerMatch": 0.0,
+          "kicksPerMatch": 0.0,
+          "shotsPerMatch": 0.0,
+          "completedPassesPerMatch": 0.0,
+          "turnoversPerMatch": 0.0,
+          "touchesPerMatch": 0.0,
+          "movementDecisionsPerMatch": 72.0,
+          "meanPlayerSpeedPerMatch": 1.715093424953217,
+          "meanTeamSpreadPerMatch": 102.29378246356077,
+          "safetyKickoffsPerMatch": 0.0
+        },
+        "firstPolicyBySide": {
+          "red": {
+            "matches": 1,
+            "wins": 0,
+            "draws": 1,
+            "losses": 0,
+            "winRate": 0.0,
+            "goalFor": 0,
+            "goalAgainst": 0,
+            "goalDifferencePerMatch": 0.0,
+            "kicksPerMatch": 0.0,
+            "shotsPerMatch": 0.0,
+            "completedPassesPerMatch": 0.0,
+            "turnoversPerMatch": 0.0,
+            "touchesPerMatch": 0.0,
+            "movementDecisionsPerMatch": 0.0,
+            "meanPlayerSpeedPerMatch": 0.0,
+            "meanTeamSpreadPerMatch": 73.33333333333333,
+            "safetyKickoffsPerMatch": 0.0
+          },
+          "blue": {
+            "matches": 1,
+            "wins": 0,
+            "draws": 1,
+            "losses": 0,
+            "winRate": 0.0,
+            "goalFor": 0,
+            "goalAgainst": 0,
+            "goalDifferencePerMatch": 0.0,
+            "kicksPerMatch": 0.0,
+            "shotsPerMatch": 0.0,
+            "completedPassesPerMatch": 0.0,
+            "turnoversPerMatch": 0.0,
+            "touchesPerMatch": 0.0,
+            "movementDecisionsPerMatch": 0.0,
+            "meanPlayerSpeedPerMatch": 0.0,
+            "meanTeamSpreadPerMatch": 73.33333333333333,
+            "safetyKickoffsPerMatch": 0.0
+          }
+        },
+        "secondPolicyBySide": {
+          "red": {
+            "matches": 1,
+            "wins": 0,
+            "draws": 1,
+            "losses": 0,
+            "winRate": 0.0,
+            "goalFor": 0,
+            "goalAgainst": 0,
+            "goalDifferencePerMatch": 0.0,
+            "kicksPerMatch": 0.0,
+            "shotsPerMatch": 0.0,
+            "completedPassesPerMatch": 0.0,
+            "turnoversPerMatch": 0.0,
+            "touchesPerMatch": 0.0,
+            "movementDecisionsPerMatch": 72.0,
+            "meanPlayerSpeedPerMatch": 1.715093424953217,
+            "meanTeamSpreadPerMatch": 102.29378246356077,
+            "safetyKickoffsPerMatch": 0.0
+          },
+          "blue": {
+            "matches": 1,
+            "wins": 0,
+            "draws": 1,
+            "losses": 0,
+            "winRate": 0.0,
+            "goalFor": 0,
+            "goalAgainst": 0,
+            "goalDifferencePerMatch": 0.0,
+            "kicksPerMatch": 0.0,
+            "shotsPerMatch": 0.0,
+            "completedPassesPerMatch": 0.0,
+            "turnoversPerMatch": 0.0,
+            "touchesPerMatch": 0.0,
+            "movementDecisionsPerMatch": 72.0,
+            "meanPlayerSpeedPerMatch": 1.715093424953217,
+            "meanTeamSpreadPerMatch": 102.29378246356077,
+            "safetyKickoffsPerMatch": 0.0
+          }
+        },
+        "games": [
+          {
+            "goals": [
+              0,
+              0
+            ],
+            "ticks": 72,
+            "safetyKickoffs": 0,
+            "teams": [
+              {
+                "kicks": 0,
+                "shots": 0,
+                "completedPasses": 0,
+                "turnovers": 0,
+                "touches": 0,
+                "movementDecisions": 0,
+                "meanPlayerSpeed": 0.0,
+                "safetyKickoffs": 0,
+                "meanTeamSpread": 73.33333333333333
+              },
+              {
+                "kicks": 0,
+                "shots": 0,
+                "completedPasses": 0,
+                "turnovers": 0,
+                "touches": 0,
+                "movementDecisions": 72,
+                "meanPlayerSpeed": 1.715093424953217,
+                "safetyKickoffs": 0,
+                "meanTeamSpread": 102.29378246356077
+              }
+            ],
+            "firstPolicyTeam": 0
+          },
+          {
+            "goals": [
+              0,
+              0
+            ],
+            "ticks": 72,
+            "safetyKickoffs": 0,
+            "teams": [
+              {
+                "kicks": 0,
+                "shots": 0,
+                "completedPasses": 0,
+                "turnovers": 0,
+                "touches": 0,
+                "movementDecisions": 72,
+                "meanPlayerSpeed": 1.715093424953217,
+                "safetyKickoffs": 0,
+                "meanTeamSpread": 102.29378246356077
+              },
+              {
+                "kicks": 0,
+                "shots": 0,
+                "completedPasses": 0,
+                "turnovers": 0,
+                "touches": 0,
+                "movementDecisions": 0,
+                "meanPlayerSpeed": 0.0,
+                "safetyKickoffs": 0,
+                "meanTeamSpread": 73.33333333333333
+              }
+            ],
+            "firstPolicyTeam": 1
+          }
+        ]
+      }
+    },
+    "changed_v1/best vs repeat": {
+      "0": {
+        "framesPerDecision": 3,
+        "simulatedLatencyMs": 0.0,
+        "firstPolicy": {
+          "matches": 2,
+          "wins": 0,
+          "draws": 2,
+          "losses": 0,
+          "winRate": 0.0,
+          "goalFor": 0,
+          "goalAgainst": 0,
+          "goalDifferencePerMatch": 0.0,
+          "kicksPerMatch": 0.0,
+          "shotsPerMatch": 0.0,
+          "completedPassesPerMatch": 0.0,
+          "turnoversPerMatch": 0.0,
+          "touchesPerMatch": 0.0,
+          "movementDecisionsPerMatch": 0.0,
+          "meanPlayerSpeedPerMatch": 0.0,
+          "meanTeamSpreadPerMatch": 73.33333333333333,
+          "safetyKickoffsPerMatch": 0.0
+        },
+        "secondPolicy": {
+          "matches": 2,
+          "wins": 0,
+          "draws": 2,
+          "losses": 0,
+          "winRate": 0.0,
+          "goalFor": 0,
+          "goalAgainst": 0,
+          "goalDifferencePerMatch": 0.0,
+          "kicksPerMatch": 0.0,
+          "shotsPerMatch": 0.0,
+          "completedPassesPerMatch": 0.0,
+          "turnoversPerMatch": 0.0,
+          "touchesPerMatch": 0.0,
+          "movementDecisionsPerMatch": 0.0,
+          "meanPlayerSpeedPerMatch": 0.0,
+          "meanTeamSpreadPerMatch": 73.33333333333333,
+          "safetyKickoffsPerMatch": 0.0
+        },
+        "firstPolicyBySide": {
+          "red": {
+            "matches": 1,
+            "wins": 0,
+            "draws": 1,
+            "losses": 0,
+            "winRate": 0.0,
+            "goalFor": 0,
+            "goalAgainst": 0,
+            "goalDifferencePerMatch": 0.0,
+            "kicksPerMatch": 0.0,
+            "shotsPerMatch": 0.0,
+            "completedPassesPerMatch": 0.0,
+            "turnoversPerMatch": 0.0,
+            "touchesPerMatch": 0.0,
+            "movementDecisionsPerMatch": 0.0,
+            "meanPlayerSpeedPerMatch": 0.0,
+            "meanTeamSpreadPerMatch": 73.33333333333333,
+            "safetyKickoffsPerMatch": 0.0
+          },
+          "blue": {
+            "matches": 1,
+            "wins": 0,
+            "draws": 1,
+            "losses": 0,
+            "winRate": 0.0,
+            "goalFor": 0,
+            "goalAgainst": 0,
+            "goalDifferencePerMatch": 0.0,
+            "kicksPerMatch": 0.0,
+            "shotsPerMatch": 0.0,
+            "completedPassesPerMatch": 0.0,
+            "turnoversPerMatch": 0.0,
+            "touchesPerMatch": 0.0,
+            "movementDecisionsPerMatch": 0.0,
+            "meanPlayerSpeedPerMatch": 0.0,
+            "meanTeamSpreadPerMatch": 73.33333333333333,
+            "safetyKickoffsPerMatch": 0.0
+          }
+        },
+        "secondPolicyBySide": {
+          "red": {
+            "matches": 1,
+            "wins": 0,
+            "draws": 1,
+            "losses": 0,
+            "winRate": 0.0,
+            "goalFor": 0,
+            "goalAgainst": 0,
+            "goalDifferencePerMatch": 0.0,
+            "kicksPerMatch": 0.0,
+            "shotsPerMatch": 0.0,
+            "completedPassesPerMatch": 0.0,
+            "turnoversPerMatch": 0.0,
+            "touchesPerMatch": 0.0,
+            "movementDecisionsPerMatch": 0.0,
+            "meanPlayerSpeedPerMatch": 0.0,
+            "meanTeamSpreadPerMatch": 73.33333333333333,
+            "safetyKickoffsPerMatch": 0.0
+          },
+          "blue": {
+            "matches": 1,
+            "wins": 0,
+            "draws": 1,
+            "losses": 0,
+            "winRate": 0.0,
+            "goalFor": 0,
+            "goalAgainst": 0,
+            "goalDifferencePerMatch": 0.0,
+            "kicksPerMatch": 0.0,
+            "shotsPerMatch": 0.0,
+            "completedPassesPerMatch": 0.0,
+            "turnoversPerMatch": 0.0,
+            "touchesPerMatch": 0.0,
+            "movementDecisionsPerMatch": 0.0,
+            "meanPlayerSpeedPerMatch": 0.0,
+            "meanTeamSpreadPerMatch": 73.33333333333333,
+            "safetyKickoffsPerMatch": 0.0
+          }
+        },
+        "games": [
+          {
+            "goals": [
+              0,
+              0
+            ],
+            "ticks": 72,
+            "safetyKickoffs": 0,
+            "teams": [
+              {
+                "kicks": 0,
+                "shots": 0,
+                "completedPasses": 0,
+                "turnovers": 0,
+                "touches": 0,
+                "movementDecisions": 0,
+                "meanPlayerSpeed": 0.0,
+                "safetyKickoffs": 0,
+                "meanTeamSpread": 73.33333333333333
+              },
+              {
+                "kicks": 0,
+                "shots": 0,
+                "completedPasses": 0,
+                "turnovers": 0,
+                "touches": 0,
+                "movementDecisions": 0,
+                "meanPlayerSpeed": 0.0,
+                "safetyKickoffs": 0,
+                "meanTeamSpread": 73.33333333333333
+              }
+            ],
+            "firstPolicyTeam": 0
+          },
+          {
+            "goals": [
+              0,
+              0
+            ],
+            "ticks": 72,
+            "safetyKickoffs": 0,
+            "teams": [
+              {
+                "kicks": 0,
+                "shots": 0,
+                "completedPasses": 0,
+                "turnovers": 0,
+                "touches": 0,
+                "movementDecisions": 0,
+                "meanPlayerSpeed": 0.0,
+                "safetyKickoffs": 0,
+                "meanTeamSpread": 73.33333333333333
+              },
+              {
+                "kicks": 0,
+                "shots": 0,
+                "completedPasses": 0,
+                "turnovers": 0,
+                "touches": 0,
+                "movementDecisions": 0,
+                "meanPlayerSpeed": 0.0,
+                "safetyKickoffs": 0,
+                "meanTeamSpread": 73.33333333333333
+              }
+            ],
+            "firstPolicyTeam": 1
+          }
+        ]
+      }
+    },
+    "baseline/best vs scripted": {
+      "0": {
+        "framesPerDecision": 3,
+        "simulatedLatencyMs": 0.0,
+        "firstPolicy": {
+          "matches": 2,
+          "wins": 0,
+          "draws": 2,
+          "losses": 0,
+          "winRate": 0.0,
+          "goalFor": 0,
+          "goalAgainst": 0,
+          "goalDifferencePerMatch": 0.0,
+          "kicksPerMatch": 0.0,
+          "shotsPerMatch": 0.0,
+          "completedPassesPerMatch": 0.0,
+          "turnoversPerMatch": 0.0,
+          "touchesPerMatch": 0.0,
+          "movementDecisionsPerMatch": 0.0,
+          "meanPlayerSpeedPerMatch": 0.0,
+          "meanTeamSpreadPerMatch": 73.33333333333333,
+          "safetyKickoffsPerMatch": 0.0
+        },
+        "secondPolicy": {
+          "matches": 2,
+          "wins": 0,
+          "draws": 2,
+          "losses": 0,
+          "winRate": 0.0,
+          "goalFor": 0,
+          "goalAgainst": 0,
+          "goalDifferencePerMatch": 0.0,
+          "kicksPerMatch": 0.0,
+          "shotsPerMatch": 0.0,
+          "completedPassesPerMatch": 0.0,
+          "turnoversPerMatch": 0.0,
+          "touchesPerMatch": 0.0,
+          "movementDecisionsPerMatch": 72.0,
+          "meanPlayerSpeedPerMatch": 1.715093424953217,
+          "meanTeamSpreadPerMatch": 102.29378246356077,
+          "safetyKickoffsPerMatch": 0.0
+        },
+        "firstPolicyBySide": {
+          "red": {
+            "matches": 1,
+            "wins": 0,
+            "draws": 1,
+            "losses": 0,
+            "winRate": 0.0,
+            "goalFor": 0,
+            "goalAgainst": 0,
+            "goalDifferencePerMatch": 0.0,
+            "kicksPerMatch": 0.0,
+            "shotsPerMatch": 0.0,
+            "completedPassesPerMatch": 0.0,
+            "turnoversPerMatch": 0.0,
+            "touchesPerMatch": 0.0,
+            "movementDecisionsPerMatch": 0.0,
+            "meanPlayerSpeedPerMatch": 0.0,
+            "meanTeamSpreadPerMatch": 73.33333333333333,
+            "safetyKickoffsPerMatch": 0.0
+          },
+          "blue": {
+            "matches": 1,
+            "wins": 0,
+            "draws": 1,
+            "losses": 0,
+            "winRate": 0.0,
+            "goalFor": 0,
+            "goalAgainst": 0,
+            "goalDifferencePerMatch": 0.0,
+            "kicksPerMatch": 0.0,
+            "shotsPerMatch": 0.0,
+            "completedPassesPerMatch": 0.0,
+            "turnoversPerMatch": 0.0,
+            "touchesPerMatch": 0.0,
+            "movementDecisionsPerMatch": 0.0,
+            "meanPlayerSpeedPerMatch": 0.0,
+            "meanTeamSpreadPerMatch": 73.33333333333333,
+            "safetyKickoffsPerMatch": 0.0
+          }
+        },
+        "secondPolicyBySide": {
+          "red": {
+            "matches": 1,
+            "wins": 0,
+            "draws": 1,
+            "losses": 0,
+            "winRate": 0.0,
+            "goalFor": 0,
+            "goalAgainst": 0,
+            "goalDifferencePerMatch": 0.0,
+            "kicksPerMatch": 0.0,
+            "shotsPerMatch": 0.0,
+            "completedPassesPerMatch": 0.0,
+            "turnoversPerMatch": 0.0,
+            "touchesPerMatch": 0.0,
+            "movementDecisionsPerMatch": 72.0,
+            "meanPlayerSpeedPerMatch": 1.715093424953217,
+            "meanTeamSpreadPerMatch": 102.29378246356077,
+            "safetyKickoffsPerMatch": 0.0
+          },
+          "blue": {
+            "matches": 1,
+            "wins": 0,
+            "draws": 1,
+            "losses": 0,
+            "winRate": 0.0,
+            "goalFor": 0,
+            "goalAgainst": 0,
+            "goalDifferencePerMatch": 0.0,
+            "kicksPerMatch": 0.0,
+            "shotsPerMatch": 0.0,
+            "completedPassesPerMatch": 0.0,
+            "turnoversPerMatch": 0.0,
+            "touchesPerMatch": 0.0,
+            "movementDecisionsPerMatch": 72.0,
+            "meanPlayerSpeedPerMatch": 1.715093424953217,
+            "meanTeamSpreadPerMatch": 102.29378246356077,
+            "safetyKickoffsPerMatch": 0.0
+          }
+        },
+        "games": [
+          {
+            "goals": [
+              0,
+              0
+            ],
+            "ticks": 72,
+            "safetyKickoffs": 0,
+            "teams": [
+              {
+                "kicks": 0,
+                "shots": 0,
+                "completedPasses": 0,
+                "turnovers": 0,
+                "touches": 0,
+                "movementDecisions": 0,
+                "meanPlayerSpeed": 0.0,
+                "safetyKickoffs": 0,
+                "meanTeamSpread": 73.33333333333333
+              },
+              {
+                "kicks": 0,
+                "shots": 0,
+                "completedPasses": 0,
+                "turnovers": 0,
+                "touches": 0,
+                "movementDecisions": 72,
+                "meanPlayerSpeed": 1.715093424953217,
+                "safetyKickoffs": 0,
+                "meanTeamSpread": 102.29378246356077
+              }
+            ],
+            "firstPolicyTeam": 0
+          },
+          {
+            "goals": [
+              0,
+              0
+            ],
+            "ticks": 72,
+            "safetyKickoffs": 0,
+            "teams": [
+              {
+                "kicks": 0,
+                "shots": 0,
+                "completedPasses": 0,
+                "turnovers": 0,
+                "touches": 0,
+                "movementDecisions": 72,
+                "meanPlayerSpeed": 1.715093424953217,
+                "safetyKickoffs": 0,
+                "meanTeamSpread": 102.29378246356077
+              },
+              {
+                "kicks": 0,
+                "shots": 0,
+                "completedPasses": 0,
+                "turnovers": 0,
+                "touches": 0,
+                "movementDecisions": 0,
+                "meanPlayerSpeed": 0.0,
+                "safetyKickoffs": 0,
+                "meanTeamSpread": 73.33333333333333
+              }
+            ],
+            "firstPolicyTeam": 1
+          }
+        ]
+      }
+    },
+    "baseline/best vs repeat": {
+      "0": {
+        "framesPerDecision": 3,
+        "simulatedLatencyMs": 0.0,
+        "firstPolicy": {
+          "matches": 2,
+          "wins": 0,
+          "draws": 2,
+          "losses": 0,
+          "winRate": 0.0,
+          "goalFor": 0,
+          "goalAgainst": 0,
+          "goalDifferencePerMatch": 0.0,
+          "kicksPerMatch": 0.0,
+          "shotsPerMatch": 0.0,
+          "completedPassesPerMatch": 0.0,
+          "turnoversPerMatch": 0.0,
+          "touchesPerMatch": 0.0,
+          "movementDecisionsPerMatch": 0.0,
+          "meanPlayerSpeedPerMatch": 0.0,
+          "meanTeamSpreadPerMatch": 73.33333333333333,
+          "safetyKickoffsPerMatch": 0.0
+        },
+        "secondPolicy": {
+          "matches": 2,
+          "wins": 0,
+          "draws": 2,
+          "losses": 0,
+          "winRate": 0.0,
+          "goalFor": 0,
+          "goalAgainst": 0,
+          "goalDifferencePerMatch": 0.0,
+          "kicksPerMatch": 0.0,
+          "shotsPerMatch": 0.0,
+          "completedPassesPerMatch": 0.0,
+          "turnoversPerMatch": 0.0,
+          "touchesPerMatch": 0.0,
+          "movementDecisionsPerMatch": 0.0,
+          "meanPlayerSpeedPerMatch": 0.0,
+          "meanTeamSpreadPerMatch": 73.33333333333333,
+          "safetyKickoffsPerMatch": 0.0
+        },
+        "firstPolicyBySide": {
+          "red": {
+            "matches": 1,
+            "wins": 0,
+            "draws": 1,
+            "losses": 0,
+            "winRate": 0.0,
+            "goalFor": 0,
+            "goalAgainst": 0,
+            "goalDifferencePerMatch": 0.0,
+            "kicksPerMatch": 0.0,
+            "shotsPerMatch": 0.0,
+            "completedPassesPerMatch": 0.0,
+            "turnoversPerMatch": 0.0,
+            "touchesPerMatch": 0.0,
+            "movementDecisionsPerMatch": 0.0,
+            "meanPlayerSpeedPerMatch": 0.0,
+            "meanTeamSpreadPerMatch": 73.33333333333333,
+            "safetyKickoffsPerMatch": 0.0
+          },
+          "blue": {
+            "matches": 1,
+            "wins": 0,
+            "draws": 1,
+            "losses": 0,
+            "winRate": 0.0,
+            "goalFor": 0,
+            "goalAgainst": 0,
+            "goalDifferencePerMatch": 0.0,
+            "kicksPerMatch": 0.0,
+            "shotsPerMatch": 0.0,
+            "completedPassesPerMatch": 0.0,
+            "turnoversPerMatch": 0.0,
+            "touchesPerMatch": 0.0,
+            "movementDecisionsPerMatch": 0.0,
+            "meanPlayerSpeedPerMatch": 0.0,
+            "meanTeamSpreadPerMatch": 73.33333333333333,
+            "safetyKickoffsPerMatch": 0.0
+          }
+        },
+        "secondPolicyBySide": {
+          "red": {
+            "matches": 1,
+            "wins": 0,
+            "draws": 1,
+            "losses": 0,
+            "winRate": 0.0,
+            "goalFor": 0,
+            "goalAgainst": 0,
+            "goalDifferencePerMatch": 0.0,
+            "kicksPerMatch": 0.0,
+            "shotsPerMatch": 0.0,
+            "completedPassesPerMatch": 0.0,
+            "turnoversPerMatch": 0.0,
+            "touchesPerMatch": 0.0,
+            "movementDecisionsPerMatch": 0.0,
+            "meanPlayerSpeedPerMatch": 0.0,
+            "meanTeamSpreadPerMatch": 73.33333333333333,
+            "safetyKickoffsPerMatch": 0.0
+          },
+          "blue": {
+            "matches": 1,
+            "wins": 0,
+            "draws": 1,
+            "losses": 0,
+            "winRate": 0.0,
+            "goalFor": 0,
+            "goalAgainst": 0,
+            "goalDifferencePerMatch": 0.0,
+            "kicksPerMatch": 0.0,
+            "shotsPerMatch": 0.0,
+            "completedPassesPerMatch": 0.0,
+            "turnoversPerMatch": 0.0,
+            "touchesPerMatch": 0.0,
+            "movementDecisionsPerMatch": 0.0,
+            "meanPlayerSpeedPerMatch": 0.0,
+            "meanTeamSpreadPerMatch": 73.33333333333333,
+            "safetyKickoffsPerMatch": 0.0
+          }
+        },
+        "games": [
+          {
+            "goals": [
+              0,
+              0
+            ],
+            "ticks": 72,
+            "safetyKickoffs": 0,
+            "teams": [
+              {
+                "kicks": 0,
+                "shots": 0,
+                "completedPasses": 0,
+                "turnovers": 0,
+                "touches": 0,
+                "movementDecisions": 0,
+                "meanPlayerSpeed": 0.0,
+                "safetyKickoffs": 0,
+                "meanTeamSpread": 73.33333333333333
+              },
+              {
+                "kicks": 0,
+                "shots": 0,
+                "completedPasses": 0,
+                "turnovers": 0,
+                "touches": 0,
+                "movementDecisions": 0,
+                "meanPlayerSpeed": 0.0,
+                "safetyKickoffs": 0,
+                "meanTeamSpread": 73.33333333333333
+              }
+            ],
+            "firstPolicyTeam": 0
+          },
+          {
+            "goals": [
+              0,
+              0
+            ],
+            "ticks": 72,
+            "safetyKickoffs": 0,
+            "teams": [
+              {
+                "kicks": 0,
+                "shots": 0,
+                "completedPasses": 0,
+                "turnovers": 0,
+                "touches": 0,
+                "movementDecisions": 0,
+                "meanPlayerSpeed": 0.0,
+                "safetyKickoffs": 0,
+                "meanTeamSpread": 73.33333333333333
+              },
+              {
+                "kicks": 0,
+                "shots": 0,
+                "completedPasses": 0,
+                "turnovers": 0,
+                "touches": 0,
+                "movementDecisions": 0,
+                "meanPlayerSpeed": 0.0,
+                "safetyKickoffs": 0,
+                "meanTeamSpread": 73.33333333333333
+              }
+            ],
+            "firstPolicyTeam": 1
+          }
+        ]
+      }
+    },
+    "scripted vs repeat": {
+      "0": {
+        "framesPerDecision": 3,
+        "simulatedLatencyMs": 0.0,
+        "firstPolicy": {
+          "matches": 2,
+          "wins": 0,
+          "draws": 2,
+          "losses": 0,
+          "winRate": 0.0,
+          "goalFor": 0,
+          "goalAgainst": 0,
+          "goalDifferencePerMatch": 0.0,
+          "kicksPerMatch": 0.0,
+          "shotsPerMatch": 0.0,
+          "completedPassesPerMatch": 0.0,
+          "turnoversPerMatch": 0.0,
+          "touchesPerMatch": 0.0,
+          "movementDecisionsPerMatch": 72.0,
+          "meanPlayerSpeedPerMatch": 1.715093424953217,
+          "meanTeamSpreadPerMatch": 102.29378246356077,
+          "safetyKickoffsPerMatch": 0.0
+        },
+        "secondPolicy": {
+          "matches": 2,
+          "wins": 0,
+          "draws": 2,
+          "losses": 0,
+          "winRate": 0.0,
+          "goalFor": 0,
+          "goalAgainst": 0,
+          "goalDifferencePerMatch": 0.0,
+          "kicksPerMatch": 0.0,
+          "shotsPerMatch": 0.0,
+          "completedPassesPerMatch": 0.0,
+          "turnoversPerMatch": 0.0,
+          "touchesPerMatch": 0.0,
+          "movementDecisionsPerMatch": 0.0,
+          "meanPlayerSpeedPerMatch": 0.0,
+          "meanTeamSpreadPerMatch": 73.33333333333333,
+          "safetyKickoffsPerMatch": 0.0
+        },
+        "firstPolicyBySide": {
+          "red": {
+            "matches": 1,
+            "wins": 0,
+            "draws": 1,
+            "losses": 0,
+            "winRate": 0.0,
+            "goalFor": 0,
+            "goalAgainst": 0,
+            "goalDifferencePerMatch": 0.0,
+            "kicksPerMatch": 0.0,
+            "shotsPerMatch": 0.0,
+            "completedPassesPerMatch": 0.0,
+            "turnoversPerMatch": 0.0,
+            "touchesPerMatch": 0.0,
+            "movementDecisionsPerMatch": 72.0,
+            "meanPlayerSpeedPerMatch": 1.715093424953217,
+            "meanTeamSpreadPerMatch": 102.29378246356077,
+            "safetyKickoffsPerMatch": 0.0
+          },
+          "blue": {
+            "matches": 1,
+            "wins": 0,
+            "draws": 1,
+            "losses": 0,
+            "winRate": 0.0,
+            "goalFor": 0,
+            "goalAgainst": 0,
+            "goalDifferencePerMatch": 0.0,
+            "kicksPerMatch": 0.0,
+            "shotsPerMatch": 0.0,
+            "completedPassesPerMatch": 0.0,
+            "turnoversPerMatch": 0.0,
+            "touchesPerMatch": 0.0,
+            "movementDecisionsPerMatch": 72.0,
+            "meanPlayerSpeedPerMatch": 1.715093424953217,
+            "meanTeamSpreadPerMatch": 102.29378246356077,
+            "safetyKickoffsPerMatch": 0.0
+          }
+        },
+        "secondPolicyBySide": {
+          "red": {
+            "matches": 1,
+            "wins": 0,
+            "draws": 1,
+            "losses": 0,
+            "winRate": 0.0,
+            "goalFor": 0,
+            "goalAgainst": 0,
+            "goalDifferencePerMatch": 0.0,
+            "kicksPerMatch": 0.0,
+            "shotsPerMatch": 0.0,
+            "completedPassesPerMatch": 0.0,
+            "turnoversPerMatch": 0.0,
+            "touchesPerMatch": 0.0,
+            "movementDecisionsPerMatch": 0.0,
+            "meanPlayerSpeedPerMatch": 0.0,
+            "meanTeamSpreadPerMatch": 73.33333333333333,
+            "safetyKickoffsPerMatch": 0.0
+          },
+          "blue": {
+            "matches": 1,
+            "wins": 0,
+            "draws": 1,
+            "losses": 0,
+            "winRate": 0.0,
+            "goalFor": 0,
+            "goalAgainst": 0,
+            "goalDifferencePerMatch": 0.0,
+            "kicksPerMatch": 0.0,
+            "shotsPerMatch": 0.0,
+            "completedPassesPerMatch": 0.0,
+            "turnoversPerMatch": 0.0,
+            "touchesPerMatch": 0.0,
+            "movementDecisionsPerMatch": 0.0,
+            "meanPlayerSpeedPerMatch": 0.0,
+            "meanTeamSpreadPerMatch": 73.33333333333333,
+            "safetyKickoffsPerMatch": 0.0
+          }
+        },
+        "games": [
+          {
+            "goals": [
+              0,
+              0
+            ],
+            "ticks": 72,
+            "safetyKickoffs": 0,
+            "teams": [
+              {
+                "kicks": 0,
+                "shots": 0,
+                "completedPasses": 0,
+                "turnovers": 0,
+                "touches": 0,
+                "movementDecisions": 72,
+                "meanPlayerSpeed": 1.715093424953217,
+                "safetyKickoffs": 0,
+                "meanTeamSpread": 102.29378246356077
+              },
+              {
+                "kicks": 0,
+                "shots": 0,
+                "completedPasses": 0,
+                "turnovers": 0,
+                "touches": 0,
+                "movementDecisions": 0,
+                "meanPlayerSpeed": 0.0,
+                "safetyKickoffs": 0,
+                "meanTeamSpread": 73.33333333333333
+              }
+            ],
+            "firstPolicyTeam": 0
+          },
+          {
+            "goals": [
+              0,
+              0
+            ],
+            "ticks": 72,
+            "safetyKickoffs": 0,
+            "teams": [
+              {
+                "kicks": 0,
+                "shots": 0,
+                "completedPasses": 0,
+                "turnovers": 0,
+                "touches": 0,
+                "movementDecisions": 0,
+                "meanPlayerSpeed": 0.0,
+                "safetyKickoffs": 0,
+                "meanTeamSpread": 73.33333333333333
+              },
+              {
+                "kicks": 0,
+                "shots": 0,
+                "completedPasses": 0,
+                "turnovers": 0,
+                "touches": 0,
+                "movementDecisions": 72,
+                "meanPlayerSpeed": 1.715093424953217,
+                "safetyKickoffs": 0,
+                "meanTeamSpread": 102.29378246356077
+              }
+            ],
+            "firstPolicyTeam": 1
+          }
+        ]
+      }
+    }
+  }
+}

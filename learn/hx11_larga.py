@@ -205,6 +205,7 @@ def main():
                     help="propia: la del humano de ese lugar; puesto: la genérica del puesto (como en la sala hasta el "
                          "2026-10-11); vivo: deducida de los compañeros del último minuto (`learn.hx11_ancla`)")
     ap.add_argument("--hyst", type=float, default=0.0, help="histéresis de la dirección (como en el cerebro)")
+    ap.add_argument("--cada", type=int, default=3, help="ticks entre decisiones (el entrenamiento usa 3)")
     ap.add_argument("--renovar-cerca", type=float, default=1.0,
                     help="renovación de la tirada de dirección cerca de la pelota (1 = sorteo independiente)")
     ap.add_argument("--destrabar", action="store_true", help="destrabador: quieto lejos de su zona → a su zona")
@@ -277,7 +278,8 @@ def main():
                     idle.update(zip(_slots, cur.tolist()))
                 return act
             base, W = ghost_window(policy, m, t0, slots, owner, rng, a.temp, a.renovar, a.renovar_patada,
-                                   moves=moves, anchors=anchors, hyst=a.hyst, renew_near=a.renovar_cerca)
+                                   moves=moves, anchors=anchors, hyst=a.hyst, renew_near=a.renovar_cerca,
+                                   every=a.cada)
             for s in slots:
                 pid = int(m.pid[t0, s])
                 gk = int(m.gk[t0, int(s >= 11)]) == pid

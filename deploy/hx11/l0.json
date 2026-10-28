@@ -1,0 +1,235 @@
+{
+ "obs_version": "hx11-obs-v1",
+ "self_dim": 69,
+ "n_ent": 21,
+ "ent_dim": 9,
+ "n_actions": 18,
+ "frame_skip": 3,
+ "delay_min": 8,
+ "delay_max": 36,
+ "temperature_move": 0.7,
+ "lines": [
+  "ARQ",
+  "DEF",
+  "MCD",
+  "MED",
+  "DEL"
+ ],
+ "sin_historia": true,
+ "extra": false,
+ "pos_vocab": {
+  "ARQ": {
+   "linea": "ARQ",
+   "linea_idx": 0,
+   "ancla": [
+    -882.5,
+    2.3,
+    -925.6,
+    -1.4
+   ],
+   "dispersion_px": [
+    130.5,
+    134.0
+   ],
+   "jugadores_mitad": 1609
+  },
+  "CRD": {
+   "linea": "MED",
+   "linea_idx": 3,
+   "ancla": [
+    -8.5,
+    412.1,
+    -8.6,
+    393.9
+   ],
+   "dispersion_px": [
+    167.1,
+    163.7
+   ],
+   "jugadores_mitad": 457
+  },
+  "CRI": {
+   "linea": "MED",
+   "linea_idx": 3,
+   "ancla": [
+    3.6,
+    -404.3,
+    8.9,
+    -382.2
+   ],
+   "dispersion_px": [
+    170.6,
+    167.6
+   ],
+   "jugadores_mitad": 454
+  },
+  "DC": {
+   "linea": "DEL",
+   "linea_idx": 4,
+   "ancla": [
+    335.7,
+    -0.7,
+    340.6,
+    -0.6
+   ],
+   "dispersion_px": [
+    109.6,
+    106.3
+   ],
+   "jugadores_mitad": 1847
+  },
+  "DFC": {
+   "linea": "DEF",
+   "linea_idx": 1,
+   "ancla": [
+    -314.6,
+    2.5,
+    -308.5,
+    1.8
+   ],
+   "dispersion_px": [
+    159.3,
+    150.9
+   ],
+   "jugadores_mitad": 3696
+  },
+  "ED": {
+   "linea": "DEL",
+   "linea_idx": 4,
+   "ancla": [
+    293.7,
+    296.5,
+    298.3,
+    273.1
+   ],
+   "dispersion_px": [
+    115.2,
+    114.6
+   ],
+   "jugadores_mitad": 651
+  },
+  "EI": {
+   "linea": "DEL",
+   "linea_idx": 4,
+   "ancla": [
+    286.8,
+    -294.0,
+    291.9,
+    -281.4
+   ],
+   "dispersion_px": [
+    118.1,
+    112.6
+   ],
+   "jugadores_mitad": 653
+  },
+  "LD": {
+   "linea": "DEF",
+   "linea_idx": 1,
+   "ancla": [
+    -210.1,
+    386.3,
+    -210.9,
+    366.4
+   ],
+   "dispersion_px": [
+    98.5,
+    88.8
+   ],
+   "jugadores_mitad": 1177
+  },
+  "LI": {
+   "linea": "DEF",
+   "linea_idx": 1,
+   "ancla": [
+    -217.9,
+    -387.5,
+    -212.9,
+    -366.3
+   ],
+   "dispersion_px": [
+    94.5,
+    89.3
+   ],
+   "jugadores_mitad": 1176
+  },
+  "MC": {
+   "linea": "MED",
+   "linea_idx": 3,
+   "ancla": [
+    62.3,
+    -1.2,
+    51.9,
+    0.4
+   ],
+   "dispersion_px": [
+    142.8,
+    140.9
+   ],
+   "jugadores_mitad": 3006
+  },
+  "MCD": {
+   "linea": "MCD",
+   "linea_idx": 2,
+   "ancla": [
+    -23.8,
+    -0.0,
+    -35.7,
+    -1.0
+   ],
+   "dispersion_px": [
+    107.0,
+    100.9
+   ],
+   "jugadores_mitad": 1028
+  },
+  "MCO": {
+   "linea": "MED",
+   "linea_idx": 3,
+   "ancla": [
+    159.2,
+    10.1,
+    152.4,
+    7.3
+   ],
+   "dispersion_px": [
+    96.8,
+    97.9
+   ],
+   "jugadores_mitad": 310
+  },
+  "MD": {
+   "linea": "MED",
+   "linea_idx": 3,
+   "ancla": [
+    237.0,
+    365.6,
+    238.8,
+    339.8
+   ],
+   "dispersion_px": [
+    103.5,
+    101.4
+   ],
+   "jugadores_mitad": 894
+  },
+  "MI": {
+   "linea": "MED",
+   "linea_idx": 3,
+   "ancla": [
+    241.7,
+    -371.0,
+    244.1,
+    -347.3
+   ],
+   "dispersion_px": [
+    109.5,
+    110.0
+   ],
+   "jugadores_mitad": 895
+  }
+ },
+ "source": "runs/hx11_l0/l0_sinhist_full/model.pt",
+ "step": 80000,
+ "train_matches": 290
+}

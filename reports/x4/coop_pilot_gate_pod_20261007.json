@@ -1,0 +1,29 @@
+{
+  "continue_training": true,
+  "reasons": [],
+  "branches": {
+    "control": {
+      "update": 100,
+      "initial_bc": 0.844,
+      "final_bc": 0.844,
+      "skipped_nonfinite": 0,
+      "task_actor_samples": 0,
+      "exercise_successes": 0,
+      "exercise_episodes": 0,
+      "stages": {}
+    },
+    "curriculum": {
+      "update": 100,
+      "initial_bc": 0.844,
+      "final_bc": 0.844,
+      "skipped_nonfinite": 0,
+      "task_actor_samples": 4368298,
+      "exercise_successes": 3251,
+      "exercise_episodes": 18781,
+      "stages": {
+        "sanguchito_rs_x4": 4
+      }
+    }
+  },
+  "limitation": "Pilot gate checks feasibility, not improvement or human competitiveness."
+}

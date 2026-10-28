@@ -1,0 +1,27 @@
+{
+  "driver_pid": 3904,
+  "command": [
+    "/workspace/venv/bin/python",
+    "-u",
+    "-m",
+    "learn.x4_coop_run",
+    "--root",
+    "/workspace/HaxballRL_coop_20261007/runs/x4_coop_corrected_20261007",
+    "--bc",
+    "/workspace/HaxballRL_coop_20261007/runs/x4_coop_20261007/references/bc.pt",
+    "--init",
+    "/workspace/HaxballRL_coop_20261007/runs/x4_coop_20261007/references/init.pt"
+  ],
+  "controller_revision": "01c9e6045cfda4db78190c07a9675cf47557f1ae",
+  "controller_sha256": "1e15b9d9fc460467dc44ec5fb9354ee5a2d098f8c43e96d216d27e997e8ee4f5",
+  "worktree_commit": "205b4812dd4b1a2f5520c0d1dba1ef15027d3465",
+  "smoke": {
+    "envs_per_branch": 512,
+    "rollout": 128,
+    "updates_per_branch": 2,
+    "actor_and_critic_learning": true,
+    "nonfinite_updates": 0
+  },
+  "predecessor": "/workspace/HaxballRL_coop_20261007/runs/x4_coop_20261007",
+  "training_mode": "pass-ready"
+}

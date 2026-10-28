@@ -1,0 +1,288 @@
+{
+  "version": "x4-coop-eval-1",
+  "map": "sanguchito_rs_x4",
+  "seed": 20261007,
+  "delays": [
+    8,
+    9,
+    10,
+    11
+  ],
+  "greedy": false,
+  "matches_per_side": 1,
+  "minutes": 0.6,
+  "probe_horizon": 200,
+  "checkpoints": {
+    "runs/x4_bc/final_sangu_rsone/best.pt": {
+      "spec": "runs\\x4_bc\\final_sangu_rsone\\best.pt",
+      "sha256": "5e512b07b05c8eb01c8eacabf14cf1b6db21002889d28dec75d286f0238497dc"
+    },
+    "still": {
+      "spec": "still"
+    },
+    "scripted": {
+      "spec": "scripted"
+    }
+  },
+  "runtime": {
+    "torch": "2.14.0+cpu",
+    "numpy": "2.5.3",
+    "device": "cpu",
+    "threads": 2
+  },
+  "training_access": false,
+  "probe_split": "test",
+  "matches": {
+    "runs/x4_bc/final_sangu_rsone/best.pt": {
+      "still": {
+        "matches": 2,
+        "finished": 2,
+        "wins": 0,
+        "draws": 2,
+        "losses": 0,
+        "goals_for": 0,
+        "goals_against": 0,
+        "point_fraction": {
+          "valor": 0.5,
+          "ic90": [
+            0.5,
+            0.5
+          ],
+          "n": 2
+        },
+        "goal_difference": {
+          "valor": 0.0,
+          "ic90": [
+            0.0,
+            0.0
+          ],
+          "n": 2
+        },
+        "safety_kickoff": 1,
+        "valid_for_strength": true,
+        "natural_metrics": {
+          "retencion_tras_recibir": {
+            "valor": 0.8,
+            "ic90": [
+              0.6667,
+              1.0
+            ]
+          },
+          "retencion_bajo_presion": {
+            "valor": null,
+            "ic90": [
+              null,
+              null
+            ]
+          },
+          "perdida_sin_pase_bajo_presion": {
+            "valor": null,
+            "ic90": [
+              null,
+              null
+            ]
+          },
+          "progreso_tras_pase_avance": {
+            "valor": null,
+            "ic90": [
+              null,
+              null
+            ]
+          },
+          "salidas_presion_por_min": {
+            "valor": 0.0,
+            "ic90": [
+              0.0,
+              0.0
+            ]
+          },
+          "goles_por_min": {
+            "valor": 0.0,
+            "ic90": [
+              0.0,
+              0.0
+            ]
+          },
+          "pases_por_posesion": {
+            "valor": null,
+            "ic90": [
+              null,
+              null
+            ]
+          },
+          "precision_pase": {
+            "valor": 1.0,
+            "ic90": [
+              1.0,
+              1.0
+            ]
+          },
+          "desmarques_utiles_frac": {
+            "valor": null,
+            "ic90": [
+              null,
+              null
+            ]
+          },
+          "reofrece_tras_pasar_frac": {
+            "valor": 0.6,
+            "ic90": [
+              0.5,
+              0.6667
+            ]
+          }
+        },
+        "support": {
+          "open_minutes": 0.20625000000000002,
+          "poss_minutes": 0.12333333333333334,
+          "den": {
+            "state4": 7.5,
+            "attempts": 5,
+            "desm": 0,
+            "reofrece_n": 5,
+            "press_att": 0,
+            "passes": 5,
+            "rec": 5,
+            "rec_press": 0,
+            "adv_n": 0,
+            "next_pass_n": 3,
+            "poss": 0,
+            "poss3": 0,
+            "dec": 7,
+            "dec_press": 0,
+            "dec_prog": 4
+          }
+        }
+      },
+      "scripted": {
+        "matches": 2,
+        "finished": 2,
+        "wins": 0,
+        "draws": 2,
+        "losses": 0,
+        "goals_for": 0,
+        "goals_against": 0,
+        "point_fraction": {
+          "valor": 0.5,
+          "ic90": [
+            0.5,
+            0.5
+          ],
+          "n": 2
+        },
+        "goal_difference": {
+          "valor": 0.0,
+          "ic90": [
+            0.0,
+            0.0
+          ],
+          "n": 2
+        },
+        "safety_kickoff": 0,
+        "valid_for_strength": true,
+        "natural_metrics": {
+          "retencion_tras_recibir": {
+            "valor": 1.0,
+            "ic90": [
+              1.0,
+              1.0
+            ]
+          },
+          "retencion_bajo_presion": {
+            "valor": null,
+            "ic90": [
+              null,
+              null
+            ]
+          },
+          "perdida_sin_pase_bajo_presion": {
+            "valor": 0.0,
+            "ic90": [
+              0.0,
+              0.0
+            ]
+          },
+          "progreso_tras_pase_avance": {
+            "valor": 334.1065,
+            "ic90": [
+              78.5063,
+              589.7067
+            ]
+          },
+          "salidas_presion_por_min": {
+            "valor": 4.7337,
+            "ic90": [
+              4.4199,
+              5.0955
+            ]
+          },
+          "goles_por_min": {
+            "valor": 0.0,
+            "ic90": [
+              0.0,
+              0.0
+            ]
+          },
+          "pases_por_posesion": {
+            "valor": 0.375,
+            "ic90": [
+              0.0,
+              0.6
+            ]
+          },
+          "precision_pase": {
+            "valor": 0.6667,
+            "ic90": [
+              0.3333,
+              1.0
+            ]
+          },
+          "desmarques_utiles_frac": {
+            "valor": 0.0,
+            "ic90": [
+              0.0,
+              0.0
+            ]
+          },
+          "reofrece_tras_pasar_frac": {
+            "valor": 0.75,
+            "ic90": [
+              0.6667,
+              1.0
+            ]
+          }
+        },
+        "support": {
+          "open_minutes": 0.4225,
+          "poss_minutes": 0.15,
+          "den": {
+            "state4": 9.0,
+            "attempts": 6,
+            "desm": 1,
+            "reofrece_n": 4,
+            "press_att": 3,
+            "passes": 4,
+            "rec": 4,
+            "rec_press": 0,
+            "adv_n": 2,
+            "next_pass_n": 1,
+            "poss": 8,
+            "poss3": 0,
+            "dec": 10,
+            "dec_press": 1,
+            "dec_prog": 4
+          }
+        }
+      }
+    }
+  },
+  "probes": {},
+  "limitations": [
+    "Sondas 2v1/3v2 alteran el plantel; humanos conservan 4v4.",
+    "Resultados de simulación no demuestran fuerza contra humanos en sala.",
+    "Pase útil es diagnóstico; gol y progreso sin pase también cuentan.",
+    "Salida termina la sonda aun si el equipo obtendría el saque.",
+    "Bootstrap 90% por partido/grabación; con pocas unidades es incierto.",
+    "Cadena de partido usa definiciones existentes; sondas censuran recepciones tardías."
+  ]
+}
