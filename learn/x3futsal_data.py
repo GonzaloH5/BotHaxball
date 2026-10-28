@@ -1,4 +1,4 @@
-"""Prepare replay-grounded 3v3 Futsal x3 behavior-cloning data.
+"""Prepare replay-grounded 3v3 Futsal x3 behavior-cloning data and fast vectorized tactical observations.
 
   python -m learn.x3futsal_data
   python -m learn.x3futsal_data --cache data/x3futsal_jsonl --out data/x3futsal_bc_active
@@ -22,6 +22,9 @@ MOVE_DX = (0, 0, 1, 1, 1, 0, -1, -1, -1)
 MOVE_DY = (0, -1, -1, 0, 1, 1, 1, 0, -1)
 MOVE_BY_DELTA = dict(zip(zip(MOVE_DX, MOVE_DY), range(9)))
 Y_FLIP_MOVE = np.asarray([0, 5, 4, 3, 2, 1, 8, 7, 6], dtype=np.int64)
+X_FLIP_MOVE = np.asarray([0, 1, 8, 7, 6, 5, 4, 3, 2], dtype=np.int64)
+MIRROR_X_ACTION = np.concatenate((X_FLIP_MOVE, X_FLIP_MOVE + 9)).astype(np.int64)
+
 N_PLAYERS = 6
 N_ACTIONS = 18
 DECISION_STRIDE = 3
@@ -39,9 +42,17 @@ DEFAULT_OUT = ROOT / "data" / "x3futsal_bc_active"
 AFK_OUTSIDE_MARGIN = 25.0
 AFK_STATIONARY_FRAMES = 600
 AFK_SPEED_THRESHOLD = 0.08
+# Umbral para detectar jugadores anclados pasivamente dentro del área propia mientras la pelota está lejos
+BOX_CAMP_STATIONARY_FRAMES = 90
+BOX_CAMP_DEPTH_MARGIN = 115.0
+BOX_CAMP_BALL_ADVANCE_MARGIN = 210.0
 
 TACTICAL_SELF_DIM = 28
 TACTICAL_ENTITY_DIM = 10
+
+_MATE_PAIRS = np.asarray([[1, 2], [2, 0], [0, 1]], dtype=np.int64)
+_MATE_A = np.asarray([1, 2, 0], dtype=np.int64)
+_MATE_B = np.asarray([2, 0, 1], dtype=np.int64)
 
 FILTER_CONTRACT = {
     "targetStadiumSpans": True,
@@ -186,6 +197,10 @@ def featurize_tactical(
     h = max(float(field_half_h), 1.0)
     gx = max(float(goal_x), w)
     sr = 600.0
+    inv_w = np.float32(1.0 / w)
+    inv_h = np.float32(1.0 / h)
+    inv_v = np.float32(1.0 / 6.0)
+    inv_sr = np.float32(1.0 / sr)
 
     batch = np.arange(batch_size)
     players_px = raw[:, 1:, :]
@@ -199,10 +214,9 @@ def featurize_tactical(
     mates_px = players_px[batch[:, None], mates_idx]
     rivals_px = players_px[batch[:, None], rivals_idx]
 
-    # Distances & contact margins in pixels
     ball_delta_px = ball_px[:, :2] - own_px[:, :2]
     ball_dist_px = np.hypot(ball_delta_px[:, 0], ball_delta_px[:, 1])
-    ball_gap = np.clip((ball_dist_px - CONTACT_DIST) / 8.0, -1.0, 4.0)
+    ball_gap = np.clip((ball_dist_px - CONTACT_DIST) * np.float32(0.125), np.float32(-1.0), np.float32(4.0))
     ball_in_reach = (ball_dist_px <= EFFECTIVE_KICK_DIST).astype(np.float32)
 
     mate_ball_delta_px = ball_px[:, None, :2] - mates_px[:, :, :2]
@@ -210,32 +224,29 @@ def featurize_tactical(
     rival_ball_delta_px = ball_px[:, None, :2] - rivals_px[:, :, :2]
     rival_ball_dist_px = np.hypot(rival_ball_delta_px[:, :, 0], rival_ball_delta_px[:, :, 1])
 
-    # Projected 6-tick intercept geometry
-    pred_ball_px = ball_px[:, :2] + 6.0 * ball_px[:, 2:]
-    pred_own_px = own_px[:, :2] + 6.0 * own_px[:, 2:]
+    pred_ball_px = ball_px[:, :2] + np.float32(6.0) * ball_px[:, 2:]
+    pred_own_px = own_px[:, :2] + np.float32(6.0) * own_px[:, 2:]
     pred_delta_px = pred_ball_px - pred_own_px
     pred_own_dist = np.hypot(pred_delta_px[:, 0], pred_delta_px[:, 1])
-    pred_mates_px = mates_px[:, :, :2] + 6.0 * mates_px[:, :, 2:]
+    pred_mates_px = mates_px[:, :, :2] + np.float32(6.0) * mates_px[:, :, 2:]
     pred_mate_dist = np.hypot(pred_ball_px[:, None, 0] - pred_mates_px[:, :, 0],
                               pred_ball_px[:, None, 1] - pred_mates_px[:, :, 1])
 
-    # Team role indicators ("voy yo" engagement & last-man anchor)
-    is_closest_to_ball = (pred_own_dist <= pred_mate_dist.min(axis=1) + 1e-3).astype(np.float32)
-    is_last_man = (own_px[:, 0] <= mates_px[:, :, 0].min(axis=1) + 1e-3).astype(np.float32)
+    is_closest_to_ball = (pred_own_dist <= pred_mate_dist.min(axis=1) + np.float32(1e-3)).astype(np.float32)
+    is_last_man = (own_px[:, 0] <= mates_px[:, :, 0].min(axis=1) + np.float32(1e-3)).astype(np.float32)
     min_rival_dist = rival_ball_dist_px.min(axis=1)
-    race_margin_rival = np.clip((min_rival_dist - ball_dist_px) / 200.0, -1.0, 1.0)
+    race_margin_rival = np.clip((min_rival_dist - ball_dist_px) * np.float32(1.0 / 200.0), np.float32(-1.0), np.float32(1.0))
 
-    # Goal vectors and shot alignment
-    opp_goal_dx = (gx - own_px[:, 0]) / w
-    opp_goal_dy = (0.0 - own_px[:, 1]) / h
-    own_goal_dx = (-gx - own_px[:, 0]) / w
-    own_goal_dy = (0.0 - own_px[:, 1]) / h
-    ball_opp_goal_x = gx - ball_px[:, 0]
-    ball_opp_goal_y = 0.0 - ball_px[:, 1]
-    ball_opp_goal_norm = np.hypot(ball_opp_goal_x, ball_opp_goal_y) + 1e-6
+    opp_goal_dx = (np.float32(gx) - own_px[:, 0]) * inv_w
+    opp_goal_dy = -own_px[:, 1] * inv_h
+    own_goal_dx = (np.float32(-gx) - own_px[:, 0]) * inv_w
+    own_goal_dy = -own_px[:, 1] * inv_h
+    ball_opp_goal_x = np.float32(gx) - ball_px[:, 0]
+    ball_opp_goal_y = -ball_px[:, 1]
+    ball_opp_goal_norm = np.hypot(ball_opp_goal_x, ball_opp_goal_y) + np.float32(1e-6)
     shot_alignment = (
         (ball_delta_px[:, 0] * ball_opp_goal_x + ball_delta_px[:, 1] * ball_opp_goal_y)
-        / ((ball_dist_px + 1e-6) * ball_opp_goal_norm)
+        / ((ball_dist_px + np.float32(1e-6)) * ball_opp_goal_norm)
     )
 
     if kick_cancel is None:
@@ -243,66 +254,233 @@ def featurize_tactical(
     else:
         kick_armed = (~np.asarray(kick_cancel, dtype=bool)).astype(np.float32)
 
-    own_features = np.column_stack((
-        own_px[:, 0] / w,
-        own_px[:, 1] / h,
-        own_px[:, 2] / 6.0,
-        own_px[:, 3] / 6.0,
-        ball_px[:, 0] / w,
-        ball_px[:, 1] / h,
-        ball_px[:, 2] / 6.0,
-        ball_px[:, 3] / 6.0,
-        ball_delta_px[:, 0] / w,
-        ball_delta_px[:, 1] / h,
-        ball_dist_px / sr,
-        ball_gap,
-        ball_in_reach,
-        (ball_px[:, 2] - own_px[:, 2]) / 6.0,
-        (ball_px[:, 3] - own_px[:, 3]) / 6.0,
-        pred_delta_px[:, 0] / sr,
-        pred_delta_px[:, 1] / sr,
-        opp_goal_dx,
-        opp_goal_dy,
-        own_goal_dx,
-        own_goal_dy,
-        ball_opp_goal_x / w,
-        ball_opp_goal_y / h,
-        shot_alignment,
-        is_closest_to_ball,
-        is_last_man,
-        race_margin_rival,
-        kick_armed,
-    )).astype(np.float32)
+    own_features = np.empty((batch_size, TACTICAL_SELF_DIM), dtype=np.float32)
+    own_features[:, 0] = own_px[:, 0] * inv_w
+    own_features[:, 1] = own_px[:, 1] * inv_h
+    own_features[:, 2] = own_px[:, 2] * inv_v
+    own_features[:, 3] = own_px[:, 3] * inv_v
+    own_features[:, 4] = ball_px[:, 0] * inv_w
+    own_features[:, 5] = ball_px[:, 1] * inv_h
+    own_features[:, 6] = ball_px[:, 2] * inv_v
+    own_features[:, 7] = ball_px[:, 3] * inv_v
+    own_features[:, 8] = ball_delta_px[:, 0] * inv_w
+    own_features[:, 9] = ball_delta_px[:, 1] * inv_h
+    own_features[:, 10] = ball_dist_px * inv_sr
+    own_features[:, 11] = ball_gap
+    own_features[:, 12] = ball_in_reach
+    own_features[:, 13] = (ball_px[:, 2] - own_px[:, 2]) * inv_v
+    own_features[:, 14] = (ball_px[:, 3] - own_px[:, 3]) * inv_v
+    own_features[:, 15] = pred_delta_px[:, 0] * inv_sr
+    own_features[:, 16] = pred_delta_px[:, 1] * inv_sr
+    own_features[:, 17] = opp_goal_dx
+    own_features[:, 18] = opp_goal_dy
+    own_features[:, 19] = own_goal_dx
+    own_features[:, 20] = own_goal_dy
+    own_features[:, 21] = ball_opp_goal_x * inv_w
+    own_features[:, 22] = ball_opp_goal_y * inv_h
+    own_features[:, 23] = shot_alignment
+    own_features[:, 24] = is_closest_to_ball
+    own_features[:, 25] = is_last_man
+    own_features[:, 26] = race_margin_rival
+    own_features[:, 27] = kick_armed
 
     def _entity_block(ent_px: np.ndarray, ent_ball_dist: np.ndarray) -> np.ndarray:
-        rel_own_x = (ent_px[:, :, 0] - own_px[:, None, 0]) / w
-        rel_own_y = (ent_px[:, :, 1] - own_px[:, None, 1]) / h
-        vx = ent_px[:, :, 2] / 6.0
-        vy = ent_px[:, :, 3] / 6.0
-        rel_ball_x = (ent_px[:, :, 0] - ball_px[:, None, 0]) / w
-        rel_ball_y = (ent_px[:, :, 1] - ball_px[:, None, 1]) / h
-        dist_norm = ent_ball_dist / sr
-        gap = np.clip((ent_ball_dist - CONTACT_DIST) / 8.0, -1.0, 4.0)
-        in_reach = (ent_ball_dist <= EFFECTIVE_KICK_DIST).astype(np.float32)
+        out = np.empty((batch_size, ent_px.shape[1], TACTICAL_ENTITY_DIM), dtype=np.float32)
         ball_to_ent_x = ent_px[:, :, 0] - ball_px[:, None, 0]
         ball_to_ent_y = ent_px[:, :, 1] - ball_px[:, None, 1]
-        ball_to_ent_norm = np.hypot(ball_to_ent_x, ball_to_ent_y) + 1e-6
-        pass_align = (
+        ball_to_ent_norm = np.hypot(ball_to_ent_x, ball_to_ent_y) + np.float32(1e-6)
+        out[:, :, 0] = (ent_px[:, :, 0] - own_px[:, None, 0]) * inv_w
+        out[:, :, 1] = (ent_px[:, :, 1] - own_px[:, None, 1]) * inv_h
+        out[:, :, 2] = ent_px[:, :, 2] * inv_v
+        out[:, :, 3] = ent_px[:, :, 3] * inv_v
+        out[:, :, 4] = ball_to_ent_x * inv_w
+        out[:, :, 5] = ball_to_ent_y * inv_h
+        out[:, :, 6] = ent_ball_dist * inv_sr
+        out[:, :, 7] = np.clip((ent_ball_dist - CONTACT_DIST) * np.float32(0.125), np.float32(-1.0), np.float32(4.0))
+        out[:, :, 8] = (ent_ball_dist <= EFFECTIVE_KICK_DIST).astype(np.float32)
+        out[:, :, 9] = (
             (ball_delta_px[:, None, 0] * ball_to_ent_x + ball_delta_px[:, None, 1] * ball_to_ent_y)
-            / ((ball_dist_px[:, None] + 1e-6) * ball_to_ent_norm)
+            / ((ball_dist_px[:, None] + np.float32(1e-6)) * ball_to_ent_norm)
         )
-        return np.stack((
-            rel_own_x, rel_own_y, vx, vy, rel_ball_x, rel_ball_y,
-            dist_norm, gap, in_reach, pass_align,
-        ), axis=-1).astype(np.float32)
+        return out
 
     mate_features = _entity_block(mates_px, mate_ball_dist_px)
     rival_features = _entity_block(rivals_px, rival_ball_dist_px)
     return own_features, mate_features, rival_features
 
 
+def featurize_tactical_team(
+    sim,
+    team: int,
+    field_half_w: float = 550.0,
+    field_half_h: float = 240.0,
+    goal_x: float = 557.5,
+    out_own: np.ndarray | None = None,
+    out_mates: np.ndarray | None = None,
+    out_rivals: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Compute tactical v3 observations for all 3 players of `team` across `sim.N` matches in one pass.
+
+    Avoids constructing `(N, 7, 4)`, repeating it 3x, and recomputing distances 3x redundantly.
+    Guaranteed bit-compatible (`atol <= 1e-6`) with `featurize_tactical`.
+    """
+    N = sim.N
+    B = N * 3
+    w = max(float(field_half_w), 1.0)
+    h = max(float(field_half_h), 1.0)
+    gx = max(float(goal_x), w)
+    sr = 600.0
+    inv_w = np.float32(1.0 / w)
+    inv_h = np.float32(1.0 / h)
+    inv_v = np.float32(1.0 / 6.0)
+    inv_sr = np.float32(1.0 / sr)
+    orient = np.float32(1.0 if team == 0 else -1.0)
+
+    fp = sim.first_player
+    own_slice = slice(fp + 3 * team, fp + 3 * team + 3)
+    riv_slice = slice(fp + 3 * (1 - team), fp + 3 * (1 - team) + 3)
+
+    b_x = (sim.pos[:, 0, 0] * orient).astype(np.float32)
+    b_y = sim.pos[:, 0, 1].astype(np.float32)
+    b_vx = (sim.vel[:, 0, 0] * orient).astype(np.float32)
+    b_vy = sim.vel[:, 0, 1].astype(np.float32)
+
+    t_x = (sim.pos[:, own_slice, 0] * orient).astype(np.float32)
+    t_y = sim.pos[:, own_slice, 1].astype(np.float32)
+    t_vx = (sim.vel[:, own_slice, 0] * orient).astype(np.float32)
+    t_vy = sim.vel[:, own_slice, 1].astype(np.float32)
+
+    r_x = (sim.pos[:, riv_slice, 0] * orient).astype(np.float32)
+    r_y = sim.pos[:, riv_slice, 1].astype(np.float32)
+    r_vx = (sim.vel[:, riv_slice, 0] * orient).astype(np.float32)
+    r_vy = sim.vel[:, riv_slice, 1].astype(np.float32)
+
+    t_bdx = b_x[:, None] - t_x
+    t_bdy = b_y[:, None] - t_y
+    t_bdist = np.hypot(t_bdx, t_bdy)
+    t_bgap = np.clip((t_bdist - CONTACT_DIST) * np.float32(0.125), np.float32(-1.0), np.float32(4.0))
+    t_breach = (t_bdist <= EFFECTIVE_KICK_DIST).astype(np.float32)
+
+    r_bdx = b_x[:, None] - r_x
+    r_bdy = b_y[:, None] - r_y
+    r_bdist = np.hypot(r_bdx, r_bdy)
+    r_bgap = np.clip((r_bdist - CONTACT_DIST) * np.float32(0.125), np.float32(-1.0), np.float32(4.0))
+    r_breach = (r_bdist <= EFFECTIVE_KICK_DIST).astype(np.float32)
+    min_r_bdist = r_bdist.min(axis=1)
+
+    pred_bx = b_x + np.float32(6.0) * b_vx
+    pred_by = b_y + np.float32(6.0) * b_vy
+    pred_tx = t_x + np.float32(6.0) * t_vx
+    pred_ty = t_y + np.float32(6.0) * t_vy
+    pred_dx = pred_bx[:, None] - pred_tx
+    pred_dy = pred_by[:, None] - pred_ty
+    pred_dist = np.hypot(pred_dx, pred_dy)
+
+    min_mate_pred = np.minimum(pred_dist[:, _MATE_A], pred_dist[:, _MATE_B])
+    is_closest = (pred_dist <= min_mate_pred + np.float32(1e-3)).astype(np.float32)
+    min_mate_x = np.minimum(t_x[:, _MATE_A], t_x[:, _MATE_B])
+    is_last_man = (t_x <= min_mate_x + np.float32(1e-3)).astype(np.float32)
+    race_margin = np.clip((min_r_bdist[:, None] - t_bdist) * np.float32(1.0 / 200.0), np.float32(-1.0), np.float32(1.0))
+
+    ball_opp_gx = np.float32(gx) - b_x
+    ball_opp_gy = -b_y
+    ball_opp_gnorm = np.hypot(ball_opp_gx, ball_opp_gy) + np.float32(1e-6)
+    shot_align = (
+        (t_bdx * ball_opp_gx[:, None] + t_bdy * ball_opp_gy[:, None])
+        / ((t_bdist + np.float32(1e-6)) * ball_opp_gnorm[:, None])
+    )
+    kc = getattr(sim, "kick_cancel", None)
+    if kc is None:
+        kick_armed = np.ones((N, 3), dtype=np.float32)
+    else:
+        kick_armed = (~kc[:, 3 * team:3 * team + 3]).astype(np.float32)
+
+    if out_own is None:
+        out_own = np.empty((B, TACTICAL_SELF_DIM), dtype=np.float32)
+    own_3d = out_own.reshape(N, 3, TACTICAL_SELF_DIM)
+    own_3d[:, :, 0] = t_x * inv_w
+    own_3d[:, :, 1] = t_y * inv_h
+    own_3d[:, :, 2] = t_vx * inv_v
+    own_3d[:, :, 3] = t_vy * inv_v
+    own_3d[:, :, 4] = (b_x * inv_w)[:, None]
+    own_3d[:, :, 5] = (b_y * inv_h)[:, None]
+    own_3d[:, :, 6] = (b_vx * inv_v)[:, None]
+    own_3d[:, :, 7] = (b_vy * inv_v)[:, None]
+    own_3d[:, :, 8] = t_bdx * inv_w
+    own_3d[:, :, 9] = t_bdy * inv_h
+    own_3d[:, :, 10] = t_bdist * inv_sr
+    own_3d[:, :, 11] = t_bgap
+    own_3d[:, :, 12] = t_breach
+    own_3d[:, :, 13] = (b_vx[:, None] - t_vx) * inv_v
+    own_3d[:, :, 14] = (b_vy[:, None] - t_vy) * inv_v
+    own_3d[:, :, 15] = pred_dx * inv_sr
+    own_3d[:, :, 16] = pred_dy * inv_sr
+    own_3d[:, :, 17] = (np.float32(gx) - t_x) * inv_w
+    own_3d[:, :, 18] = -t_y * inv_h
+    own_3d[:, :, 19] = (np.float32(-gx) - t_x) * inv_w
+    own_3d[:, :, 20] = -t_y * inv_h
+    own_3d[:, :, 21] = (ball_opp_gx * inv_w)[:, None]
+    own_3d[:, :, 22] = (ball_opp_gy * inv_h)[:, None]
+    own_3d[:, :, 23] = shot_align
+    own_3d[:, :, 24] = is_closest
+    own_3d[:, :, 25] = is_last_man
+    own_3d[:, :, 26] = race_margin
+    own_3d[:, :, 27] = kick_armed
+
+    if out_mates is None:
+        out_mates = np.empty((B, 2, TACTICAL_ENTITY_DIM), dtype=np.float32)
+    mates_4d = out_mates.reshape(N, 3, 2, TACTICAL_ENTITY_DIM)
+    mx = t_x[:, _MATE_PAIRS]
+    my = t_y[:, _MATE_PAIRS]
+    mvx = t_vx[:, _MATE_PAIRS]
+    mvy = t_vy[:, _MATE_PAIRS]
+    mbdist = t_bdist[:, _MATE_PAIRS]
+    mbgap = t_bgap[:, _MATE_PAIRS]
+    mbreach = t_breach[:, _MATE_PAIRS]
+    m_rel_bx = mx - b_x[:, None, None]
+    m_rel_by = my - b_y[:, None, None]
+    m_bnorm = np.hypot(m_rel_bx, m_rel_by) + np.float32(1e-6)
+    m_pass_align = (
+        (t_bdx[:, :, None] * m_rel_bx + t_bdy[:, :, None] * m_rel_by)
+        / ((t_bdist[:, :, None] + np.float32(1e-6)) * m_bnorm)
+    )
+    mates_4d[:, :, :, 0] = (mx - t_x[:, :, None]) * inv_w
+    mates_4d[:, :, :, 1] = (my - t_y[:, :, None]) * inv_h
+    mates_4d[:, :, :, 2] = mvx * inv_v
+    mates_4d[:, :, :, 3] = mvy * inv_v
+    mates_4d[:, :, :, 4] = m_rel_bx * inv_w
+    mates_4d[:, :, :, 5] = m_rel_by * inv_h
+    mates_4d[:, :, :, 6] = mbdist * inv_sr
+    mates_4d[:, :, :, 7] = mbgap
+    mates_4d[:, :, :, 8] = mbreach
+    mates_4d[:, :, :, 9] = m_pass_align
+
+    if out_rivals is None:
+        out_rivals = np.empty((B, 3, TACTICAL_ENTITY_DIM), dtype=np.float32)
+    rivals_4d = out_rivals.reshape(N, 3, 3, TACTICAL_ENTITY_DIM)
+    r_rel_bx = -r_bdx
+    r_rel_by = -r_bdy
+    r_bnorm = np.hypot(r_rel_bx, r_rel_by) + np.float32(1e-6)
+    r_pass_align = (
+        (t_bdx[:, :, None] * r_rel_bx[:, None, :] + t_bdy[:, :, None] * r_rel_by[:, None, :])
+        / ((t_bdist[:, :, None] + np.float32(1e-6)) * r_bnorm[:, None, :])
+    )
+    rivals_4d[:, :, :, 0] = (r_x[:, None, :] - t_x[:, :, None]) * inv_w
+    rivals_4d[:, :, :, 1] = (r_y[:, None, :] - t_y[:, :, None]) * inv_h
+    rivals_4d[:, :, :, 2] = (r_vx * inv_v)[:, None, :]
+    rivals_4d[:, :, :, 3] = (r_vy * inv_v)[:, None, :]
+    rivals_4d[:, :, :, 4] = (r_rel_bx * inv_w)[:, None, :]
+    rivals_4d[:, :, :, 5] = (r_rel_by * inv_h)[:, None, :]
+    rivals_4d[:, :, :, 6] = (r_bdist * inv_sr)[:, None, :]
+    rivals_4d[:, :, :, 7] = r_bgap[:, None, :]
+    rivals_4d[:, :, :, 8] = r_breach[:, None, :]
+    rivals_4d[:, :, :, 9] = r_pass_align
+
+    return out_own, out_mates, out_rivals
+
+
 class X3Data:
-    """Split shards in memory; supports uniform and near-ball tactical sampling plus Y-mirroring."""
+    """Split shards in memory; supports uniform, near-ball, and anti-box-camping rotational sampling plus Y-mirroring."""
 
     def __init__(self, dataset: Path, split: str, *, tactical: bool = False):
         manifest_path = dataset / "manifest.json"
@@ -314,7 +492,13 @@ class X3Data:
         self.tactical = bool(tactical)
         self.shards = []
         self.near_ball_pairs = []
+        self.active_rotational_pairs = []
+        stadium = load_stadium(STADIUM)
+        self.field_half_w = float(stadium.field_half_w)
+        self.field_half_h = float(stadium.field_half_h)
+        self.goal_x = float(stadium.goal_x)
         offset = 0
+        orient_vec = np.asarray([1.0, 1.0, 1.0, -1.0, -1.0, -1.0], dtype=np.float32)
         for row in manifest["shards"]:
             if row["split"] != split:
                 continue
@@ -326,7 +510,6 @@ class X3Data:
                     or str(shard.get("sourceSha256", "")) != row["sourceSha256"]:
                 raise ValueError(f"metadatos de shard incompatibles: {row['file']}")
             self.shards.append(shard)
-            # Pre-index player-ticks near the ball (<= NEAR_BALL_DIST_PX) for importance sampling
             states_f32 = shard["states"].astype(np.float32)
             dx = states_f32[:, 1:, 0] - states_f32[:, 0:1, 0]
             dy = states_f32[:, 1:, 1] - states_f32[:, 0:1, 1]
@@ -334,6 +517,20 @@ class X3Data:
             if len(near_rows):
                 self.near_ball_pairs.append(
                     np.column_stack((near_rows + offset, near_slots)).astype(np.int64)
+                )
+            # Exclude passive box-camping player-ticks (player parked in own box with action==0 while ball is advanced)
+            px_oriented = states_f32[:, 1:, 0] * orient_vec[None, :]
+            bx_oriented = states_f32[:, 0:1, 0] * orient_vec[None, :]
+            acts = shard["actions"]
+            passive_box_camp = (
+                (px_oriented < -self.field_half_w + BOX_CAMP_DEPTH_MARGIN)
+                & (bx_oriented > -self.field_half_w + BOX_CAMP_BALL_ADVANCE_MARGIN)
+                & ((acts % 9) == 0)
+            )
+            active_rows, active_slots = np.nonzero(~passive_box_camp)
+            if len(active_rows):
+                self.active_rotational_pairs.append(
+                    np.column_stack((active_rows + offset, active_slots)).astype(np.int64)
                 )
             offset += len(shard["states"])
         if not self.shards:
@@ -344,26 +541,38 @@ class X3Data:
             np.concatenate(self.near_ball_pairs, axis=0)
             if self.near_ball_pairs else np.empty((0, 2), dtype=np.int64)
         )
-        stadium = load_stadium(STADIUM)
-        self.field_half_w = float(stadium.field_half_w)
-        self.field_half_h = float(stadium.field_half_h)
-        self.goal_x = float(stadium.goal_x)
+        self.active_rotational_index = (
+            np.concatenate(self.active_rotational_pairs, axis=0)
+            if self.active_rotational_pairs else np.empty((0, 2), dtype=np.int64)
+        )
 
     def sample_indices(self, count: int, rng: np.random.Generator,
-                       near_ball_frac: float = 0.0) -> tuple[np.ndarray, np.ndarray]:
-        """Sample (tick_indices, player_slots) with optional near-ball importance oversampling."""
+                       near_ball_frac: float = 0.0,
+                       filter_box_camping: bool = True) -> tuple[np.ndarray, np.ndarray]:
+        """Sample (tick_indices, player_slots) with near-ball oversampling and anti-box-camping filtering."""
         near_count = int(round(count * float(np.clip(near_ball_frac, 0.0, 1.0))))
         if near_count > 0 and len(self.near_ball_index) > 0:
             chosen = self.near_ball_index[rng.integers(0, len(self.near_ball_index), size=near_count)]
             rem = count - near_count
             if rem > 0:
-                uni_idx = rng.integers(0, self.ticks, size=rem)
-                uni_slots = rng.integers(0, N_PLAYERS, size=rem)
+                if filter_box_camping and self.tactical and len(self.active_rotational_index) > 0:
+                    act_chosen = self.active_rotational_index[
+                        rng.integers(0, len(self.active_rotational_index), size=rem)
+                    ]
+                    uni_idx, uni_slots = act_chosen[:, 0], act_chosen[:, 1]
+                else:
+                    uni_idx = rng.integers(0, self.ticks, size=rem)
+                    uni_slots = rng.integers(0, N_PLAYERS, size=rem)
                 indices = np.concatenate((chosen[:, 0], uni_idx))
                 slots = np.concatenate((chosen[:, 1], uni_slots))
                 perm = rng.permutation(count)
                 return indices[perm], slots[perm]
             return chosen[:, 0], chosen[:, 1]
+        if filter_box_camping and self.tactical and len(self.active_rotational_index) > 0:
+            act_chosen = self.active_rotational_index[
+                rng.integers(0, len(self.active_rotational_index), size=count)
+            ]
+            return act_chosen[:, 0], act_chosen[:, 1]
         return rng.integers(0, self.ticks, size=count), rng.integers(0, N_PLAYERS, size=count)
 
     def batch(self, indices: np.ndarray, slots: np.ndarray, *,
@@ -523,7 +732,6 @@ def extract_recording(name: str, audit_row: dict, index_row: dict, cache: Path) 
             if int(label[player_index]) >= 9 and dist_ball > EFFECTIVE_KICK_DIST + 12.0:
                 held_kick_outside_frames[player_index] += 1
                 if held_kick_outside_frames[player_index] > MAX_HELD_KICK_OUTSIDE_REACH:
-                    # Strip stale held-down kick bits far from the ball so BC does not learn kick-lock
                     cleaned_label[player_index] = int(label[player_index] % 9)
             else:
                 held_kick_outside_frames[player_index] = 0
@@ -804,21 +1012,19 @@ def main() -> None:
     parser.add_argument("--cache", type=Path, default=DEFAULT_CACHE)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--seed", type=int, default=20261027)
-    parser.add_argument("--workers", type=int, default=2, help="replays procesados simultáneamente")
+    parser.add_argument("--workers", type=int, default=2)
     parser.add_argument("--refresh-manifest", action="store_true",
-                        help="actualizar metadata de un dataset ya generado, sin releer sus replays")
+                        help="actualizar split y metadatos sin reextraer shards existentes")
     args = parser.parse_args()
     if args.refresh_manifest:
         manifest = refresh_manifest(args.cache, args.out, args.seed)
-        print(json.dumps({"shards": manifest["shardCount"], "ticks": manifest["tickCountBySplit"]},
-                         indent=2, ensure_ascii=False))
-        return
-    manifest = build_dataset(args.cache, args.out, args.seed, args.workers)
-    print(json.dumps({"shards": manifest["shardCount"], "ticks": manifest["tickCountBySplit"],
-                      "recordings": manifest["split"]["recordingCounts"],
-                      "groups": manifest["split"]["groupCounts"],
-                      "threeVThreeTickFractions": manifest["split"]["threeVThreeTickFractions"]},
-                     indent=2, ensure_ascii=False))
+    else:
+        manifest = build_dataset(args.cache, args.out, args.seed, args.workers)
+    print(json.dumps({
+        "dataVersion": manifest["dataVersion"],
+        "shardCount": manifest["shardCount"],
+        "tickCountBySplit": manifest["tickCountBySplit"],
+    }, ensure_ascii=False), flush=True)
 
 
 if __name__ == "__main__":

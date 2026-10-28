@@ -29,6 +29,7 @@ from learn.x3futsal_policy import (
     X3SetPolicy,
     X3TacticalPolicy,
 )
+from sim.physics import set_physics_threads
 
 CHANGE_ACTION_WEIGHT = 3.0
 KICK_ACTION_WEIGHT = 2.5
@@ -151,23 +152,27 @@ def _atomic_torch_save(path: Path, value: dict) -> None:
 
 @torch.no_grad()
 def _closed_loop_probe(checkpoint_path: Path, matches: int, minutes: float, seed: int) -> dict:
-    """Run a fast closed-loop probe against ScriptedPolicy to select checkpoints by real gameplay."""
+    """Run a fast closed-loop probe against ScriptedPolicy (with kickoff-only assist) to select real gameplay."""
     from learn.x3futsal_eval import ModelPolicy, ScriptedPolicy, STADIUM, _aggregate, play_batch
     from sim.stadium import load_stadium
 
     stadium = load_stadium(STADIUM)
-    candidate = ModelPolicy(checkpoint_path, torch.device("cpu"))
+    candidate = ModelPolicy(checkpoint_path, torch.device("cpu"), assist_mode="kickoff")
     scripted = ScriptedPolicy(stadium)
     games = []
     for red, blue, policy_index in ((candidate, scripted, 0), (scripted, candidate, 1)):
         side_games = play_batch(red, blue, matches=matches, minutes=minutes, seed=seed)
         games.extend({**game, "firstPolicyTeam": policy_index} for game in side_games)
     summary = _aggregate(games, 0)
+    box_camp = summary.get("ownBoxCampingFracPerMatch", 0.0)
+    rotations = summary.get("roleRotationsPerMatch", 0.0)
     competitive_index = (
         summary["goalDifferencePerMatch"]
         + 0.05 * summary["shotsPerMatch"]
-        + 0.02 * summary["completedPassesPerMatch"]
+        + 0.04 * summary["completedPassesPerMatch"]
         + 0.01 * summary["kicksPerMatch"]
+        + 0.01 * min(rotations, 25.0)
+        - 0.35 * box_camp
         - 0.50 * summary["safetyKickoffsPerMatch"]
     )
     summary["competitiveIndex"] = float(competitive_index)
@@ -213,6 +218,7 @@ def main() -> None:
         parser.error("--eval-checkpoint y --resume no se pueden usar juntos")
     if not args.eval_checkpoint and not args.out:
         parser.error("--out es obligatorio al entrenar")
+    set_physics_threads(args.threads)
     torch.set_num_threads(args.threads)
     torch.manual_seed(args.seed)
     rng = np.random.default_rng(args.seed)
