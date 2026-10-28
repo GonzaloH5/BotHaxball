@@ -1,9 +1,14 @@
 import numpy as np
-import pytest
 
-pytest.importorskip("torch")
-
-from learn.x3futsal_eval import STADIUM, Policy, ScriptedPolicy, _aggregate, action_to_sim, play_batch
+from learn.x3futsal_eval import (
+    STADIUM,
+    Policy,
+    ScriptedPolicy,
+    TacticalPolicy,
+    _aggregate,
+    action_to_sim,
+    play_batch,
+)
 from sim.stadium import load_stadium
 
 
@@ -12,6 +17,13 @@ class StillPolicy(Policy):
 
     def actions(self, sim, team, scores, elapsed, previous, has_previous):
         return np.zeros((sim.N, 3), dtype=np.int64)
+
+
+class AlwaysKickRightPolicy(Policy):
+    name = "always_kick_right"
+
+    def actions(self, sim, team, scores, elapsed, previous, has_previous):
+        return np.full((sim.N, 3), 12, dtype=np.int64)
 
 
 def test_model_actions_mirror_horizontally_for_blue():
@@ -44,6 +56,21 @@ def test_scripted_policy_can_complete_kickoff_without_safety_reset():
 
     assert games[0]["safetyKickoffs"] == 0
     assert games[0]["teams"][1]["kicks"] > 0
+
+
+def test_tactical_policy_completes_kickoff_and_scores_against_still():
+    stadium = load_stadium(STADIUM)
+    games = play_batch(TacticalPolicy(stadium), StillPolicy(), matches=2, minutes=0.25, seed=0)
+
+    assert all(game["teams"][0]["safetyKickoffs"] == 0 for game in games)
+    assert sum(game["goals"][0] for game in games) >= 2
+    assert all(game["goals"][1] == 0 for game in games)
+
+
+def test_play_batch_rearms_kick_cancel_when_policy_holds_kick():
+    games = play_batch(AlwaysKickRightPolicy(), StillPolicy(), matches=1, minutes=0.15, seed=1)
+    # Without kick_cancel re-arming, holding action=12 would only ever register at most 1 kick before locking
+    assert games[0]["teams"][0]["kicks"] >= 2
 
 
 def test_aggregation_tracks_each_policy_across_both_sides():

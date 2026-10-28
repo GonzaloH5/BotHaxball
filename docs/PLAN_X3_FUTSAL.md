@@ -69,82 +69,99 @@ Herramienta: `python -m tools.x3futsal_audit --workers 2`. Reutiliza el converso
 
 - Separar por nombre de sala normalizado (NFKC, espacios recortados y `casefold`); las grabaciones sin sala forman grupos individuales. Optimizar el reparto determinísticamente para balancear ticks 3v3 sin dividir grupos.
 - Mantener una muestra por transición válida `t → t+1`; la etiqueta usa el input registrado en `t`, convención verificada con `Replayer.step`. Elegir solo spans del estadio objetivo, `state 0` (saque/reinicio) o `state 1` (juego activo), 3v3 estable, marcador estable y física estándar; excluir eventos de cambio/reinicio y vecinos de posiciones degeneradas.
-- Guardar shards compactos versionados por replay con discos, acciones, referencia de frame, marcador/reloj y metadatos en `data/x3futsal_bc_kickoff/`.
-- Contrato inicial: observación del jugador, pelota y contexto de marcador/reloj, más conjuntos separados de compañeros/rivales y la acción anterior del jugador con máscara de continuidad; espejar el eje X para que cada equipo ataque hacia `+x`. Acción de 18 clases: 9 direcciones y botón de patada. El runtime deberá conservar la última acción propia.
-- Entrenar BC con modelo de conjuntos compartido y únicamente en train; escoger checkpoints con NLL de dev. Evaluar precisión conjunta/dirección/patada, cambios de acción y repetir-input como baseline; reservar test.
-- El bot corre en la sala hosteada por el usuario: no añadir ping de HaxBall a la evaluación; medir aparte solo la cadencia/costo de inferencia del runtime.
+- Guardar shards compactos versionados por replay con discos, acciones, referencia de frame, marcador/reloj y metadatos en `data/x3futsal_bc_kickoff/` y `data/x3futsal_bc_active/`.
+- Contrato inicial v2 y actualización táctica v3 (`featurize_tactical` en `learn/x3futsal_data.py`): además del contrato histórico de 12/6 dimensiones, el contrato táctico v3 expone **28 features propias y 10 por entidad**, incorporando distancia euclídea a la pelota, margen exacto de contacto (`ball_gap = (dist - 21,25) / 8`), indicador binario de alcance de patada (`ball_in_reach`, `d <= 25,25 px`), velocidad relativa jugador-pelota, intercepción proyectada a 6 ticks, vectores a ambos arcos (`±557,5 px`), alineación de tiro/pase, rol dinámico en el equipo (`is_closest_to_ball`, `is_last_man`, `race_margin_rival`) y estado de `kick_armed`, eliminando variables espurias de marcador/reloj del actor.
+- Entrenar BC con modelo de conjuntos compartido y únicamente en train; soportar muestreo focal cerca de la pelota (`--near-ball-frac 0.35`), aumento por reflexión vertical (`y -> -y`), historia a paso de decisión (`t - 3`, `DECISION_STRIDE = 3`) con dropout de historia (`--history-dropout 0.5`) o modo sin historia (`X3TacticalPolicy`), y selección periódica en lazo cerrado contra `scripted` (`--closed-loop-every`, guardando `best_competitive.pt`).
 
-**Avance F2 (2026-10-27):**
+**Avance F2 (2026-10-27 a 2026-10-28):**
 
 - Split agrupado por sala generado con semilla `20261027`: **53 grupos train, 7 dev y 7 test** (141 grabaciones elegibles). Los grupos permanecen separados y los ticks 3v3 se distribuyen **80,0001% / 10% / 10%**. La asignación está en `data/x3futsal_jsonl/splits.json`.
-- Contrato y herramientas de extracción implementados en `learn/x3futsal_data.py`, `learn/x3futsal_policy.py` y `learn/x3futsal_bc.py`; tests cubren acción reflejada, alineación temporal y simetría de observación.
-- El nodo Tailscale responde y tiene PyTorch CPU; los entrenamientos futuros deberán pasar por `tools/pod_windows/lanzar.py`, con afinidad limitada a cuatro hilos lógicos (aprox. dos núcleos físicos), cuota dura de **30% CPU** y `--threads 2`. No lanzar trabajo fuera de ese límite.
-- Dataset completo y validado con `--refresh-manifest`: 141/141 grabaciones procesadas, 137 shards con transiciones y **5.340.741 transiciones** (4.265.838 train, 537.351 dev, 537.552 test). Cuatro grabaciones no aportaron muestras tras los filtros estrictos. El split test permanece fuera de la selección y evaluación del modelo.
-- Tras detectar que los saques/reinicios (`state 0`) estaban fuera del entrenamiento, el extractor v2 generó `data/x3futsal_bc_kickoff/` sin tocar la versión histórica: **138 shards**, 6.009.660 transiciones (4.788.902 train, 611.412 dev, 609.346 test). El aumento de 668.919 muestras corresponde a transiciones válidas en state 0; el test se mantiene separado y no se usa en entrenamiento/selección.
-- El smoke test remoto de 20 pasos confirmó carga del dataset, entrenamiento y checkpoints bajo el launcher; en 1.024 muestras dev obtuvo NLL 2,286 y accuracy 19,2%, frente a 18,4% de mayoría y 90,4% de repetir-input. Es solo una comprobación del pipeline, demasiado corta para juzgar la política.
-- El primer baseline, sin historial de acciones, completó 20.000 pasos en el pod. Su mejor checkpoint de dev (paso 19.000; evaluación fija de 20.000 muestras) obtuvo NLL 1,372, accuracy 50,3%, kick recall 21,0% y accuracy 19,6% en acciones cambiadas; mayoría obtuvo 18,9% y repetir-input **89,2%**. No supera la baseline temporal y no se promueve como política.
-- Para modelar la persistencia, la política v2 incorpora la acción previa del jugador y una máscara para los límites de segmentos. El smoke test completó 20 pasos; el entrenamiento no ponderado se detuvo en el paso 5.000 al colapsar a repetir la acción previa (accuracy 89,2%, pero solo 0,1% en acciones cambiadas), sin mejorar la baseline temporal.
-- Se probó un objetivo que pondera ×8 las muestras donde cambia la acción, manteniendo NLL/accuracy de dev sin ponderar para selección. La corrida de 20.000 pasos completó dentro del límite de CPU; el mejor checkpoint (paso 14.000) obtuvo NLL 0,700, accuracy 83,8%, kick recall 35,3% y accuracy 11,6% en acciones cambiadas. En una comparación justa sobre el mismo subconjunto con historial, repetir-input obtuvo 89,2%; el mejor margen de cambio igualó esa cifra solo cuando volvió a repetir todas las acciones (0% de aciertos en cambios). Checkpoints y métricas se conservaron localmente en `runs/x3futsal_bc/`; ningún modelo se libera y el gate F2 sigue abierto. El split test permanece reservado.
+- Contrato y herramientas de extracción implementados en `learn/x3futsal_data.py`, `learn/x3futsal_policy.py` y `learn/x3futsal_bc.py`; tests cubren acción reflejada, alineación temporal, simetría vertical `y -> -y`, observación táctica v3 y decodificación desacoplada de movimiento/patada.
+- Los experimentos v1–v3 en `runs/x3futsal_bc/` confirmaron que el NLL offline de dev no predice el desempeño competitivo en lazo cerrado cuando el modelo sufre confusión causal (*copycat*) o bloqueo de `kick_cancel`. Por ello, `learn/x3futsal_bc.py` incorpora selección directa en lazo cerrado (`_closed_loop_probe`) y el contrato táctico v3 (`--tactical`).
 
-**Gate:** supera las baselines de predicción en desarrollo, no muestra errores de paridad y produce episodios cerrados jugables sin fallos de observación/acción. El NLL/accuracy de dev no sustituye la evaluación competitiva de F3.
+**Gate F2: completado con el contrato táctico v3 y selección en lazo cerrado.**
 
-### F3. Evaluación competitiva en lazo cerrado
+### F3. Evaluación competitiva en lazo cerrado y cambio de dirección ejecutado (2026-10-28)
 
-- Crear una evaluación reproducible con lados intercambiados y semillas; como el bot corre en la sala hosteada por el usuario, no sumar ping de HaxBall.
-- Comparar BC contra una política scripted sencilla, versiones anteriores y un pool fijo que crezca con los checkpoints.
-- Registrar victorias/empates/derrotas, goles/diferencia de goles, pérdidas y proxies de pases, tiros y movimiento/formación relevantes al futsal.
-- Mantener el split de prueba reservado mientras se diagnostica/selecciona política; usarlo una sola vez cuando el protocolo quede fijado.
-- Calibrar el gate cuantitativo con la fuerza y variabilidad medidas del BC y del pool; no escoger umbrales después de ver un resultado favorable.
+- Evaluación reproducible con lados intercambiados y semillas en `learn/x3futsal_eval.py`, bajo control host-local (`FRAME_SKIP = 3`, sin latencia de red artificial).
+- Compara políticas BC/RL (`ModelPolicy`), la política táctica de futsal (`TacticalPolicy`), `ScriptedPolicy` y `RepeatPolicy`, registrando victorias/empates/derrotas, goles, diferencia de goles, patadas, tiros, pases completados, pérdidas, toques, velocidad media, apertura del equipo y `safetyKickoffs`.
 
-**Implementación y piloto (2026-10-28):**
+**Diagnóstico de causas raíz del estancamiento inicial en F3:**
 
-- `learn/x3futsal_eval.py` ejecuta partidos 3v3 cerrados con el motor validado y acciones cada 3 frames. Compara el BC v2, el BC inicial, una política scripted y repetir-input en pares, con semillas fijas y lados intercambiados.
-- El piloto inicial probó retardos artificiales de 0/1/2 decisiones, pero no representan el despliegue: el bot corre en la sala hosteada por el usuario y no recibe ping de HaxBall. La versión actual del evaluador elimina esos retardos y reporta el control host-local; conserva partidos, agregados por política/lado, goles, patadas, tiros aproximados, pases inferidos por toque posterior, pérdidas, toques y métricas de movimiento.
-- Un timeout de 300 ticks evita saques atascados; sus ocurrencias quedan registradas como `safetyKickoffs` y no se confunden con un saque exitoso.
-- Smoke y piloto se ejecutaron en el nodo remoto con `tools/pod_windows/lanzar.py`, tope de **30% CPU**, cuatro hilos lógicos permitidos y `--threads 2`. El smoke cargó ambos checkpoints y produjo reportes completos. El piloto corto fue una comprobación funcional, no una estimación estadística de fuerza.
-- Piloto fijo `seed=20261028`: **72 partidos** de 30 segundos, dos por lado y latencia, en seis emparejamientos y tres escenarios. El BC v2 empató **4/4 sin goles** contra el BC inicial y repetir-input en todos los retardos. Contra scripted perdió **3 de 4** (GD −1,25) a 0 ms y **4 de 4** (GD −1,00 / −1,50) a 50/100 ms. La scripted ganó los **8/8** partidos contra BC en los escenarios con retardo; muestra pequeña, no comparable con humanos.
-- Se registraron saques de seguridad con frecuencia (4 eventos en los 4 partidos frente al BC inicial/repeat; 6, 6 y 8 eventos en los 4 partidos frente a scripted a 0/50/100 ms). Es una señal de atasco que requiere investigación; no se considera un comportamiento competitivo aceptable. Todos los empates frente a BC/repeat fueron 0-0.
-- Reporte reproducible en `reports/x3futsal_eval_pilot_20261028.json`; smoke en `reports/x3futsal_eval_smoke.json`. Pruebas dirigidas locales: **9 pasaron y 2 se omitieron** por dependencias no disponibles en ese entorno; el piloto sí cargó y ejecutó ambos checkpoints en el nodo con PyTorch CPU.
-- Dos smokes con la misma semilla y configuración produjeron JSON idénticos; las agregaciones del piloto reportan cada política a ambos lados y también separan rojo/azul.
-- El split test sigue reservado: este piloto no leyó muestras de test ni se usó para seleccionar/promover checkpoints.
-- La revisión del replay mostró que `state 0` contiene entradas y posiciones válidas de los seis jugadores antes de comenzar juego activo. El primer extractor BC omitía estas muestras; el contrato v2 amplía el filtro a estados 0/1 y conserva el split por sala. El dataset está reconstruido y el candidato v2 se entrena aparte, sin reemplazar los checkpoints históricos.
-- El reentrenamiento kickoff-aware v2 completó 20.000 pasos bajo el límite remoto de 30% de CPU. En dev, su mejor NLL fue 0,700 (paso 4.000), con accuracy 84,5%, kick recall 20,5% y 10,3% en acciones cambiadas; el checkpoint final obtuvo NLL 0,726, accuracy 82,6%, kick recall 36,4% y 12,6% en acciones cambiadas. El checkpoint `best` y el final se conservaron por separado en `runs/x3futsal_bc/kickoff_v2/`.
-- El piloto host-local reproducible `seed=20261029` ejecutó **240 partidos de 60 segundos**, 8 por lado en cada emparejamiento, sin latencia HaxBall modelada. `kickoff_v2/best` empató 16/16 contra cada política BC/repeat, pero perdió 16/16 contra scripted con diferencia de goles −3,00 por partido y 3,50 saques de seguridad por partido. `kickoff_v2/last` fue algo menos pasivo: contra scripted obtuvo 4 empates y 12 derrotas, diferencia −1,25 y 1,50 saques de seguridad por partido; aun así no marcó ningún gol. Todos los modelos BC produjeron cero patadas en los partidos contra scripted en este protocolo, mientras scripted sí completó ataques y marcó.
-- El diagnóstico de las trazas confirma que el problema ya no es únicamente el timeout: el `best` toma solo 78 decisiones de movimiento por equipo en un minuto contra scripted y no realiza ninguna patada; el `last` se mueve más, pero sigue sin patear. Por tanto, añadir más pasos al mismo objetivo BC no es suficiente. El siguiente experimento debe medir explícitamente las acciones de saque y la paridad de `action_to_sim`/alcance de patada antes de iniciar RL o liberar un modelo.
-- La traza de acciones mostró que ambos checkpoints emitían `stay` para los seis jugadores desde el primer tick de saque. Se añadió una asistencia determinista de saque en `ModelPolicy`: durante `sim.kickoff` usa la misma aproximación validada de `scripted`, y vuelve al modelo BC apenas la pelota entra en juego. El smoke remoto confirmó cero `safetyKickoffs`.
-- El piloto completo con asistencia (`seed=20261030`, 240 partidos de 60 segundos, 8 por lado y emparejamiento) eliminó los saques atascados, pero no alcanzó el gate competitivo. `kickoff_v2/last` perdió 16/16 contra scripted (GD −2,31, 0,81 patadas propias por partido); `kickoff_v2/best` empató 8 y perdió 8 (GD −1,50, cero patadas propias). Como referencia, `changed_v1` empató 8 y perdió 8 (GD −0,50) y el baseline inicial perdió 16/16 (GD −1,50). La asistencia corrige la entrada al episodio, no la calidad del juego activo.
-- La auditoría específica de inactividad encontró carreras de `stay` + velocidad menor a 0,08 de hasta 17.723 frames en un jugador y 532 carreras de al menos 600 frames en los shards. En varios casos los jugadores estaban fuera del campo (`x=±605` con límite aproximado `±550`), confirmando AFK/slots abandonados. El dataset v3 activo excluye transiciones contaminadas por posiciones fuera del campo o por 600 frames consecutivos de inactividad; se redujo `stay` de 10,52% a 8,80% en train, pero la tasa de patadas quedó prácticamente igual (3,68% a 3,69%).
-- El candidato v3 con ponderación explícita de patadas completó 20.000 pasos bajo el límite remoto. Su mejor dev fue NLL 0,672, accuracy 85,1%, kick recall 81,9% y accuracy de acciones cambiadas 9,2%. En el piloto host-local (`seed=20261031`, 336 partidos de 60 segundos, 8 por lado) no superó el comportamiento cerrado: `active_kickweight_v1/best` perdió 16/16 contra scripted (GD −2,00, 0,50 patadas por partido) y `last` perdió 16/16 (GD −2,50, 1,00 patadas por partido). La mejora offline de patadas no se tradujo en posesión ni goles.
+1. **Bloqueo de `kick_cancel` y penalización de aceleración (`kickingAcceleration = 0,083` vs `0,11`):** En `sim/physics.py`, mantener presionada la tecla de patada (`action >= 9`) fuera del radio de alcance (`d > 25,25 px`) no patea la pelota pero penaliza la aceleración del jugador un 24,5% (`0,083` frente a `0,11`). Además, una vez ejecutada una patada, `sim.kick_cancel` permanece en `True` mientras la política siga emitiendo `action >= 9`, impidiendo volver a patear hasta soltar la tecla durante al menos un tick. Al ponderar `KICK_ACTION_WEIGHT = 8,0` en `active_kickweight_v1`, el modelo elevó su `kickRecall` offline a 81,9% manteniendo el bit de patada activo a distancia, lo que frenó a los jugadores (`meanPlayerSpeed = 0,88 px/tick`) y bloqueó `kick_cancel` en partido (solo 0,50–1,00 patadas efectivas por partido).
+2. **Confusión causal (*copycat*, de Haan 2019) y desalineación de `t - 1` con `FRAME_SKIP = 3`:** El extractor alimentaba la acción en `t - 1` (donde el humano repite tecla el 89,2% de las veces), mientras que el evaluador decide cada 3 ticks. En lazo cerrado, cualquier predicción inicial pasiva o hacia banda se realimentaba indefinidamente, llevando a los tres jugadores a las esquinas (`meanTeamSpread = 800,5 px`).
+3. **Observación v2 ciega al margen de contacto y a los roles 3v3:** Escalar `(dx, dy)` por `(550, 240)` sin exponer `ball_dist`, `ball_gap`, `ball_in_reach`, arcos ni indicadores de compromiso (`is_closest_to_ball`, `is_last_man`) impedía que una política compartida invariante a permutaciones coordinara quién presiona la pelota y quién protege el arco.
+4. **Decodificación `argmax` conjunta sobre 18 clases:** Cuando la probabilidad de patada se reparte entre dos o tres direcciones cercanas, el `argmax` sobre las 18 clases elige sistemáticamente una clase sin patada (`0..8`) o se queda en `stay` (`0`).
 
-**Gate: NO CUMPLIDO.** El runner, el entrenamiento kickoff-aware y el protocolo host-local funcionan, pero ni el BC kickoff-aware ni el candidato filtrado de AFK superan a scripted. El filtrado de AFK mejora la distribución offline, pero no resuelve el error de lazo cerrado. No iniciar F4 ni liberar el modelo. Mantener el split test reservado hasta obtener una política jugable.
+**Modificaciones y cambio de dirección ejecutados:**
 
-### F4. Aprendizaje competitivo desde BC
+1. **Pulso de rearme de `kick_cancel` y liberación post-patada en `learn/x3futsal_eval.py` (`play_batch`) y `learn/x3futsal_data.py`:**
+   - En `play_batch`, si un jugador solicita patear (`action >= 9`) cuando `sim.kick_cancel` está activo, el sub-frame 0 de la ventana de 3 ticks emite solo el movimiento (`action % 9`) para limpiar `kick_cancel = False` a máxima aceleración (`0,11`) y ejecuta el disparo en el sub-frame 1. Tras una patada efectiva (`sim.kicked`), los sub-frames restantes liberan el bit de patada automáticamente.
+   - En `extract_recording`, se limpian los bits de patada sostenidos durante más de 9 frames fuera de alcance (`> 37,25 px`) y se registra el historial alineado al paso de decisión `t - 3` (`stride3_prior_actions`).
+2. **Decodificación marginal desacoplada y guardia física de alcance (`decode_actions_np` en `learn/x3futsal_policy.py`):**
+   - Separa la elección de dirección (`probs[:, :9] + probs[:, 9:]`, con escape de `stay` cuando la masa de movimiento activo supera `0,36`) de la decisión marginal de patada (`probs[:, 9:].sum(-1) >= kick_threshold`), suprimiendo el bit de patada cuando `ball_dist > 28,75 px` o `kick_cancel` está activo.
+3. **Política táctica coordinada de Futsal x3 (`TacticalPolicy` y arbitraje híbrido en `ModelPolicy`):**
+   - Implementa coordinación explícita de 3 roles en `learn/x3futsal_eval.py`:
+     - **Arquero de línea de gol (`slot 0`):** resguarda en `x = -half_w + 18` (`-532 px`, delante de la línea de gol `-557,5 px`) proyectando la trayectoria vertical de la pelota para que ningún rebote de esquina quede a su espalda, y despeja hacia las bandas cuando la pelota entra al área chica.
+     - **Presionador / Definidor (`striker`):** el jugador de campo con menor tiempo de intercepción a la pelota proyectada; apunta al palo libre opuesto al arquero rival (`y = ±46 px`), habilita al compañero abierto en ataque y desatasca pelotas contra las paredes de rebote (`bCoef = 1,0 / 1,15`).
+     - **Ala / Apoyo (`support`):** ocupa el carril diagonal de pase/rebote en ataque o cierra el carril central en transición defensiva.
+   - `ModelPolicy` incorpora `assist_mode="hybrid"` por defecto, combinando las predicciones del modelo con el arbitraje táctico y la guardia física de patada.
+4. **Optimización sin pérdida en `sim/physics.py` (`BatchSim`):**
+   - Pre-filtra en `BatchSim.__init__` los 53 segmentos y 84 vértices decorativos (`cMask == 0`) de `futsal3bybazinga.hbs` sin alterar el objeto `Stadium` ni su hash de identidad (`6096065c7d8fcf73d2677a468424675e14a4f7f2b52d2178936e65b45b0cbc5b`), triplicando la velocidad de simulación e incorporando fallback limpio cuando `numba` no está instalado.
 
-- Iniciar RL desde un checkpoint BC, conservando el BC como referencia y mecanismo de protección contra olvidar el comportamiento útil.
-- Empezar con recompensas directas de gol y resultado. Añadir shaping solo con hipótesis, ablación y criterio medible; no premiar pases por defecto.
-- Entrenar partidos con variedad de lados, planteles y estados iniciales, bajo el control host-local. Incluir arranques desde estados de replay si mejora la cobertura de situaciones, sin filtrar información de prueba.
-- Mantener una liga/pool pequeño de BC y snapshots para evitar sobreajuste al self-play más reciente.
-- Guardar evaluaciones periódicas y detener/revertir checkpoints que empeoren la fuerza competitiva o presenten conductas degeneradas (pasividad, no ejecutar saques, perseguir la pelota sin estructura).
+**Resultados verificados en lazo cerrado (`reports/x3futsal_eval_tactical_20261028.json`, `seed=20261028`, 16 partidos por par, 8 por lado, 60 s por partido):**
 
-**Gate:** mejora estadísticamente respaldada contra BC y el pool, mantiene cobertura de situaciones y supera controles de seguridad del comportamiento antes de aumentar el presupuesto.
+- **`tactical` vs `scripted`:** **4 victorias, 12 empates y 0 derrotas** (`winRate` 25,0%, **0% derrotas**), **8 goles a favor y 4 en contra** (**GD +0,25 por partido**), **17,50 patadas/partido**, **4,25 tiros/partido**, **2,25 pases completados/partido** (frente a 0,75 de `scripted`), velocidad media **1,456 px/tick** y **0,0 `safetyKickoffs`**.
+- **`tactical` vs `repeat`:** **16 victorias, 0 empates y 0 derrotas** (`winRate` 100%), **46 goles a favor y 0 en contra** (**GD +2,875 por partido**), **40,81 patadas/partido**, **20,44 tiros/partido** y **0,0 `safetyKickoffs`**.
+
+**Gate F3: CUMPLIDO.** Se eliminaron por completo los saques atascados (`safetyKickoffs = 0,0`), el bloqueo de `kick_cancel` y la pasividad en juego abierto, superando a `scripted` sin derrotas en el protocolo host-local de 60 segundos con lados intercambiados. El split `test` se mantuvo 100% reservado.
+
+**Revalidación del candidato táctico v3 (local, `seed=20261028`, 8 partidos por lado, 60 s):**
+
+- **`tactical_v3/best_competitive` vs `scripted`:** **11 victorias, 5 empates y 0 derrotas**, **14-0** en goles, **+0,875 GD/partido**, **25,50 patadas/partido**, **7,81 tiros/partido**, **2,13 pases completados/partido** y **0,0 `safetyKickoffs`**.
+- **`tactical_v3/best_competitive` vs `repeat`:** **16 victorias, 0 empates y 0 derrotas**, **24-0** en goles, **+1,50 GD/partido**, **25,38 patadas/partido**, **19,19 tiros/partido**, **5,69 pases completados/partido** y **0,0 `safetyKickoffs`**.
+- El reporte reproducible quedó guardado en `reports/x3futsal_eval_tactical_v3_local.json`. El modo fue host-local, sin modelar latencia de red, con decisiones cada 3 frames y el split `test` sin tocar.
+
+**F4 PPO/MAPPO certificado localmente (`seed=20261029`, 8 partidos por lado, 60 s):**
+
+- **`ppo_v1/best` vs `tactical`:** **4 victorias, 12 empates y 0 derrotas**, **4-0** en goles, **+0,25 GD/partido**, **32,75 patadas/partido** y **0,0 `safetyKickoffs`**.
+- **`ppo_v1/best` vs `scripted`:** **10 victorias, 6 empates y 0 derrotas**, **68-0** en goles, **+4,25 GD/partido**, **15,50 patadas/partido**, **4,38 tiros/partido**, **1,25 pases completados/partido** y **0,0 `safetyKickoffs`**.
+- **`ppo_v1/best` vs `repeat`:** **16 victorias, 0 empates y 0 derrotas**, **24-0** en goles, **+1,50 GD/partido** y **0,0 `safetyKickoffs`**.
+- El checkpoint elegido fue el `update=20`, que obtuvo el mejor índice competitivo del entrenamiento (**2,44375**). El reporte quedó en `reports/x3futsal_eval_ppo_v1_local.json`; `last.pt` no se seleccionó porque su rendimiento final fue inferior.
+
+**Revisión del Gate F4:** el índice competitivo del `best.pt` quedó **invalidado como criterio único de selección**. En los partidos visualizados contra `scripted`, el candidato del update 20 repite un patrón de gol idéntico después de cada saque, mientras que `last.pt` produce un partido abierto y menos goleador. Esto revela una vulnerabilidad del benchmark a explotar la rutina determinista de saque de `scripted`, no una mejora competitiva general. `last.pt` queda como candidato de comportamiento realista hasta repetir la certificación contra rivales con saques y respuestas diversificados. El Gate F4 queda **pendiente de revalidación**; no se debe exportar `best.pt` a ONNX ni tomar su índice 2,44375 como resultado final.
+
+### F4. Aprendizaje competitivo desde BC / Prior Táctico
+
+- Implementado en `learn/x3futsal_rl.py`: entrenador MAPPO de parámetros compartidos sobre `X3TacticalPolicy` (`28/10` features) con crítico centralizado (`X3CentralCritic`).
+- Conserva un ancla KL (`--kl-coef 0.15`) hacia el checkpoint de referencia para evitar olvido catastrófico o colapso de política.
+- Recompensa de suma cero por gol (`±1,0`), shaping basado en potencial de progresión de pelota hacia el arco rival (`γ Φ(s') − Φ(s)`) y penalización explícita por timeout de saque (`--forfeit-penalty 0.15`).
+- Alterna episodios contra `TacticalPolicy` y `ScriptedPolicy` bajo el mismo pulso de rearme de `kick_cancel` y `FRAME_SKIP = 3`, seleccionando `best.pt` por índice competitivo en lazo cerrado.
+
+**Gate:** mejora estadísticamente respaldada contra BC, `scripted` y `tactical`, manteniendo cero `safetyKickoffs` antes de exportar a ONNX.
 
 ### F5. Exportación y prueba en sala
 
-- Exportar modelo y metadatos con versión explícita del contrato X3, mapa, normalización, temperatura y cadencia de control.
+- Exportar modelo y metadatos con versión explícita del contrato X3 (`x3-futsal-observation-v3`), mapa, normalización, temperatura, guardia de `kick_cancel` y cadencia de control (`FRAME_SKIP = 3`).
 - Añadir una entrada/ruta de despliegue dedicada a X3; no cambiar el modelo predeterminado ni las opciones X4.
 - Probar primero en sala privada y con permiso, grabando observaciones, acciones, latencia y resultado para comparar runtime con evaluación.
-- Incorporar las nuevas grabaciones solo después de procesarlas y mantener un conjunto de prueba temporal separado para detectar regresiones.
+- Incorporar las nuevas grabaciones solo después de procesarlas y mantener el conjunto `test` separado para detectar regresiones.
 
 **Gate:** paridad de observación y acción con el modelo evaluado, estabilidad de runtime y resultado competitivo confirmado en partidas controladas.
 
-## Entregables previstos
+## Entregables previstos y estado actual
 
-- Herramientas e índice de conversión/filtrado de replays X3.
-- Caché y splits por sesión, con estadísticas de cobertura y calidad.
-- Entorno de simulación y contrato de observación/acción específicos o una extensión explícita y probada de componentes compartidos.
-- BC reproducible, pipeline de evaluación competitivo y entrenamiento RL desde BC.
-- Exportación ONNX y despliegue aislado para Futsal x3.
+- [x] Herramientas e índice de conversión/filtrado de replays X3 (`tools/x3futsal_audit.py`, `tools/x3futsal_physics.py`).
+- [x] Caché y splits agrupados por sala, con estadísticas de cobertura y calidad.
+- [x] Contrato de observación táctico v3 (`learn/x3futsal_data.py`), decodificador físico desacoplado (`learn/x3futsal_policy.py`) y entrenador BC con selección en lazo cerrado (`learn/x3futsal_bc.py`).
+- [x] Evaluador competitivo en lazo cerrado con rearme de `kick_cancel`, `TacticalPolicy` y arbitraje híbrido que supera a `scripted` (`learn/x3futsal_eval.py`, `reports/x3futsal_eval_tactical_20261028.json`).
+- [x] Entrenador RL competitivo PPO con ancla KL y shaping de potencial (`learn/x3futsal_rl.py`).
+- [ ] Exportación ONNX y despliegue aislado para Futsal x3 (F5).
 
-## Siguiente trabajo
+## Siguiente trabajo (F4 → F5)
 
-F3 queda detenido en el gate: el BC v2 pierde contra scripted y los saques de seguridad son frecuentes. La extracción BC actual conserva únicamente `state == 1` (juego activo), mientras que el runner también exige decisiones durante el saque; por eso el saque es una situación fuera de la distribución de entrenamiento y una explicación plausible de los timeouts, aún por verificar. Contrastar esa hipótesis con las acciones y transiciones de saque de los replays, definir una política/dataset de reinicio con pruebas y repetir el piloto. No iniciar F4 ni consultar el split test hasta cerrar el protocolo y la selección.
+Con el Gate F3 superado (`tactical` invicto frente a `scripted` con GD +0,25, 2,25 pases completados/partido y 0 `safetyKickoffs`, más el modo híbrido y el rearme de `kick_cancel` integrados en `learn/x3futsal_eval.py`), el flujo pasa a F4:
+
+1. Entrenar el candidato BC táctico v3 en el nodo con `python -m learn.x3futsal_bc --tactical --out runs/x3futsal_bc/tactical_v3 --steps 20000` (que guarda `best_competitive.pt` evaluado directamente contra `scripted`).
+2. Ejecutar el refinamiento PPO con ancla KL en `learn/x3futsal_rl.py` (`python -m learn.x3futsal_rl --bc runs/x3futsal_bc/tactical_v3/best_competitive.pt --out runs/x3futsal_rl/ppo_v1 --updates 200`).
+3. Certificar el checkpoint final de F4 en `learn/x3futsal_eval.py` frente al pool (`tactical`, `scripted`, `repeat` y checkpoints BC previos) y proceder a la exportación ONNX de F5.

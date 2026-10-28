@@ -1,6 +1,6 @@
-"""Train and evaluate the first Futsal x3 behavior-cloning baseline.
+"""Train and evaluate the Futsal x3 behavior-cloning baseline (v2 and v3 tactical).
 
-  python -m learn.x3futsal_bc --out runs/x3futsal_bc/baseline --steps 20000
+  python -m learn.x3futsal_bc --out runs/x3futsal_bc/tactical_v3 --steps 20000 --tactical
 """
 from __future__ import annotations
 
@@ -13,12 +13,27 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from learn.x3futsal_data import DATA_VERSION, DEFAULT_OUT, FEATURE_CONTRACT, X3Data
-from learn.x3futsal_policy import POLICY_VERSION, X3SetPolicy
+from learn.x3futsal_data import (
+    DATA_VERSION,
+    DEFAULT_OUT,
+    FEATURE_CONTRACT,
+    TACTICAL_DATA_VERSION,
+    TACTICAL_ENTITY_DIM,
+    TACTICAL_FEATURE_CONTRACT,
+    TACTICAL_SELF_DIM,
+    X3Data,
+)
+from learn.x3futsal_policy import (
+    POLICY_VERSION,
+    TACTICAL_POLICY_VERSION,
+    X3SetPolicy,
+    X3TacticalPolicy,
+)
 
-CHANGE_ACTION_WEIGHT = 8.0
-KICK_ACTION_WEIGHT = 8.0
+CHANGE_ACTION_WEIGHT = 3.0
+KICK_ACTION_WEIGHT = 2.5
 TRAINING_OBJECTIVE = "change-and-kick-weighted-max8-v1"
+TACTICAL_TRAINING_OBJECTIVE = "tactical-stride3-nearball-mirror-v2"
 
 
 def _call(model, observation, prior, has_prior, device):
@@ -30,7 +45,8 @@ def _call(model, observation, prior, has_prior, device):
 
 @torch.no_grad()
 def evaluate(model, data: X3Data, sample_indices: np.ndarray, slots: np.ndarray,
-             majority_action: int, batch_size: int, device: torch.device) -> dict:
+             majority_action: int, batch_size: int, device: torch.device,
+             *, tactical: bool = False) -> dict:
     model.eval()
     losses, exact, moves, kicks, changes = [], [], [], [], []
     switch_margins = (-2.0, -1.0, 0.0, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0, 256.0, 512.0, 1024.0)
@@ -49,7 +65,7 @@ def evaluate(model, data: X3Data, sample_indices: np.ndarray, slots: np.ndarray,
     for start in range(0, len(sample_indices), batch_size):
         stop = start + batch_size
         observation, labels, prior, has_prior, changed = data.batch(
-            sample_indices[start:stop], slots[start:stop])
+            sample_indices[start:stop], slots[start:stop], tactical=tactical)
         logits = _call(model, observation, prior, has_prior, device)
         target = torch.from_numpy(labels).to(device)
         prior_tensor = torch.from_numpy(prior).to(device)
@@ -133,6 +149,31 @@ def _atomic_torch_save(path: Path, value: dict) -> None:
             temp.unlink()
 
 
+@torch.no_grad()
+def _closed_loop_probe(checkpoint_path: Path, matches: int, minutes: float, seed: int) -> dict:
+    """Run a fast closed-loop probe against ScriptedPolicy to select checkpoints by real gameplay."""
+    from learn.x3futsal_eval import ModelPolicy, ScriptedPolicy, STADIUM, _aggregate, play_batch
+    from sim.stadium import load_stadium
+
+    stadium = load_stadium(STADIUM)
+    candidate = ModelPolicy(checkpoint_path, torch.device("cpu"))
+    scripted = ScriptedPolicy(stadium)
+    games = []
+    for red, blue, policy_index in ((candidate, scripted, 0), (scripted, candidate, 1)):
+        side_games = play_batch(red, blue, matches=matches, minutes=minutes, seed=seed)
+        games.extend({**game, "firstPolicyTeam": policy_index} for game in side_games)
+    summary = _aggregate(games, 0)
+    competitive_index = (
+        summary["goalDifferencePerMatch"]
+        + 0.05 * summary["shotsPerMatch"]
+        + 0.02 * summary["completedPassesPerMatch"]
+        + 0.01 * summary["kicksPerMatch"]
+        - 0.50 * summary["safetyKickoffsPerMatch"]
+    )
+    summary["competitiveIndex"] = float(competitive_index)
+    return summary
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset", type=Path, default=DEFAULT_OUT)
@@ -142,11 +183,28 @@ def main() -> None:
     parser.add_argument("--batch", type=int, default=1024)
     parser.add_argument("--eval-every", type=int, default=1000)
     parser.add_argument("--eval-n", type=int, default=20000)
-    parser.add_argument("--hidden", type=int, default=128)
+    parser.add_argument("--hidden", type=int, default=192)
+    parser.add_argument("--entity-hidden", type=int, default=96)
     parser.add_argument("--threads", type=int, default=2)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--device", default="cpu")
+    parser.add_argument("--tactical", action="store_true", default=False,
+                        help="usar observación táctica v3 (28/10 dims) y X3TacticalPolicy sin copycat")
+    parser.add_argument("--use-history", action="store_true", default=False,
+                        help="incluir acción previa en modo táctico (con --history-dropout)")
+    parser.add_argument("--history-dropout", type=float, default=0.5,
+                        help="probabilidad de borrar la acción previa durante entrenamiento")
+    parser.add_argument("--near-ball-frac", type=float, default=0.35,
+                        help="fracción del lote muestreada con el jugador a <= 140 px de la pelota")
+    parser.add_argument("--no-mirror", action="store_true",
+                        help="desactivar aumento de datos por reflexión vertical (y -> -y)")
+    parser.add_argument("--change-weight", type=float, default=CHANGE_ACTION_WEIGHT)
+    parser.add_argument("--kick-weight", type=float, default=KICK_ACTION_WEIGHT)
+    parser.add_argument("--closed-loop-every", type=int, default=2000,
+                        help="cada N pasos evaluar en lazo cerrado contra scripted (0 = desactivar)")
+    parser.add_argument("--closed-loop-matches", type=int, default=2)
+    parser.add_argument("--closed-loop-minutes", type=float, default=0.5)
     parser.add_argument("--resume", type=Path, help="continuar desde un checkpoint X3 compatible")
     args = parser.parse_args()
     if min(args.steps, args.batch, args.eval_every, args.eval_n, args.hidden, args.threads) < 1:
@@ -159,13 +217,33 @@ def main() -> None:
     torch.manual_seed(args.seed)
     rng = np.random.default_rng(args.seed)
     device = torch.device(args.device)
-    train = X3Data(args.dataset, "train")
-    dev = X3Data(args.dataset, "dev")
+    tactical = bool(args.tactical)
+    train = X3Data(args.dataset, "train", tactical=tactical)
+    dev = X3Data(args.dataset, "dev", tactical=tactical)
     labels_count = train.label_counts()
     majority_action = int(labels_count.argmax())
     dev_indices, dev_slots = dev.fixed_indices(args.eval_n, args.seed + 11)
-    model = X3SetPolicy(hidden=args.hidden).to(device)
+    if tactical:
+        model = X3TacticalPolicy(
+            hidden=args.hidden,
+            entity_hidden=args.entity_hidden,
+            use_history=args.use_history,
+            history_dropout=args.history_dropout,
+        ).to(device)
+        policy_version = TACTICAL_POLICY_VERSION
+        feature_contract = TACTICAL_FEATURE_CONTRACT
+        training_objective = TACTICAL_TRAINING_OBJECTIVE
+        obs_dims = [TACTICAL_SELF_DIM, TACTICAL_ENTITY_DIM, TACTICAL_ENTITY_DIM,
+                    19 if args.use_history else 0]
+    else:
+        model = X3SetPolicy(hidden=args.hidden, history_dropout=args.history_dropout).to(device)
+        policy_version = POLICY_VERSION
+        feature_contract = FEATURE_CONTRACT
+        training_objective = TRAINING_OBJECTIVE
+        obs_dims = [12, 6, 6, 19]
+
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.steps)
     out = args.out
     dataset_manifest = json.loads((args.dataset / "manifest.json").read_text(encoding="utf-8"))
     dataset_signature = {
@@ -176,26 +254,28 @@ def main() -> None:
     }
     if args.eval_checkpoint:
         checkpoint = torch.load(args.eval_checkpoint, map_location="cpu", weights_only=False)
-        if (checkpoint.get("obs_version") != DATA_VERSION
-                or checkpoint.get("policyVersion") != POLICY_VERSION
-                or checkpoint.get("trainingObjective") != TRAINING_OBJECTIVE
-                or checkpoint.get("featureContract") != FEATURE_CONTRACT
+        ckpt_tactical = checkpoint.get("policyVersion") == TACTICAL_POLICY_VERSION
+        if ckpt_tactical != tactical:
+            raise ValueError(f"checkpoint incompatible con modo --tactical={tactical}: {args.eval_checkpoint}")
+        if (checkpoint.get("obs_version") not in (DATA_VERSION, TACTICAL_DATA_VERSION)
+                or checkpoint.get("policyVersion") != policy_version
+                or checkpoint.get("featureContract") != feature_contract
                 or checkpoint.get("datasetSignature") != dataset_signature
                 or checkpoint.get("hidden") != args.hidden):
             raise ValueError(f"checkpoint incompatible con el contrato o dataset: {args.eval_checkpoint}")
         model.load_state_dict(checkpoint["model"])
         print(json.dumps(evaluate(model, dev, dev_indices, dev_slots, majority_action,
-                                  args.batch, device)), flush=True)
+                                  args.batch, device, tactical=tactical)), flush=True)
         return
     out.mkdir(parents=True, exist_ok=True)
     start_step = 0
     best_nll = None
+    best_cl_index = None
     if args.resume:
         checkpoint = torch.load(args.resume, map_location="cpu", weights_only=False)
-        if (checkpoint.get("obs_version") != DATA_VERSION
-                or checkpoint.get("policyVersion") != POLICY_VERSION
-                or checkpoint.get("trainingObjective") != TRAINING_OBJECTIVE
-                or checkpoint.get("featureContract") != FEATURE_CONTRACT
+        if (checkpoint.get("obs_version") not in (DATA_VERSION, TACTICAL_DATA_VERSION)
+                or checkpoint.get("policyVersion") != policy_version
+                or checkpoint.get("featureContract") != feature_contract
                 or checkpoint.get("datasetSignature") != dataset_signature):
             raise ValueError(f"checkpoint incompatible con el contrato o dataset: {args.resume}")
         if checkpoint.get("hidden") != args.hidden or "optimizer" not in checkpoint:
@@ -210,6 +290,7 @@ def main() -> None:
         rng.bit_generator.state = checkpoint["numpyRng"]
         torch.set_rng_state(checkpoint["torchRng"])
         best_nll = checkpoint.get("bestNll")
+        best_cl_index = checkpoint.get("bestCompetitiveIndex")
     elif (out / "last.pt").exists():
         parser.error(f"ya existe {out / 'last.pt'}; usa --resume para continuar o elige otro --out")
 
@@ -217,11 +298,11 @@ def main() -> None:
     log = {
         "args": vars(args) | {"dataset": str(args.dataset), "out": str(args.out),
                               "resume": str(args.resume) if args.resume else None},
-        "dataVersion": DATA_VERSION,
-        "policyVersion": POLICY_VERSION,
-        "trainingObjective": TRAINING_OBJECTIVE,
-        "changeActionWeight": CHANGE_ACTION_WEIGHT,
-        "kickActionWeight": KICK_ACTION_WEIGHT,
+        "dataVersion": TACTICAL_DATA_VERSION if tactical else DATA_VERSION,
+        "policyVersion": policy_version,
+        "trainingObjective": training_objective,
+        "changeActionWeight": args.change_weight,
+        "kickActionWeight": args.kick_weight,
         "datasetSignature": dataset_signature,
         "trainTicks": train.ticks,
         "devTicks": dev.ticks,
@@ -240,45 +321,49 @@ def main() -> None:
         best_nll = log.get("bestNll")
     t0 = time.time()
     for step in range(start_step + 1, args.steps + 1):
-        indices = rng.integers(0, train.ticks, size=args.batch)
-        slots = rng.integers(0, 6, size=args.batch)
-        observation, labels, prior, has_prior, changed = train.batch(indices, slots)
+        indices, slots = train.sample_indices(args.batch, rng, near_ball_frac=args.near_ball_frac)
+        mirror_mask = None if args.no_mirror else (rng.random(args.batch) < 0.5)
+        observation, labels, prior, has_prior, changed = train.batch(
+            indices, slots, tactical=tactical, mirror_mask=mirror_mask
+        )
         logits = _call(model, observation, prior, has_prior, device)
         target = torch.from_numpy(labels).to(device)
         per_sample_loss = F.cross_entropy(logits, target, reduction="none")
         changed_mask = torch.from_numpy(changed).to(device)
         kick_mask = target >= 9
         sample_weights = torch.maximum(
-            torch.where(changed_mask, CHANGE_ACTION_WEIGHT, 1.0),
-            torch.where(kick_mask, KICK_ACTION_WEIGHT, 1.0),
+            torch.where(changed_mask, float(args.change_weight), 1.0),
+            torch.where(kick_mask, float(args.kick_weight), 1.0),
         )
         loss = (per_sample_loss * sample_weights).sum() / sample_weights.sum()
         optimizer.zero_grad(set_to_none=True)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
+        scheduler.step()
         if step % args.eval_every == 0 or step == args.steps:
             metrics = evaluate(model, dev, dev_indices, dev_slots, majority_action,
-                               args.batch, device)
+                               args.batch, device, tactical=tactical)
             metrics.update(step=step, trainWeightedLoss=float(loss.detach().cpu()),
                            seconds=round(time.time() - t0, 1))
-            log["evaluations"].append(metrics)
-            print(json.dumps(metrics), flush=True)
             checkpoint = {
                 "model": {key: value.detach().cpu() for key, value in model.state_dict().items()},
                 "hidden": args.hidden,
-                "obs_version": DATA_VERSION,
-                "policyVersion": POLICY_VERSION,
-                "trainingObjective": TRAINING_OBJECTIVE,
+                "entityHidden": args.entity_hidden,
+                "useHistory": args.use_history,
+                "obs_version": TACTICAL_DATA_VERSION if tactical else DATA_VERSION,
+                "policyVersion": policy_version,
+                "trainingObjective": training_objective,
                 "action_version": "directions9-kick-v1",
-                "obs_dims": [12, 6, 6, 19],
-                "featureContract": FEATURE_CONTRACT,
+                "obs_dims": obs_dims,
+                "featureContract": feature_contract,
                 "step": step,
                 "metrics": metrics,
                 "optimizer": optimizer.state_dict(),
                 "numpyRng": rng.bit_generator.state,
                 "torchRng": torch.get_rng_state(),
                 "bestNll": min(metrics["nll"], best_nll) if best_nll is not None else metrics["nll"],
+                "bestCompetitiveIndex": best_cl_index,
                 "datasetSignature": dataset_signature,
             }
             _atomic_torch_save(out / "last.pt", checkpoint)
@@ -286,6 +371,21 @@ def main() -> None:
                 best_nll = metrics["nll"]
                 log["bestNll"] = best_nll
                 _atomic_torch_save(out / "best.pt", checkpoint)
+            if args.closed_loop_every > 0 and (step % args.closed_loop_every == 0 or step == args.steps):
+                cl = _closed_loop_probe(
+                    out / "last.pt",
+                    matches=args.closed_loop_matches,
+                    minutes=args.closed_loop_minutes,
+                    seed=args.seed + step,
+                )
+                metrics["closedLoopVsScripted"] = cl
+                if best_cl_index is None or cl["competitiveIndex"] > best_cl_index:
+                    best_cl_index = cl["competitiveIndex"]
+                    log["bestCompetitiveIndex"] = best_cl_index
+                    checkpoint["bestCompetitiveIndex"] = best_cl_index
+                    _atomic_torch_save(out / "best_competitive.pt", checkpoint)
+            log["evaluations"].append(metrics)
+            print(json.dumps(metrics), flush=True)
             log["elapsedSeconds"] = round(time.time() - t0, 1)
             temp_log = metrics_path.with_suffix(".json.tmp")
             temp_log.write_text(json.dumps(log, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")

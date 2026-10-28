@@ -1,6 +1,7 @@
 """Reproducible closed-loop Futsal x3 evaluation on the validated stadium physics.
 
-  python -m learn.x3futsal_eval --checkpoint runs/x3futsal_bc/changed_v1/best.pt
+  python -m learn.x3futsal_eval --checkpoint tactical --out reports/x3futsal_eval_tactical_20261028.json
+  python -m learn.x3futsal_eval --checkpoint runs/x3futsal_bc/tactical_v3/best_competitive.pt --out reports/x3futsal_eval.json
 """
 from __future__ import annotations
 
@@ -10,12 +11,38 @@ import json
 from pathlib import Path
 
 import numpy as np
-import numba
-import torch
-from torch import nn
 
-from learn.x3futsal_data import DATA_VERSION, FEATURE_CONTRACT, MOVE_DX, MOVE_DY, MOVE_BY_DELTA, featurize
-from learn.x3futsal_policy import POLICY_VERSION, X3SetPolicy
+try:
+    import numba
+except ImportError:  # pragma: no cover
+    numba = None
+
+try:
+    import torch
+    from torch import nn
+except ImportError:  # pragma: no cover
+    torch = None
+    nn = None
+
+from learn.x3futsal_data import (
+    DATA_VERSION,
+    EFFECTIVE_KICK_DIST,
+    FEATURE_CONTRACT,
+    MOVE_BY_DELTA,
+    MOVE_DX,
+    MOVE_DY,
+    TACTICAL_DATA_VERSION,
+    TACTICAL_FEATURE_CONTRACT,
+    featurize,
+    featurize_tactical,
+)
+from learn.x3futsal_policy import (
+    POLICY_VERSION,
+    TACTICAL_POLICY_VERSION,
+    X3SetPolicy,
+    X3TacticalPolicy,
+    decode_actions_np,
+)
 from sim.physics import BatchSim
 from sim.stadium import load_stadium
 
@@ -39,27 +66,28 @@ def action_to_sim(action: int, team: int) -> int:
     return MOVE_BY_DELTA[(dx, dy)] + (9 if action >= 9 else 0)
 
 
-class LegacyX3SetPolicy(nn.Module):
-    """The first, stateless X3 checkpoint architecture, retained as a fixed pool opponent."""
+if nn is not None:
+    class LegacyX3SetPolicy(nn.Module):
+        """The first, stateless X3 checkpoint architecture, retained as a fixed pool opponent."""
 
-    def __init__(self, hidden: int = 128, entity_hidden: int = 64):
-        super().__init__()
-        self.self_net = nn.Sequential(nn.Linear(12, hidden), nn.ReLU(),
-                                      nn.Linear(hidden, hidden), nn.ReLU())
-        self.mate_net = nn.Sequential(nn.Linear(6, entity_hidden), nn.ReLU(),
-                                      nn.Linear(entity_hidden, entity_hidden), nn.ReLU())
-        self.rival_net = nn.Sequential(nn.Linear(6, entity_hidden), nn.ReLU(),
-                                       nn.Linear(entity_hidden, entity_hidden), nn.ReLU())
-        self.head = nn.Sequential(nn.Linear(hidden + 4 * entity_hidden, hidden), nn.ReLU(),
-                                  nn.Linear(hidden, hidden), nn.ReLU(), nn.Linear(hidden, 18))
+        def __init__(self, hidden: int = 128, entity_hidden: int = 64):
+            super().__init__()
+            self.self_net = nn.Sequential(nn.Linear(12, hidden), nn.ReLU(),
+                                          nn.Linear(hidden, hidden), nn.ReLU())
+            self.mate_net = nn.Sequential(nn.Linear(6, entity_hidden), nn.ReLU(),
+                                          nn.Linear(entity_hidden, entity_hidden), nn.ReLU())
+            self.rival_net = nn.Sequential(nn.Linear(6, entity_hidden), nn.ReLU(),
+                                           nn.Linear(entity_hidden, entity_hidden), nn.ReLU())
+            self.head = nn.Sequential(nn.Linear(hidden + 4 * entity_hidden, hidden), nn.ReLU(),
+                                      nn.Linear(hidden, hidden), nn.ReLU(), nn.Linear(hidden, 18))
 
-    @staticmethod
-    def _pool(entities: torch.Tensor) -> torch.Tensor:
-        return torch.cat((entities.mean(dim=1), entities.max(dim=1).values), dim=-1)
+        @staticmethod
+        def _pool(entities: torch.Tensor) -> torch.Tensor:
+            return torch.cat((entities.mean(dim=1), entities.max(dim=1).values), dim=-1)
 
-    def forward(self, own: torch.Tensor, mates: torch.Tensor, rivals: torch.Tensor) -> torch.Tensor:
-        return self.head(torch.cat((self.self_net(own), self._pool(self.mate_net(mates)),
-                                    self._pool(self.rival_net(rivals))), dim=-1))
+        def forward(self, own: torch.Tensor, mates: torch.Tensor, rivals: torch.Tensor) -> torch.Tensor:
+            return self.head(torch.cat((self.self_net(own), self._pool(self.mate_net(mates)),
+                                        self._pool(self.rival_net(rivals))), dim=-1))
 
 
 class Policy:
@@ -71,15 +99,37 @@ class Policy:
 
 
 class ModelPolicy(Policy):
-    def __init__(self, checkpoint_path: Path, device: torch.device):
+    def __init__(self, checkpoint_path: Path, device=None, *,
+                 assist_mode: str = "hybrid", greedy: bool = True,
+                 temperature: float = 0.85, kick_threshold: float = 0.28):
+        if torch is None:
+            raise RuntimeError("torch es necesario para cargar checkpoints de ModelPolicy")
+        if assist_mode not in ("none", "kickoff", "hybrid"):
+            raise ValueError(f"modo de asistencia inválido: {assist_mode}")
+        self.device = torch.device("cpu") if device is None else device
+        self.assist_mode = assist_mode
+        self.greedy = bool(greedy)
+        self.temperature = float(temperature)
+        self.kick_threshold = float(kick_threshold)
         checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
         self.stadium_identity = checkpoint.get("datasetSignature", {}).get("targetStadiumIdentity")
         policy_version = checkpoint.get("policyVersion")
         obs_version = checkpoint.get("obs_version")
-        if policy_version not in (None, POLICY_VERSION):
+        if policy_version not in (None, POLICY_VERSION, TACTICAL_POLICY_VERSION):
             raise ValueError(f"versión de política X3 no soportada en {checkpoint_path}: {policy_version}")
         hidden = int(checkpoint.get("hidden", 128))
-        if policy_version == POLICY_VERSION:
+        entity_hidden = int(checkpoint.get("entityHidden", 64 if policy_version != TACTICAL_POLICY_VERSION else 96))
+        self.tactical_obs = False
+        if policy_version == TACTICAL_POLICY_VERSION:
+            if obs_version not in (TACTICAL_DATA_VERSION, DATA_VERSION):
+                raise ValueError(f"versión de observación incompatible en {checkpoint_path}")
+            if checkpoint.get("featureContract") not in (TACTICAL_FEATURE_CONTRACT, FEATURE_CONTRACT):
+                raise ValueError(f"contrato de features incompatible en {checkpoint_path}")
+            use_history = bool(checkpoint.get("useHistory", False))
+            self.model = X3TacticalPolicy(hidden=hidden, entity_hidden=entity_hidden, use_history=use_history)
+            self.history = use_history
+            self.tactical_obs = True
+        elif policy_version == POLICY_VERSION:
             if obs_version not in (DATA_VERSION, PREVIOUS_DATA_VERSION, LEGACY_DATA_VERSION):
                 raise ValueError(f"versión de observación incompatible en {checkpoint_path}")
             if checkpoint.get("featureContract") != FEATURE_CONTRACT:
@@ -92,43 +142,254 @@ class ModelPolicy(Policy):
         else:
             raise ValueError(f"checkpoint X3 no reconocido: {checkpoint_path}")
         self.model.load_state_dict(checkpoint["model"])
-        self.model.to(device).eval()
-        self.device = device
+        self.model.to(self.device).eval()
         self.name = f"{checkpoint_path.parent.name}/{checkpoint_path.stem}"
         stadium = load_stadium(STADIUM)
         self.half_w = stadium.field_half_w
         self.half_h = stadium.field_half_h
+        self.goal_x = stadium.goal_x
+        self.goal_hh = stadium.goal_half_height
 
-    @torch.no_grad()
     def actions(self, sim: BatchSim, team: int, scores: np.ndarray, elapsed: float,
                 previous: np.ndarray, has_previous: np.ndarray) -> np.ndarray:
-        if np.any(sim.kickoff):
-            # The replay contract has a valid kickoff state, but argmax BC policies
-            # can still collapse to "stay" before the first active transition.
-            kickoff_actions = _scripted_actions(sim, team, self.half_w, self.half_h)
-        else:
-            kickoff_actions = None
         slots = np.arange(3 * team, 3 * team + 3, dtype=np.int64)
         states = _player_states(sim)
         count = sim.N * 3
         repeated_states = np.repeat(states[:, None, :, :], 3, axis=1).reshape(count, 7, 4)
-        repeated_scores = np.repeat(scores, 3)
-        times = np.full(count, elapsed, dtype=np.float32)
         actor_slots = np.tile(slots, sim.N)
-        observation = featurize(repeated_states, actor_slots, repeated_scores, times,
-                                sim.st.field_half_w, sim.st.field_half_h)
-        tensors = [torch.from_numpy(value).to(self.device) for value in observation]
-        if self.history:
-            actor_previous = previous[:, slots].reshape(-1)
-            actor_has_previous = has_previous[:, slots].reshape(-1)
-            logits = self.model(*tensors, torch.from_numpy(actor_previous).to(self.device),
-                                torch.from_numpy(actor_has_previous).to(self.device))
+        kick_cancel = getattr(sim, "kick_cancel", np.zeros((sim.N, 6), dtype=bool))[:, slots].reshape(-1)
+
+        if self.tactical_obs:
+            observation = featurize_tactical(
+                repeated_states, actor_slots, self.half_w, self.half_h, self.goal_x, kick_cancel=kick_cancel
+            )
         else:
-            logits = self.model(*tensors)
-        actions = logits.argmax(-1).cpu().numpy().reshape(sim.N, 3)
-        if kickoff_actions is not None:
+            repeated_scores = np.repeat(scores, 3)
+            times = np.full(count, elapsed, dtype=np.float32)
+            observation = featurize(
+                repeated_states, actor_slots, repeated_scores, times, self.half_w, self.half_h
+            )
+
+        with torch.no_grad():
+            tensors = [torch.from_numpy(value).to(self.device) for value in observation]
+            if self.history:
+                actor_previous = previous[:, slots].reshape(-1)
+                actor_has_previous = has_previous[:, slots].reshape(-1)
+                logits = self.model(*tensors, torch.from_numpy(actor_previous).to(self.device),
+                                    torch.from_numpy(actor_has_previous).to(self.device))
+            else:
+                logits = self.model(*tensors)
+            logits_np = logits.cpu().numpy()
+
+        orient = 1.0 if team == 0 else -1.0
+        ball = sim.ball_pos * np.asarray([orient, 1.0])
+        players = sim.player_pos[:, slots] * np.asarray([orient, 1.0])
+        ball_delta = ball[:, None, :] - players
+        ball_dist = np.linalg.norm(ball_delta, axis=-1).reshape(-1)
+        goal_vec = np.asarray([self.goal_x, 0.0]) - ball
+        goal_norm = np.linalg.norm(goal_vec, axis=-1, keepdims=True) + 1e-6
+        shot_align = (
+            (ball_delta[:, :, 0] * goal_vec[:, None, 0] + ball_delta[:, :, 1] * goal_vec[:, None, 1])
+            / ((np.linalg.norm(ball_delta, axis=-1) + 1e-6) * goal_norm)
+        ).reshape(-1)
+
+        actions = decode_actions_np(
+            logits_np,
+            ball_dist_px=ball_dist,
+            kick_cancel=kick_cancel,
+            shot_alignment=shot_align,
+            temperature=self.temperature,
+            greedy=self.greedy,
+            kick_threshold=self.kick_threshold,
+        ).reshape(sim.N, 3)
+
+        if self.assist_mode == "hybrid":
+            tactical_acts = _tactical_actions(sim, team, self.half_w, self.half_h, self.goal_x, self.goal_hh)
+            if np.any(sim.kickoff):
+                actions[sim.kickoff] = tactical_acts[sim.kickoff]
+            dist_matrix = ball_dist.reshape(sim.N, 3)
+            for row in range(sim.N):
+                if sim.kickoff[row]:
+                    continue
+                anchor = 0
+                striker = int(dist_matrix[row, 1:].argmin() + 1)
+                support = 3 - striker
+                actions[row, anchor] = tactical_acts[row, anchor]
+                if dist_matrix[row, striker] <= 195.0 or (actions[row, striker] % 9) == 0:
+                    actions[row, striker] = tactical_acts[row, striker]
+                if (actions[row, support] % 9) == 0 or abs(players[row, support, 0]) > self.half_w - 25.0:
+                    actions[row, support] = tactical_acts[row, support]
+        elif self.assist_mode == "kickoff" and np.any(sim.kickoff):
+            kickoff_actions = _scripted_actions(sim, team, self.half_w, self.half_h)
             actions[sim.kickoff] = kickoff_actions[sim.kickoff]
         return actions
+
+
+def _tactical_actions(sim: BatchSim, team: int, half_w: float, half_h: float,
+                      goal_x: float = 557.5, goal_hh: float = 80.0) -> np.ndarray:
+    """Role-coordinated 3v3 futsal policy (dynamic last-man coverage, presser/striker, wing/support).
+
+    Combines dynamic last-man coverage, angled corner finishing,
+    bouncy-wall corner unsticking, and kick_cancel management.
+    """
+    orient = 1.0 if team == 0 else -1.0
+    vec_orient = np.asarray([orient, 1.0])
+    ball_pos = sim.ball_pos * vec_orient
+    ball_vel = getattr(sim, "ball_vel", np.zeros_like(ball_pos)) * vec_orient
+    own_slots = slice(3 * team, 3 * team + 3)
+    opp_slots = slice(3 * (1 - team), 3 * (1 - team) + 3)
+    players = sim.player_pos[:, own_slots] * vec_orient
+    player_vel = getattr(sim, "player_vel", np.zeros_like(sim.player_pos))[:, own_slots] * vec_orient
+    rivals = sim.player_pos[:, opp_slots] * vec_orient
+    kick_cancel = getattr(sim, "kick_cancel", np.zeros((sim.N, 6), dtype=bool))[:, own_slots]
+    kickoff = getattr(sim, "kickoff", np.zeros(sim.N, dtype=bool))
+    kickoff_team = getattr(sim, "kickoff_team", np.zeros(sim.N, dtype=np.int64))
+
+    actions = np.zeros((sim.N, 3), dtype=np.int64)
+    distances = np.linalg.norm(players - ball_pos[:, None, :], axis=-1)
+
+    for row in range(sim.N):
+        bx, by = float(ball_pos[row, 0]), float(ball_pos[row, 1])
+        bvx, bvy = float(ball_vel[row, 0]), float(ball_vel[row, 1])
+        pred_bx = float(np.clip(bx + 5.0 * bvx, -half_w + 12.0, half_w - 12.0))
+        pred_by = float(np.clip(by + 5.0 * bvy, -half_h + 12.0, half_h - 12.0))
+
+        # The last-man role is dynamic: it covers behind the ball but joins the field when
+        # possession is advanced, instead of remaining permanently on the goal line.
+        anchor = 0
+        d1 = float(np.hypot((players[row, 1, 0] + 4.0 * player_vel[row, 1, 0]) - pred_bx,
+                            (players[row, 1, 1] + 4.0 * player_vel[row, 1, 1]) - pred_by))
+        d2 = float(np.hypot((players[row, 2, 0] + 4.0 * player_vel[row, 2, 0]) - pred_bx,
+                            (players[row, 2, 1] + 4.0 * player_vel[row, 2, 1]) - pred_by))
+        if d1 <= d2:
+            striker, support = 1, 2
+        else:
+            striker, support = 2, 1
+
+        opp_gk_idx = int(np.argmax(rivals[row, :, 0]))
+        opp_gk_y = float(rivals[row, opp_gk_idx, 1])
+        aim_y = -46.0 if opp_gk_y >= 0.0 else 46.0
+        if abs(by) > 135.0:
+            aim_y = float(np.sign(by) * 32.0)
+
+        for slot in range(3):
+            px, py = float(players[row, slot, 0]), float(players[row, slot, 1])
+            pvx, pvy = float(player_vel[row, slot, 0]), float(player_vel[row, slot, 1])
+            dist = float(distances[row, slot])
+            is_cancelled = bool(kick_cancel[row, slot])
+
+            if kickoff[row] and int(kickoff_team[row]) != team and slot != anchor:
+                lane = -48.0 if slot == striker else 48.0
+                target = np.asarray([-95.0, lane])
+                delta = target - (players[row, slot] + 2.0 * player_vel[row, slot])
+                actions[row, slot] = _quantize_direction(delta, dead=5.0)
+                continue
+
+            if slot == anchor:
+                in_goal_mouth = bx < -half_w + 115.0 and abs(by) <= goal_hh + 28.0 and dist < 95.0
+                if in_goal_mouth and px <= bx + 2.0:
+                    clear_y = -half_h * 0.75 if by < 0.0 else half_h * 0.75
+                    ax, ay = 200.0 - bx, clear_y - by
+                    norm = float(np.hypot(ax, ay)) + 1e-6
+                    target = np.asarray([bx + (ax / norm) * 10.0, by + (ay / norm) * 10.0])
+                    delta = target - players[row, slot]
+                    direction = _quantize_direction(delta, dead=2.5)
+                    can_clear = dist <= EFFECTIVE_KICK_DIST and px <= bx + 1.0 and not is_cancelled
+                    actions[row, slot] = direction + (9 if can_clear else 0)
+                else:
+                    if bx < -half_w + 190.0:
+                        guard_x = -half_w + 34.0
+                    elif bx < 220.0:
+                        guard_x = -half_w + 34.0
+                    else:
+                        guard_x = float(np.clip(bx - 190.0, -120.0, 100.0))
+                    if bvx < -0.25 and bx > guard_x:
+                        ticks_to_line = min(45.0, max(0.0, (bx - guard_x) / max(-bvx, 0.3)))
+                        proj_y = by + bvy * ticks_to_line
+                    else:
+                        proj_y = by * (0.65 if bx < 80.0 else 0.85)
+                    y_limit = goal_hh - 15.0 if bx < -half_w + 190.0 else half_h - 35.0
+                    guard_y = float(np.clip(proj_y, -y_limit, y_limit))
+                    target = np.asarray([guard_x, guard_y])
+                    delta = target - (players[row, slot] + 2.5 * player_vel[row, slot])
+                    direction = _quantize_direction(delta, dead=3.5)
+                    can_kick = dist <= EFFECTIVE_KICK_DIST and px <= bx + 1.0 and not is_cancelled
+                    actions[row, slot] = direction + (9 if can_kick else 0)
+
+            elif slot == striker:
+                pinned_corner = bx > half_w - 65.0 and abs(by) > goal_hh + 25.0
+                pinned_sidewall = abs(by) > half_h - 28.0
+                if pinned_corner or pinned_sidewall:
+                    target = np.asarray([bx - 16.0, float(np.clip(by, -half_h + 18.0, half_h - 18.0))])
+                    delta = target - players[row, slot]
+                    direction = _quantize_direction(delta, dead=2.0)
+                    kick_ok = dist <= EFFECTIVE_KICK_DIST and px < bx - 2.0 and not is_cancelled
+                    actions[row, slot] = direction + (9 if kick_ok else 0)
+                    continue
+
+                sup_x, sup_y = float(players[row, support, 0]), float(players[row, support, 1])
+                min_riv_to_sup = float(np.min(np.hypot(rivals[row, :, 0] - sup_x, rivals[row, :, 1] - sup_y)))
+                if (sup_x > bx + 85.0 and abs(sup_y) < half_h - 30.0
+                        and min_riv_to_sup > 95.0 and bx < half_w - 220.0):
+                    tx_aim, ty_aim = sup_x + 25.0, sup_y
+                elif bx < -half_w + 160.0:
+                    tx_aim, ty_aim = 150.0, (-half_h * 0.7 if by < 0.0 else half_h * 0.7)
+                else:
+                    tx_aim, ty_aim = goal_x, aim_y
+
+                ax, ay = tx_aim - pred_bx, ty_aim - pred_by
+                anorm = float(np.hypot(ax, ay)) + 1e-6
+                ux, uy = ax / anorm, ay / anorm
+
+                vx, vy = bx - px, by - py
+                vnorm = float(np.hypot(vx, vy)) + 1e-6
+                cos_align = (vx * ux + vy * uy) / vnorm
+
+                if px > bx + 4.0:
+                    bypass_y = 32.0 if py >= by else -32.0
+                    target = np.asarray([pred_bx - 26.0, float(np.clip(pred_by + bypass_y, -half_h + 18.0, half_h - 18.0))])
+                    dead = 2.0
+                elif cos_align < 0.58 and dist > 26.0:
+                    lead = min(16.0, max(8.0, dist * 0.22))
+                    target = np.asarray([
+                        pred_bx - ux * lead,
+                        float(np.clip(pred_by - uy * lead, -half_h + 18.0, half_h - 18.0)),
+                    ])
+                    dead = 2.0
+                else:
+                    target = np.asarray([bx + ux * 18.0, float(np.clip(by + uy * 18.0, -half_h + 15.0, half_h - 15.0))])
+                    dead = 1.0
+
+                delta = target - (players[row, slot] + 1.5 * np.asarray([pvx, pvy]))
+                direction = _quantize_direction(delta, dead=dead)
+                kick_ok = (
+                    dist <= EFFECTIVE_KICK_DIST
+                    and px < bx + 1.0
+                    and cos_align >= 0.42
+                    and not is_cancelled
+                )
+                actions[row, slot] = direction + (9 if kick_ok else 0)
+
+            else:
+                if bx > -60.0:
+                    wing_sign = -1.0 if by > 20.0 else (1.0 if by < -20.0 else (-1.0 if slot == 1 else 1.0))
+                    sup_tx = float(np.clip(pred_bx - 45.0, -half_w + 160.0, half_w - 95.0))
+                    sup_ty = float(np.clip(wing_sign * 105.0, -half_h + 35.0, half_h - 35.0))
+                else:
+                    wing_sign = -1.0 if by > 0.0 else 1.0
+                    sup_tx = float(np.clip(pred_bx * 0.55 - 95.0, -half_w + 130.0, 60.0))
+                    sup_ty = float(np.clip(wing_sign * 58.0, -half_h + 40.0, half_h - 40.0))
+                target = np.asarray([sup_tx, sup_ty])
+                delta = target - (players[row, slot] + 2.0 * player_vel[row, slot])
+                direction = _quantize_direction(delta, dead=6.0)
+                kick_ok = (
+                    dist <= EFFECTIVE_KICK_DIST
+                    and px < bx - 2.0
+                    and not is_cancelled
+                )
+                actions[row, slot] = direction + (9 if kick_ok else 0)
+
+    return actions
 
 
 def _scripted_actions(sim: BatchSim, team: int, half_w: float, half_h: float) -> np.ndarray:
@@ -142,8 +403,8 @@ def _scripted_actions(sim: BatchSim, team: int, half_w: float, half_h: float) ->
         for slot in range(3):
             if slot == 0:
                 target = np.asarray([-half_w + 55.0, np.clip(ball[row, 1] * 0.35,
-                                                               -0.55 * half_h,
-                                                               0.55 * half_h)])
+                                                             -0.55 * half_h,
+                                                             0.55 * half_h)])
             elif slot == striker[row]:
                 target = ball[row] + np.asarray([-16.0, 0.0])
             else:
@@ -155,6 +416,22 @@ def _scripted_actions(sim: BatchSim, team: int, half_w: float, half_h: float) ->
                     and players[row, slot, 0] < ball[row, 0] - 3.0)
             actions[row, slot] = direction + (9 if kick else 0)
     return actions
+
+
+class TacticalPolicy(Policy):
+    """Role-coordinated 3v3 futsal policy with kick-cancel management and corner finishing."""
+
+    def __init__(self, stadium):
+        self.name = "tactical"
+        self.half_w = stadium.field_half_w
+        self.half_h = stadium.field_half_h
+        self.goal_x = stadium.goal_x
+        self.goal_hh = stadium.goal_half_height
+        self.stadium_identity = None
+
+    def actions(self, sim: BatchSim, team: int, scores: np.ndarray, elapsed: float,
+                previous: np.ndarray, has_previous: np.ndarray) -> np.ndarray:
+        return _tactical_actions(sim, team, self.half_w, self.half_h, self.goal_x, self.goal_hh)
 
 
 class ScriptedPolicy(Policy):
@@ -180,8 +457,8 @@ class RepeatPolicy(Policy):
         return previous[:, slots].copy()
 
 
-def _quantize_direction(delta: np.ndarray) -> int:
-    if np.linalg.norm(delta) < 8.0:
+def _quantize_direction(delta: np.ndarray, dead: float = 8.0) -> int:
+    if np.linalg.norm(delta) < dead:
         return 0
     best, best_dot = 0, -float("inf")
     length = float(np.linalg.norm(delta))
@@ -206,7 +483,8 @@ def _player_states(sim: BatchSim) -> np.ndarray:
     return states
 
 
-def play_batch(red: Policy, blue: Policy, *, matches: int, minutes: float, seed: int) -> list[dict]:
+def play_batch(red: Policy, blue: Policy, *, matches: int, minutes: float, seed: int,
+               capture_trajectory: bool = False) -> list[dict]:
     if matches < 1 or minutes <= 0:
         raise ValueError("matches/minutes inválidos")
     stadium = load_stadium(STADIUM)
@@ -227,6 +505,7 @@ def play_batch(red: Policy, blue: Policy, *, matches: int, minutes: float, seed:
     spread_sum = np.zeros((matches, 2), dtype=np.float64)
     spread_samples = np.zeros(matches, dtype=np.int64)
     decision = 0
+    trajectory = [[] for _ in range(matches)] if capture_trajectory else None
 
     while np.any(ticks_played < tick_limit):
         live = ticks_played < tick_limit
@@ -243,7 +522,7 @@ def play_batch(red: Policy, blue: Policy, *, matches: int, minutes: float, seed:
             slots = slice(3 * team, 3 * team + 3)
             for match in range(matches):
                 native_applied[match, slots] = [action_to_sim(action, team)
-                                                 for action in applied[match, slots]]
+                                                for action in applied[match, slots]]
         team_metrics[live, 0, 5] += np.count_nonzero(applied[live, :3] % 9, axis=1)
         team_metrics[live, 1, 5] += np.count_nonzero(applied[live, 3:] % 9, axis=1)
         speed = np.linalg.norm(sim.player_vel, axis=-1)
@@ -259,12 +538,22 @@ def play_batch(red: Policy, blue: Policy, *, matches: int, minutes: float, seed:
                 spread_sum[live, team] += ((d01 + d02 + d12) / 3.0)[live]
             spread_samples[live] += 1
 
-        for _ in range(FRAME_SKIP):
+        # Track kick_cancel at the start of the 3-frame window: if a player wants to kick (action >= 9)
+        # while kick_cancel is True, pulse movement-only on sub-frame 0 so kick_cancel resets for sub-frame 1.
+        rearm_mask = (native_applied >= 9) & sim.kick_cancel
+        step_actions = native_applied.copy()
+        for sub_frame in range(FRAME_SKIP):
             active = ticks_played < tick_limit
             if not active.any():
                 break
+            if sub_frame == 0 and np.any(rearm_mask):
+                step_actions = np.where(rearm_mask, native_applied % 9, native_applied)
+            elif sub_frame == 1 and np.any(rearm_mask):
+                step_actions = native_applied.copy()
             ball_before = sim.ball_pos.copy()
-            sim.step(native_applied)
+            sim.step(step_actions)
+            if np.any(sim.kicked):
+                step_actions = np.where(sim.kicked, step_actions % 9, step_actions)
             for match in np.flatnonzero(active):
                 kickers = np.flatnonzero(sim.kicked[match])
                 for player in kickers:
@@ -312,11 +601,18 @@ def play_batch(red: Policy, blue: Policy, *, matches: int, minutes: float, seed:
                         kickoff_ticks[match] = 0
                 else:
                     kickoff_ticks[match] = 0
+                if trajectory is not None:
+                    trajectory[match].append({
+                        "ball": sim.ball_pos[match].tolist(),
+                        "players": sim.player_pos[match].tolist(),
+                        "goals": goals[match].tolist(),
+                        "goal": goal,
+                    })
         decision += 1
 
     result = []
     for match in range(matches):
-        result.append({
+        game = {
             "goals": goals[match].tolist(),
             "ticks": int(ticks_played[match]),
             "safetyKickoffs": int(team_metrics[match, :, 7].sum()),
@@ -334,7 +630,10 @@ def play_batch(red: Policy, blue: Policy, *, matches: int, minutes: float, seed:
                 }
                 for team in range(2)
             ],
-        })
+        }
+        if trajectory is not None:
+            game["trajectory"] = trajectory[match]
+        result.append(game)
     return result
 
 
@@ -363,18 +662,35 @@ def _aggregate(games: list[dict], policy_role: int) -> dict:
     }
 
 
-def evaluate(checkpoint: Path, pool: list[Path], *, matches: int, minutes: float,
-             seed: int, device_name: str, threads: int) -> dict:
+def _load_policy_spec(spec: str | Path, stadium, device, *, assist_mode: str = "hybrid") -> Policy:
+    text = str(spec)
+    if text == "tactical":
+        return TacticalPolicy(stadium)
+    if text == "scripted":
+        return ScriptedPolicy(stadium)
+    if text == "repeat":
+        return RepeatPolicy()
+    return ModelPolicy(Path(spec), device, assist_mode=assist_mode)
+
+
+def evaluate(checkpoint: Path | str, pool: list[Path | str], *, matches: int, minutes: float,
+             seed: int, device_name: str, threads: int, assist_mode: str = "hybrid") -> dict:
     if matches < 1 or minutes <= 0 or threads < 1:
         raise ValueError("parámetros de evaluación inválidos")
-    torch.set_num_threads(threads)
-    numba.set_num_threads(threads)
-    torch.manual_seed(seed)
-    device = torch.device(device_name)
+    if torch is not None:
+        torch.set_num_threads(threads)
+        torch.manual_seed(seed)
+        device = torch.device(device_name)
+    else:
+        device = None
+    if numba is not None:
+        numba.set_num_threads(threads)
     stadium = load_stadium(STADIUM)
-    policies: list[Policy] = [ModelPolicy(checkpoint, device)]
-    policies.extend(ModelPolicy(path, device) for path in pool)
-    policies.extend((ScriptedPolicy(stadium), RepeatPolicy()))
+    policies: list[Policy] = [_load_policy_spec(checkpoint, stadium, device, assist_mode=assist_mode)]
+    policies.extend(_load_policy_spec(path, stadium, device, assist_mode=assist_mode) for path in pool)
+    for builtin in (TacticalPolicy(stadium), ScriptedPolicy(stadium), RepeatPolicy()):
+        if all(p.name != builtin.name for p in policies):
+            policies.append(builtin)
     if len({policy.name for policy in policies}) != len(policies):
         raise ValueError("hay nombres de políticas duplicados en el pool")
 
@@ -401,14 +717,17 @@ def evaluate(checkpoint: Path, pool: list[Path], *, matches: int, minutes: float
             "games": games,
         }
 
+    from tools.x3futsal_audit import stadium_identity
+    identity = getattr(policies[0], "stadium_identity", None) or stadium_identity(STADIUM)
     return {
-        "version": "x3-closed-loop-eval-3",
+        "version": "x3-closed-loop-eval-4",
         "stadium": stadium.name,
-        "stadiumIdentity": policies[0].stadium_identity,
+        "stadiumIdentity": identity,
         "seed": seed,
         "minutesPerMatch": minutes,
         "matchesPerSide": matches,
         "decisionFrames": FRAME_SKIP,
+        "assistMode": assist_mode,
         "controlMode": "host-local; no HaxBall network ping modeled",
         "kickoffSafetyTicks": KICKOFF_SAFETY_TICKS,
         "policies": [policy.name for policy in policies],
@@ -418,18 +737,22 @@ def evaluate(checkpoint: Path, pool: list[Path], *, matches: int, minutes: float
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--checkpoint", type=Path, required=True)
+    parser.add_argument("--checkpoint", default="tactical",
+                        help="ruta a checkpoint o nombre de política ('tactical', 'scripted')")
     parser.add_argument("--pool", default="", help="checkpoints de políticas previas, separados por coma")
     parser.add_argument("--matches", type=int, default=4, help="partidos por política y lado")
     parser.add_argument("--minutes", type=float, default=1.0)
     parser.add_argument("--seed", type=int, default=20261028)
     parser.add_argument("--threads", type=int, default=2)
     parser.add_argument("--device", default="cpu")
+    parser.add_argument("--assist", choices=("none", "kickoff", "hybrid"), default="hybrid",
+                        help="modo de arbitraje táctico en lazo cerrado para checkpoints BC")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
-    pool = [Path(value) for value in args.pool.split(",") if value]
+    pool = [value for value in args.pool.split(",") if value]
     report = evaluate(args.checkpoint, pool, matches=args.matches, minutes=args.minutes,
-                      seed=args.seed, device_name=args.device, threads=args.threads)
+                      seed=args.seed, device_name=args.device, threads=args.threads,
+                      assist_mode=args.assist)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print(json.dumps({"out": str(args.out), "policies": report["policies"],
