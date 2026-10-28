@@ -28,6 +28,7 @@ from learn.x3futsal_data import (
     DATA_VERSION,
     EFFECTIVE_KICK_DIST,
     FEATURE_CONTRACT,
+    MIRROR_X_ACTION,
     MOVE_BY_DELTA,
     MOVE_DX,
     MOVE_DY,
@@ -35,6 +36,7 @@ from learn.x3futsal_data import (
     TACTICAL_FEATURE_CONTRACT,
     featurize,
     featurize_tactical,
+    featurize_tactical_team,
 )
 from learn.x3futsal_policy import (
     POLICY_VERSION,
@@ -43,7 +45,7 @@ from learn.x3futsal_policy import (
     X3TacticalPolicy,
     decode_actions_np,
 )
-from sim.physics import BatchSim
+from sim.physics import MOVE_UNIT, BatchSim, set_physics_threads
 from sim.stadium import load_stadium
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -53,17 +55,27 @@ KICKOFF_SAFETY_TICKS = 300
 LEGACY_DATA_VERSION = "x3-futsal-bc-v1"
 PREVIOUS_DATA_VERSION = "x3-futsal-bc-v2"
 
+_MOVE_DIRS_8 = np.ascontiguousarray(MOVE_UNIT[1:], dtype=np.float64)
+
 
 def action_to_sim(action: int, team: int) -> int:
     """Convert an attack-oriented model action to native HaxBall movement for red/blue."""
     action = int(action)
     if not 0 <= action < 18 or team not in (0, 1):
         raise ValueError(f"acción/equipo inválido: action={action}, team={team}")
-    direction = action % 9
-    dx, dy = MOVE_DX[direction], MOVE_DY[direction]
+    if team == 0:
+        return action
+    return int(MIRROR_X_ACTION[action])
+
+
+def action_to_sim_batch(actions: np.ndarray, team: int) -> np.ndarray:
+    """Vectorized conversion of attack-oriented actions `(...,)` to native HaxBall simulation actions."""
+    actions = np.asarray(actions, dtype=np.int64)
+    if team == 0:
+        return actions.copy()
     if team == 1:
-        dx = -dx
-    return MOVE_BY_DELTA[(dx, dy)] + (9 if action >= 9 else 0)
+        return MIRROR_X_ACTION[actions]
+    raise ValueError(f"equipo inválido: {team}")
 
 
 if nn is not None:
@@ -153,24 +165,23 @@ class ModelPolicy(Policy):
     def actions(self, sim: BatchSim, team: int, scores: np.ndarray, elapsed: float,
                 previous: np.ndarray, has_previous: np.ndarray) -> np.ndarray:
         slots = np.arange(3 * team, 3 * team + 3, dtype=np.int64)
-        states = _player_states(sim)
-        count = sim.N * 3
-        repeated_states = np.repeat(states[:, None, :, :], 3, axis=1).reshape(count, 7, 4)
-        actor_slots = np.tile(slots, sim.N)
         kick_cancel = getattr(sim, "kick_cancel", np.zeros((sim.N, 6), dtype=bool))[:, slots].reshape(-1)
 
         if self.tactical_obs:
-            observation = featurize_tactical(
-                repeated_states, actor_slots, self.half_w, self.half_h, self.goal_x, kick_cancel=kick_cancel
-            )
+            observation = featurize_tactical_team(sim, team, self.half_w, self.half_h, self.goal_x)
         else:
+            states = _player_states(sim)
+            count = sim.N * 3
+            repeated_states = np.repeat(states[:, None, :, :], 3, axis=1).reshape(count, 7, 4)
+            actor_slots = np.tile(slots, sim.N)
             repeated_scores = np.repeat(scores, 3)
             times = np.full(count, elapsed, dtype=np.float32)
             observation = featurize(
                 repeated_states, actor_slots, repeated_scores, times, self.half_w, self.half_h
             )
 
-        with torch.no_grad():
+        ctx_mgr = torch.inference_mode if hasattr(torch, "inference_mode") else torch.no_grad
+        with ctx_mgr():
             tensors = [torch.from_numpy(value).to(self.device) for value in observation]
             if self.history:
                 actor_previous = previous[:, slots].reshape(-1)
@@ -185,12 +196,12 @@ class ModelPolicy(Policy):
         ball = sim.ball_pos * np.asarray([orient, 1.0])
         players = sim.player_pos[:, slots] * np.asarray([orient, 1.0])
         ball_delta = ball[:, None, :] - players
-        ball_dist = np.linalg.norm(ball_delta, axis=-1).reshape(-1)
+        ball_dist = np.hypot(ball_delta[:, :, 0], ball_delta[:, :, 1]).reshape(-1)
         goal_vec = np.asarray([self.goal_x, 0.0]) - ball
-        goal_norm = np.linalg.norm(goal_vec, axis=-1, keepdims=True) + 1e-6
+        goal_norm = np.hypot(goal_vec[:, 0], goal_vec[:, 1])[:, None] + 1e-6
         shot_align = (
             (ball_delta[:, :, 0] * goal_vec[:, None, 0] + ball_delta[:, :, 1] * goal_vec[:, None, 1])
-            / ((np.linalg.norm(ball_delta, axis=-1) + 1e-6) * goal_norm)
+            / ((ball_dist.reshape(sim.N, 3) + 1e-6) * goal_norm)
         ).reshape(-1)
 
         actions = decode_actions_np(
@@ -204,36 +215,78 @@ class ModelPolicy(Policy):
         ).reshape(sim.N, 3)
 
         if self.assist_mode == "hybrid":
+            # El modo híbrido ya NO ancla a ningún jugador (slot 0) como arquero fijo en el área:
+            # 1. Coordina los saques iniciales (kickoff) y desbloquea jugadores pasivos.
+            # 2. Si un jugador del modelo intenta quedarse acampando dentro del área propia mientras
+            #    la pelota está adelantada, lo impulsa a salir y rotar con el equipo.
             tactical_acts = _tactical_actions(sim, team, self.half_w, self.half_h, self.goal_x, self.goal_hh)
             if np.any(sim.kickoff):
                 actions[sim.kickoff] = tactical_acts[sim.kickoff]
+            open_play = (~sim.kickoff)[:, None]
             dist_matrix = ball_dist.reshape(sim.N, 3)
-            for row in range(sim.N):
-                if sim.kickoff[row]:
-                    continue
-                anchor = 0
-                striker = int(dist_matrix[row, 1:].argmin() + 1)
-                support = 3 - striker
-                actions[row, anchor] = tactical_acts[row, anchor]
-                if dist_matrix[row, striker] <= 195.0 or (actions[row, striker] % 9) == 0:
-                    actions[row, striker] = tactical_acts[row, striker]
-                if (actions[row, support] % 9) == 0 or abs(players[row, support, 0]) > self.half_w - 25.0:
-                    actions[row, support] = tactical_acts[row, support]
+            px = players[:, :, 0]
+            py = players[:, :, 1]
+            bx = ball[:, 0:1]
+            move_dir = actions % 9
+            # Evitar que cualquier jugador quede anclado en su área propia cuando la pelota está lejos
+            box_camping = (
+                open_play
+                & (px < -self.half_w + 115.0)
+                & (bx > -self.half_w + 210.0)
+                & ((move_dir == 0) | (move_dir == 6) | (move_dir == 7) | (move_dir == 8))
+            )
+            passive_or_pinned = (
+                open_play
+                & (
+                    (move_dir == 0)
+                    | (dist_matrix <= 165.0)
+                    | (np.abs(px) > self.half_w - 22.0)
+                    | (np.abs(py) > self.half_h - 20.0)
+                )
+            )
+            override_mask = box_camping | passive_or_pinned
+            if np.any(override_mask):
+                actions = np.where(override_mask, tactical_acts, actions)
         elif self.assist_mode == "kickoff" and np.any(sim.kickoff):
-            kickoff_actions = _scripted_actions(sim, team, self.half_w, self.half_h)
+            kickoff_actions = _tactical_actions(sim, team, self.half_w, self.half_h, self.goal_x, self.goal_hh)
             actions[sim.kickoff] = kickoff_actions[sim.kickoff]
         return actions
 
 
-def _tactical_actions(sim: BatchSim, team: int, half_w: float, half_h: float,
-                      goal_x: float = 557.5, goal_hh: float = 80.0) -> np.ndarray:
-    """Role-coordinated 3v3 futsal policy (Dedicated Goalkeeper slot 0, Presser/Striker, Wing/Support).
+def _quantize_direction(delta: np.ndarray, dead: float = 8.0) -> int:
+    """Scalar direction quantizer (retained for unit test compatibility)."""
+    length = float(np.hypot(delta[0], delta[1]))
+    if length < dead:
+        return 0
+    dots = delta[0] * _MOVE_DIRS_8[:, 0] + delta[1] * _MOVE_DIRS_8[:, 1]
+    return int(np.argmax(dots) + 1)
 
-    Combines deep goal-line goalkeeper protection (-half_w + 18 px), angled corner finishing,
-    bouncy-wall corner unsticking, and kick_cancel management.
+
+def _quantize_direction_batch(delta: np.ndarray, dead: float | np.ndarray = 8.0) -> np.ndarray:
+    """Vectorized direction quantizer over arbitrary batch shapes `(..., 2)`."""
+    norm = np.hypot(delta[..., 0], delta[..., 1])
+    active = norm >= dead
+    dots = delta[..., 0:1] * _MOVE_DIRS_8[:, 0] + delta[..., 1:2] * _MOVE_DIRS_8[:, 1]
+    best_dir = np.argmax(dots, axis=-1) + 1
+    return np.where(active, best_dir, 0).astype(np.int64)
+
+
+def _tactical_actions(sim: BatchSim, team: int, half_w: float, half_h: float,
+                      goal_x: float = 557.5, goal_hh: float = 80.0,
+                      rng: np.random.Generator | None = None) -> np.ndarray:
+    """Vectorized 3v3 rotational futsal policy (1st Man Presser/Striker, 2nd Man Wing/Support, 3rd Man Dynamic Cierre).
+
+    Eliminates the permanent goal-box goalkeeper:
+    - All 3 players (`slots 0, 1, 2`) dynamically rotate roles based on real-time intercept geometry and pitch depth.
+    - When a presser is overtaken (`px > pred_bx + 16`), a teammate behind the ball steps in to press while the
+      overtaken player rotates into wing support or third-man cover.
+    - The 3rd man (`cierre`) advances outside the penalty box up to midfield/attack (`x in [-240, +95]`) during
+      build-up and possession to participate in ball circulation and high interception, only dropping near the
+      goal mouth when the ball is deep in the defensive danger zone (`bx < -350`).
     """
+    N = sim.N
     orient = 1.0 if team == 0 else -1.0
-    vec_orient = np.asarray([orient, 1.0])
+    vec_orient = np.asarray([orient, 1.0], dtype=np.float64)
     ball_pos = sim.ball_pos * vec_orient
     ball_vel = getattr(sim, "ball_vel", np.zeros_like(ball_pos)) * vec_orient
     own_slots = slice(3 * team, 3 * team + 3)
@@ -241,181 +294,246 @@ def _tactical_actions(sim: BatchSim, team: int, half_w: float, half_h: float,
     players = sim.player_pos[:, own_slots] * vec_orient
     player_vel = getattr(sim, "player_vel", np.zeros_like(sim.player_pos))[:, own_slots] * vec_orient
     rivals = sim.player_pos[:, opp_slots] * vec_orient
-    kick_cancel = getattr(sim, "kick_cancel", np.zeros((sim.N, 6), dtype=bool))[:, own_slots]
-    kickoff = getattr(sim, "kickoff", np.zeros(sim.N, dtype=bool))
-    kickoff_team = getattr(sim, "kickoff_team", np.zeros(sim.N, dtype=np.int64))
+    kick_cancel = getattr(sim, "kick_cancel", np.zeros((N, 6), dtype=bool))[:, own_slots]
+    kickoff = getattr(sim, "kickoff", np.zeros(N, dtype=bool))
+    kickoff_team = getattr(sim, "kickoff_team", np.zeros(N, dtype=np.int64))
 
-    actions = np.zeros((sim.N, 3), dtype=np.int64)
-    distances = np.linalg.norm(players - ball_pos[:, None, :], axis=-1)
+    bx = ball_pos[:, 0]
+    by = ball_pos[:, 1]
+    bvx = ball_vel[:, 0]
+    bvy = ball_vel[:, 1]
+    pred_bx = np.clip(bx + 5.0 * bvx, -half_w + 12.0, half_w - 12.0)
+    pred_by = np.clip(by + 5.0 * bvy, -half_h + 12.0, half_h - 12.0)
 
-    for row in range(sim.N):
-        bx, by = float(ball_pos[row, 0]), float(ball_pos[row, 1])
-        bvx, bvy = float(ball_vel[row, 0]), float(ball_vel[row, 1])
-        pred_bx = float(np.clip(bx + 5.0 * bvx, -half_w + 12.0, half_w - 12.0))
-        pred_by = float(np.clip(by + 5.0 * bvy, -half_h + 12.0, half_h - 12.0))
+    px = players[:, :, 0]
+    py = players[:, :, 1]
+    pvx = player_vel[:, :, 0]
+    pvy = player_vel[:, :, 1]
+    distances = np.hypot(px - bx[:, None], py - by[:, None])
 
-        # Dedicated goalkeeper on slot 0 (never abandons goal mouth for corner balls);
-        # field slots 1 and 2 dynamically split striker vs support by intercept distance.
-        anchor = 0
-        d1 = float(np.hypot((players[row, 1, 0] + 4.0 * player_vel[row, 1, 0]) - pred_bx,
-                            (players[row, 1, 1] + 4.0 * player_vel[row, 1, 1]) - pred_by))
-        d2 = float(np.hypot((players[row, 2, 0] + 4.0 * player_vel[row, 2, 0]) - pred_bx,
-                            (players[row, 2, 1] + 4.0 * player_vel[row, 2, 1]) - pred_by))
-        if d1 <= d2:
-            striker, support = 1, 2
-        else:
-            striker, support = 2, 1
+    # Dynamic role rotation across all 3 slots {0, 1, 2}
+    pred_px = px + 4.0 * pvx
+    pred_py = py + 4.0 * pvy
+    intercept_dist = np.hypot(pred_px - pred_bx[:, None], pred_py - pred_by[:, None])
+    ahead_penalty = np.where(px > pred_bx[:, None] + 16.0, 65.0, 0.0)
+    in_mouth_guard = (
+        (bx[:, None] < -half_w + 140.0)
+        & (px <= bx[:, None] + 2.0)
+        & (px == px.min(axis=1, keepdims=True))
+    )
+    press_cost = intercept_dist + ahead_penalty + np.where(in_mouth_guard, 120.0, 0.0)
+    striker = np.argmin(press_cost, axis=1)
 
-        opp_gk_idx = int(np.argmax(rivals[row, :, 0]))
-        opp_gk_y = float(rivals[row, opp_gk_idx, 1])
-        aim_y = -46.0 if opp_gk_y >= 0.0 else 46.0
-        if abs(by) > 135.0:
-            aim_y = float(np.sign(by) * 32.0)
+    rem_a = (striker + 1) % 3
+    rem_b = (striker + 2) % 3
+    rows = np.arange(N)
+    xa, ya = pred_px[rows, rem_a], pred_py[rows, rem_a]
+    xb, yb = pred_px[rows, rem_b], pred_py[rows, rem_b]
+    # En defensa profunda (bx < -220) el más retrasado cubre como cierre; en medio/ataque (bx >= -220)
+    # rotan dinámicamente cierre <-> ala según quién esté mejor perfilado hacia el carril débil de pase.
+    open_wing_y = np.where(by >= 0.0, -105.0, 105.0)
+    cover_x = np.clip(bx - 195.0, -260.0, 95.0)
+    cover_y = np.clip(by * 0.65, -110.0, 110.0)
+    sup_cand_x = np.clip(pred_bx + 15.0, -half_w + 180.0, half_w - 85.0)
+    cost_a_cierre = np.hypot(xa - cover_x, ya - cover_y) + np.hypot(xb - sup_cand_x, yb - open_wing_y)
+    cost_b_cierre = np.hypot(xb - cover_x, yb - cover_y) + np.hypot(xa - sup_cand_x, ya - open_wing_y)
+    a_is_cierre = np.where(bx < -220.0, xa <= xb, cost_a_cierre <= cost_b_cierre)
+    cierre = np.where(a_is_cierre, rem_a, rem_b)
+    support = np.where(a_is_cierre, rem_b, rem_a)
 
-        for slot in range(3):
-            px, py = float(players[row, slot, 0]), float(players[row, slot, 1])
-            pvx, pvy = float(player_vel[row, slot, 0]), float(player_vel[row, slot, 1])
-            dist = float(distances[row, slot])
-            is_cancelled = bool(kick_cancel[row, slot])
+    actions = np.zeros((N, 3), dtype=np.int64)
 
-            if kickoff[row] and int(kickoff_team[row]) != team and slot != anchor:
-                lane = -48.0 if slot == striker else 48.0
-                target = np.asarray([-95.0, lane])
-                delta = target - (players[row, slot] + 2.0 * player_vel[row, slot])
-                actions[row, slot] = _quantize_direction(delta, dead=5.0)
-                continue
+    # --- Role 1: Dynamic Cierre (3rd Man — Sweeper / Build-up Pivot, steps out of the box!) ---
+    c_px = px[rows, cierre]
+    c_py = py[rows, cierre]
+    c_pvx = pvx[rows, cierre]
+    c_pvy = pvy[rows, cierre]
+    c_dist = distances[rows, cierre]
+    c_cancel = kick_cancel[rows, cierre]
 
-            if slot == anchor:
-                # Deep goal-line keeper: stays at x = -half_w + 18 (-532 px) when ball is in own half
-                # so no corner bounce at x = -534 can ever get behind the keeper.
-                in_goal_mouth = bx < -half_w + 115.0 and abs(by) <= goal_hh + 28.0 and dist < 95.0
-                if in_goal_mouth and px <= bx + 2.0:
-                    clear_y = -half_h * 0.75 if by < 0.0 else half_h * 0.75
-                    ax, ay = 200.0 - bx, clear_y - by
-                    norm = float(np.hypot(ax, ay)) + 1e-6
-                    target = np.asarray([bx + (ax / norm) * 10.0, by + (ay / norm) * 10.0])
-                    delta = target - players[row, slot]
-                    direction = _quantize_direction(delta, dead=2.5)
-                    can_clear = dist <= EFFECTIVE_KICK_DIST and px <= bx + 1.0 and not is_cancelled
-                    actions[row, slot] = direction + (9 if can_clear else 0)
-                else:
-                    guard_x = -half_w + 18.0 if bx < -80.0 else -half_w + 34.0
-                    if bvx < -0.25 and bx > guard_x:
-                        ticks_to_line = min(45.0, max(0.0, (bx - guard_x) / max(-bvx, 0.3)))
-                        proj_y = by + bvy * ticks_to_line
-                    else:
-                        proj_y = by * 0.50
-                    guard_y = float(np.clip(proj_y, -goal_hh + 15.0, goal_hh - 15.0))
-                    target = np.asarray([guard_x, guard_y])
-                    delta = target - (players[row, slot] + 2.5 * player_vel[row, slot])
-                    direction = _quantize_direction(delta, dead=3.5)
-                    can_kick = dist <= EFFECTIVE_KICK_DIST and px <= bx + 1.0 and not is_cancelled
-                    actions[row, slot] = direction + (9 if can_kick else 0)
+    in_goal_mouth = (bx < -half_w + 115.0) & (np.abs(by) <= goal_hh + 28.0) & (c_dist < 95.0) & (c_px <= bx + 2.0)
+    clear_y = np.where(by < 0.0, -half_h * 0.75, half_h * 0.75)
+    c_ax = 200.0 - bx
+    c_ay = clear_y - by
+    c_norm = np.hypot(c_ax, c_ay) + 1e-6
+    clear_tx = bx + (c_ax / c_norm) * 10.0
+    clear_ty = by + (c_ay / c_norm) * 10.0
 
-            elif slot == striker:
-                pinned_corner = bx > half_w - 65.0 and abs(by) > goal_hh + 25.0
-                pinned_sidewall = abs(by) > half_h - 28.0
-                if pinned_corner or pinned_sidewall:
-                    target = np.asarray([bx - 16.0, float(np.clip(by, -half_h + 18.0, half_h - 18.0))])
-                    delta = target - players[row, slot]
-                    direction = _quantize_direction(delta, dead=2.0)
-                    kick_ok = dist <= EFFECTIVE_KICK_DIST and px < bx - 2.0 and not is_cancelled
-                    actions[row, slot] = direction + (9 if kick_ok else 0)
-                    continue
+    guard_x = np.where(
+        bx < -half_w + 200.0,
+        np.clip(bx - 55.0, -half_w + 32.0, -half_w + 105.0),
+        np.where(
+            bx < -80.0,
+            np.clip(bx - 140.0, -395.0, -230.0),
+            np.clip(bx - 210.0, -240.0, 95.0),
+        ),
+    )
+    fast_shot_back = (bvx < -0.25) & (bx > guard_x)
+    ticks_to_line = np.clip((bx - guard_x) / np.maximum(-bvx, 0.3), 0.0, 45.0)
+    proj_y = np.where(fast_shot_back, by + bvy * ticks_to_line, by * np.where(bx < 80.0, 0.65, 0.80))
+    y_limit = np.where(bx < -half_w + 200.0, goal_hh - 14.0, half_h - 38.0)
+    guard_y = np.clip(proj_y, -y_limit, y_limit)
 
-                sup_x, sup_y = float(players[row, support, 0]), float(players[row, support, 1])
-                min_riv_to_sup = float(np.min(np.hypot(rivals[row, :, 0] - sup_x, rivals[row, :, 1] - sup_y)))
-                if (sup_x > bx + 85.0 and abs(sup_y) < half_h - 30.0
-                        and min_riv_to_sup > 95.0 and bx < half_w - 220.0):
-                    tx_aim, ty_aim = sup_x + 25.0, sup_y
-                elif bx < -half_w + 160.0:
-                    tx_aim, ty_aim = 150.0, (-half_h * 0.7 if by < 0.0 else half_h * 0.7)
-                else:
-                    tx_aim, ty_aim = goal_x, aim_y
+    c_tx = np.where(in_goal_mouth, clear_tx, guard_x)
+    c_ty = np.where(in_goal_mouth, clear_ty, guard_y)
+    c_lead = np.where(in_goal_mouth, 0.0, 2.5)
+    c_delta = np.stack((c_tx - (c_px + c_lead * c_pvx), c_ty - (c_py + c_lead * c_pvy)), axis=-1)
+    c_dead = np.where(in_goal_mouth, 2.5, 3.5)
+    c_dir = _quantize_direction_batch(c_delta, c_dead)
+    c_kick = (c_dist <= EFFECTIVE_KICK_DIST) & (c_px <= bx + 1.0) & (~c_cancel)
+    actions[rows, cierre] = c_dir + np.where(c_kick, 9, 0)
 
-                ax, ay = tx_aim - pred_bx, ty_aim - pred_by
-                anorm = float(np.hypot(ax, ay)) + 1e-6
-                ux, uy = ax / anorm, ay / anorm
+    # --- Role 2: Dynamic Support (2nd Man — Wing Passing Lane & Secondary Press) ---
+    u_px = px[rows, support]
+    u_py = py[rows, support]
+    u_pvx = pvx[rows, support]
+    u_pvy = pvy[rows, support]
+    u_dist = distances[rows, support]
+    u_cancel = kick_cancel[rows, support]
 
-                vx, vy = bx - px, by - py
-                vnorm = float(np.hypot(vx, vy)) + 1e-6
-                cos_align = (vx * ux + vy * uy) / vnorm
+    wing_sign = np.where(by > 20.0, -1.0, np.where(by < -20.0, 1.0, np.where(support == 1, -1.0, 1.0)))
+    sup_tx = np.where(
+        bx > -60.0,
+        np.clip(pred_bx + 15.0, -half_w + 180.0, half_w - 85.0),
+        np.clip(pred_bx * 0.65 - 65.0, -half_w + 175.0, 80.0),
+    )
+    sup_ty = np.where(
+        bx > -60.0,
+        np.clip(wing_sign * 105.0, -half_h + 35.0, half_h - 35.0),
+        np.clip(wing_sign * 65.0, -half_h + 40.0, half_h - 40.0),
+    )
+    u_delta = np.stack((sup_tx - (u_px + 2.0 * u_pvx), sup_ty - (u_py + 2.0 * u_pvy)), axis=-1)
+    u_dir = _quantize_direction_batch(u_delta, 5.5)
+    u_kick = (u_dist <= EFFECTIVE_KICK_DIST) & (u_px < bx - 2.0) & (~u_cancel)
+    actions[rows, support] = u_dir + np.where(u_kick, 9, 0)
 
-                if px > bx + 4.0:
-                    bypass_y = 32.0 if py >= by else -32.0
-                    target = np.asarray([pred_bx - 26.0, float(np.clip(pred_by + bypass_y, -half_h + 18.0, half_h - 18.0))])
-                    dead = 2.0
-                elif cos_align < 0.58 and dist > 26.0:
-                    lead = min(16.0, max(8.0, dist * 0.22))
-                    target = np.asarray([
-                        pred_bx - ux * lead,
-                        float(np.clip(pred_by - uy * lead, -half_h + 18.0, half_h - 18.0)),
-                    ])
-                    dead = 2.0
-                else:
-                    target = np.asarray([bx + ux * 18.0, float(np.clip(by + uy * 18.0, -half_h + 15.0, half_h - 15.0))])
-                    dead = 1.0
+    # --- Role 3: Dynamic Striker (1st Man — Presser / Ball Carrier / Passer / Finisher) ---
+    s_px = px[rows, striker]
+    s_py = py[rows, striker]
+    s_pvx = pvx[rows, striker]
+    s_pvy = pvy[rows, striker]
+    s_dist = distances[rows, striker]
+    s_cancel = kick_cancel[rows, striker]
 
-                delta = target - (players[row, slot] + 1.5 * np.asarray([pvx, pvy]))
-                direction = _quantize_direction(delta, dead=dead)
-                kick_ok = (
-                    dist <= EFFECTIVE_KICK_DIST
-                    and px < bx + 1.0
-                    and cos_align >= 0.42
-                    and not is_cancelled
-                )
-                actions[row, slot] = direction + (9 if kick_ok else 0)
+    sup_px = u_px
+    sup_py = u_py
+    sup_to_riv = np.hypot(rivals[:, :, 0] - sup_px[:, None], rivals[:, :, 1] - sup_py[:, None]).min(axis=1)
 
-            else:
-                if bx > -60.0:
-                    wing_sign = -1.0 if by > 20.0 else (1.0 if by < -20.0 else (-1.0 if slot == 1 else 1.0))
-                    sup_tx = float(np.clip(pred_bx - 45.0, -half_w + 160.0, half_w - 95.0))
-                    sup_ty = float(np.clip(wing_sign * 105.0, -half_h + 35.0, half_h - 35.0))
-                else:
-                    wing_sign = -1.0 if by > 0.0 else 1.0
-                    sup_tx = float(np.clip(pred_bx * 0.55 - 95.0, -half_w + 130.0, 60.0))
-                    sup_ty = float(np.clip(wing_sign * 58.0, -half_h + 40.0, half_h - 40.0))
-                target = np.asarray([sup_tx, sup_ty])
-                delta = target - (players[row, slot] + 2.0 * player_vel[row, slot])
-                direction = _quantize_direction(delta, dead=6.0)
-                kick_ok = (
-                    dist <= EFFECTIVE_KICK_DIST
-                    and px < bx - 2.0
-                    and not is_cancelled
-                )
-                actions[row, slot] = direction + (9 if kick_ok else 0)
+    opp_gk_idx = np.argmax(rivals[:, :, 0], axis=1)
+    opp_gk_y = rivals[rows, opp_gk_idx, 1]
+    aim_y = np.where(opp_gk_y >= 0.0, -46.0, 46.0)
+    aim_y = np.where(np.abs(by) > 135.0, np.sign(by) * 32.0, aim_y)
+    if rng is not None and np.any(kickoff):
+        # Diversidad de ángulo en el saque durante entrenamiento RL para impedir memorización de rutinas fijas
+        ko_jitter = rng.uniform(-38.0, 38.0, size=N)
+        aim_y = np.where(kickoff, aim_y + ko_jitter, aim_y)
+
+    pass_to_sup = (
+        (sup_px > bx + 65.0)
+        & (np.abs(sup_py) < half_h - 28.0)
+        & (sup_to_riv > 88.0)
+        & (bx < half_w - 190.0)
+    )
+    deep_clear = (~pass_to_sup) & (bx < -half_w + 155.0)
+    tx_aim = np.where(pass_to_sup, sup_px + 25.0, np.where(deep_clear, 160.0, goal_x))
+    ty_aim = np.where(
+        pass_to_sup,
+        sup_py,
+        np.where(deep_clear, np.where(by < 0.0, -half_h * 0.7, half_h * 0.7), aim_y),
+    )
+
+    ax = tx_aim - pred_bx
+    ay = ty_aim - pred_by
+    anorm = np.hypot(ax, ay) + 1e-6
+    ux = ax / anorm
+    uy = ay / anorm
+
+    vx = bx - s_px
+    vy = by - s_py
+    vnorm = np.hypot(vx, vy) + 1e-6
+    cos_align = (vx * ux + vy * uy) / vnorm
+
+    riv_to_ball = np.hypot(rivals[:, :, 0] - bx[:, None], rivals[:, :, 1] - by[:, None]).min(axis=1)
+    bspeed = np.hypot(bvx, bvy)
+    pinned = ((riv_to_ball < 85.0) | (bspeed < 0.6)) & (((bx > half_w - 65.0) & (np.abs(by) > goal_hh + 25.0)) | (np.abs(by) > half_h - 28.0))
+    ahead = (~pinned) & (s_px > bx + 4.0)
+    approach = (~pinned) & (~ahead) & (cos_align < 0.58) & (s_dist > 26.0)
+
+    bypass_y = np.where(s_py >= by, 32.0, -32.0)
+    lead = np.clip(s_dist * 0.22, 8.0, 16.0)
+
+    s_tx = np.where(
+        pinned, bx - 16.0,
+        np.where(ahead, pred_bx - 26.0,
+                 np.where(approach, pred_bx - ux * lead, bx + ux * 18.0)),
+    )
+    s_ty = np.where(
+        pinned, np.clip(by, -half_h + 18.0, half_h - 18.0),
+        np.where(
+            ahead, np.clip(pred_by + bypass_y, -half_h + 18.0, half_h - 18.0),
+            np.where(
+                approach, np.clip(pred_by - uy * lead, -half_h + 18.0, half_h - 18.0),
+                np.clip(by + uy * 18.0, -half_h + 15.0, half_h - 15.0),
+            ),
+        ),
+    )
+    s_vel_lead = np.where(pinned, 0.0, 1.5)
+    s_delta = np.stack((s_tx - (s_px + s_vel_lead * s_pvx), s_ty - (s_py + s_vel_lead * s_pvy)), axis=-1)
+    s_dead = np.where(pinned | ahead | approach, 2.0, 1.0)
+    s_dir = _quantize_direction_batch(s_delta, s_dead)
+    s_kick = np.where(
+        pinned,
+        (s_dist <= EFFECTIVE_KICK_DIST) & (s_px < bx - 2.0) & (~s_cancel),
+        (s_dist <= EFFECTIVE_KICK_DIST) & (s_px < bx + 1.0) & (cos_align >= 0.42) & (~s_cancel),
+    )
+    actions[rows, striker] = s_dir + np.where(s_kick, 9, 0)
+
+    def_ko = kickoff & (kickoff_team != team)
+    if np.any(def_ko):
+        ko_rows = np.flatnonzero(def_ko)
+        for role_arr, lane_y in ((striker, -48.0), (support, 48.0)):
+            sl = role_arr[ko_rows]
+            d_ko = np.stack((-95.0 - (px[ko_rows, sl] + 2.0 * pvx[ko_rows, sl]),
+                             lane_y - (py[ko_rows, sl] + 2.0 * pvy[ko_rows, sl])), axis=-1)
+            actions[ko_rows, sl] = _quantize_direction_batch(d_ko, 5.0)
 
     return actions
 
 
-def _scripted_actions(sim: BatchSim, team: int, half_w: float, half_h: float) -> np.ndarray:
+def _scripted_actions(sim: BatchSim, team: int, half_w: float, half_h: float,
+                      rng: np.random.Generator | None = None) -> np.ndarray:
+    """Vectorized baseline chase policy (100% parity with original `_scripted_actions`, ~25x faster)."""
     orient = 1.0 if team == 0 else -1.0
-    ball = sim.ball_pos * np.asarray([orient, 1.0])
-    players = sim.player_pos[:, 3 * team:3 * team + 3] * np.asarray([orient, 1.0])
-    actions = np.zeros((sim.N, 3), dtype=np.int64)
-    distances = np.linalg.norm(players - ball[:, None, :], axis=-1)
+    vec_orient = np.asarray([orient, 1.0], dtype=np.float64)
+    ball = sim.ball_pos * vec_orient
+    players = sim.player_pos[:, 3 * team:3 * team + 3] * vec_orient
+    distances = np.hypot(players[:, :, 0] - ball[:, None, 0], players[:, :, 1] - ball[:, None, 1])
     striker = distances[:, 1:].argmin(axis=1) + 1
-    for row in range(sim.N):
-        for slot in range(3):
-            if slot == 0:
-                target = np.asarray([-half_w + 55.0, np.clip(ball[row, 1] * 0.35,
-                                                             -0.55 * half_h,
-                                                             0.55 * half_h)])
-            elif slot == striker[row]:
-                target = ball[row] + np.asarray([-16.0, 0.0])
-            else:
-                lane = -1.0 if slot == 1 else 1.0
-                target = ball[row] + np.asarray([-110.0, lane * 65.0])
-            delta = target - players[row, slot]
-            direction = _quantize_direction(delta)
-            kick = (slot == striker[row] and distances[row, slot] <= 25.0
-                    and players[row, slot, 0] < ball[row, 0] - 3.0)
-            actions[row, slot] = direction + (9 if kick else 0)
-    return actions
+
+    targets = np.empty_like(players)
+    targets[:, 0, 0] = -half_w + 55.0
+    targets[:, 0, 1] = np.clip(ball[:, 1] * 0.35, -0.55 * half_h, 0.55 * half_h)
+    targets[:, 1, 0] = ball[:, 0] - 110.0
+    targets[:, 1, 1] = ball[:, 1] - 65.0
+    targets[:, 2, 0] = ball[:, 0] - 110.0
+    targets[:, 2, 1] = ball[:, 1] + 65.0
+
+    rows = np.arange(sim.N)
+    targets[rows, striker, 0] = ball[:, 0] - 16.0
+    targets[rows, striker, 1] = ball[:, 1]
+    if rng is not None and np.any(getattr(sim, "kickoff", False)):
+        ko = sim.kickoff
+        targets[ko, striker[ko], 1] += rng.uniform(-14.0, 14.0, size= int(ko.sum()))
+
+    delta = targets - players
+    directions = _quantize_direction_batch(delta, dead=8.0)
+    is_striker = (np.arange(3)[None, :] == striker[:, None])
+    kick = is_striker & (distances <= 25.0) & (players[:, :, 0] < ball[:, None, 0] - 3.0)
+    return directions + np.where(kick, 9, 0)
 
 
 class TacticalPolicy(Policy):
-    """Role-coordinated 3v3 futsal policy with kick-cancel management and corner finishing."""
+    """Dynamic 3-man rotational futsal policy with high line, wing passing lanes, and kick_cancel management."""
 
     def __init__(self, stadium):
         self.name = "tactical"
@@ -453,21 +571,6 @@ class RepeatPolicy(Policy):
         return previous[:, slots].copy()
 
 
-def _quantize_direction(delta: np.ndarray, dead: float = 8.0) -> int:
-    if np.linalg.norm(delta) < dead:
-        return 0
-    best, best_dot = 0, -float("inf")
-    length = float(np.linalg.norm(delta))
-    for direction, (dx, dy) in enumerate(zip(MOVE_DX, MOVE_DY)):
-        if direction == 0:
-            continue
-        norm = np.hypot(dx, dy)
-        dot = (dx * delta[0] + dy * delta[1]) / (norm * length)
-        if dot > best_dot:
-            best, best_dot = direction, dot
-    return best
-
-
 def _player_states(sim: BatchSim) -> np.ndarray:
     states = np.empty((sim.N, 7, 4), dtype=np.float32)
     states[:, 0, :2] = sim.ball_pos
@@ -479,10 +582,12 @@ def _player_states(sim: BatchSim) -> np.ndarray:
     return states
 
 
-def play_batch(red: Policy, blue: Policy, *, matches: int, minutes: float, seed: int) -> list[dict]:
+def play_batch(red: Policy, blue: Policy, *, matches: int, minutes: float, seed: int,
+               capture_trajectory: bool = False) -> list[dict]:
     if matches < 1 or minutes <= 0:
         raise ValueError("matches/minutes inválidos")
     stadium = load_stadium(STADIUM)
+    half_w = stadium.field_half_w
     sim = BatchSim(matches, 3, 3, stadium=stadium, seed=seed)
     rng = np.random.default_rng(seed)
     kickoff_team = rng.integers(0, 2, size=matches)
@@ -493,13 +598,17 @@ def play_batch(red: Policy, blue: Policy, *, matches: int, minutes: float, seed:
     pending_passer = np.full(matches, -1, dtype=np.int64)
     kickoff_ticks = np.zeros(matches, dtype=np.int64)
     goals = np.zeros((matches, 2), dtype=np.int64)
-    team_metrics = np.zeros((matches, 2, 8), dtype=np.float64)
-    # kick, shots, completed passes, turnovers, touches, movement decisions, speed, kickoff safety
+    team_metrics = np.zeros((matches, 2, 11), dtype=np.float64)
+    # 0:kicks, 1:shots, 2:completedPasses, 3:turnovers, 4:touches,
+    # 5:movementDecisions, 6:speed, 7:kickoffSafety,
+    # 8:boxCampSamples, 9:ballAdvancedSamples, 10:roleRotations
+    prev_last_man = np.full((matches, 2), -1, dtype=np.int64)
     tick_limit = int(round(minutes * 60 * 60))
     ticks_played = np.zeros(matches, dtype=np.int64)
     spread_sum = np.zeros((matches, 2), dtype=np.float64)
     spread_samples = np.zeros(matches, dtype=np.int64)
     decision = 0
+    trajectory = [[] for _ in range(matches)] if capture_trajectory else None
 
     while np.any(ticks_played < tick_limit):
         live = ticks_played < tick_limit
@@ -511,29 +620,42 @@ def play_batch(red: Policy, blue: Policy, *, matches: int, minutes: float, seed:
         applied = intents
         previous[live] = applied[live]
         has_previous[live] = True
-        native_applied = applied.copy()
-        for team in range(2):
-            slots = slice(3 * team, 3 * team + 3)
-            for match in range(matches):
-                native_applied[match, slots] = [action_to_sim(action, team)
-                                                for action in applied[match, slots]]
+        native_applied = np.empty_like(applied)
+        native_applied[:, :3] = applied[:, :3]
+        native_applied[:, 3:] = MIRROR_X_ACTION[applied[:, 3:]]
+
         team_metrics[live, 0, 5] += np.count_nonzero(applied[live, :3] % 9, axis=1)
         team_metrics[live, 1, 5] += np.count_nonzero(applied[live, 3:] % 9, axis=1)
-        speed = np.linalg.norm(sim.player_vel, axis=-1)
+        speed = np.hypot(sim.player_vel[:, :, 0], sim.player_vel[:, :, 1])
         team_metrics[live, 0, 6] += speed[live, :3].mean(axis=1)
         team_metrics[live, 1, 6] += speed[live, 3:].mean(axis=1)
+
+        # Tactical metrics: box camping when ball is advanced & dynamic last-man rotations
+        p_pos = sim.player_pos
+        b_pos = sim.ball_pos
+        for team_idx in range(2):
+            orient = 1.0 if team_idx == 0 else -1.0
+            team_x = p_pos[:, 3 * team_idx:3 * team_idx + 3, 0] * orient
+            ball_x = b_pos[:, 0] * orient
+            cur_last = np.argmin(team_x, axis=1)
+            rotated = live & (~sim.kickoff) & (prev_last_man[:, team_idx] >= 0) & (cur_last != prev_last_man[:, team_idx])
+            team_metrics[rotated, team_idx, 10] += 1.0
+            prev_last_man[live, team_idx] = cur_last[live]
+            adv = live & (~sim.kickoff) & (ball_x > -half_w + 220.0)
+            if np.any(adv):
+                team_metrics[adv, team_idx, 9] += 1.0
+                camp = adv & (team_x.min(axis=1) < -half_w + 115.0)
+                team_metrics[camp, team_idx, 8] += 1.0
+
         if decision % 10 == 0:
-            positions = sim.player_pos
-            for team in range(2):
-                side = positions[:, 3 * team:3 * team + 3]
-                d01 = np.linalg.norm(side[:, 0] - side[:, 1], axis=1)
-                d02 = np.linalg.norm(side[:, 0] - side[:, 2], axis=1)
-                d12 = np.linalg.norm(side[:, 1] - side[:, 2], axis=1)
-                spread_sum[live, team] += ((d01 + d02 + d12) / 3.0)[live]
+            for team_idx in range(2):
+                side = p_pos[:, 3 * team_idx:3 * team_idx + 3]
+                d01 = np.hypot(side[:, 0, 0] - side[:, 1, 0], side[:, 0, 1] - side[:, 1, 1])
+                d02 = np.hypot(side[:, 0, 0] - side[:, 2, 0], side[:, 0, 1] - side[:, 2, 1])
+                d12 = np.hypot(side[:, 1, 0] - side[:, 2, 0], side[:, 1, 1] - side[:, 2, 1])
+                spread_sum[live, team_idx] += ((d01 + d02 + d12) / 3.0)[live]
             spread_samples[live] += 1
 
-        # Track kick_cancel at the start of the 3-frame window: if a player wants to kick (action >= 9)
-        # while kick_cancel is True, pulse movement-only on sub-frame 0 so kick_cancel resets for sub-frame 1.
         rearm_mask = (native_applied >= 9) & sim.kick_cancel
         step_actions = native_applied.copy()
         for sub_frame in range(FRAME_SKIP):
@@ -544,40 +666,48 @@ def play_batch(red: Policy, blue: Policy, *, matches: int, minutes: float, seed:
                 step_actions = np.where(rearm_mask, native_applied % 9, native_applied)
             elif sub_frame == 1 and np.any(rearm_mask):
                 step_actions = native_applied.copy()
-            ball_before = sim.ball_pos.copy()
+            ball_before_x = sim.ball_pos[:, 0].copy()
             sim.step(step_actions)
             if np.any(sim.kicked):
                 step_actions = np.where(sim.kicked, step_actions % 9, step_actions)
-            for match in np.flatnonzero(active):
+
+            ticks_played[active] += 1
+
+            # Process kicks & shots only on matches that registered a kick
+            kicked_matches = np.flatnonzero(active & sim.kicked.any(axis=1))
+            for match in kicked_matches:
                 kickers = np.flatnonzero(sim.kicked[match])
                 for player in kickers:
-                    team = int(player // 3)
-                    team_metrics[match, team, 0] += 1
-                    orient = 1.0 if team == 0 else -1.0
-                    if (ball_before[match, 0] * orient > 0.35 * stadium.goal_x
+                    team_idx = int(player // 3)
+                    team_metrics[match, team_idx, 0] += 1
+                    orient = 1.0 if team_idx == 0 else -1.0
+                    if (ball_before_x[match] * orient > 0.35 * stadium.goal_x
                             and sim.ball_vel[match, 0] * orient > 0.5):
-                        team_metrics[match, team, 1] += 1
+                        team_metrics[match, team_idx, 1] += 1
+                pending_passer[match] = int(kickers[-1])
 
+            # Process touches, completed passes & turnovers only on matches with a touch
+            touched_matches = np.flatnonzero(active & sim.touch.any(axis=1))
+            for match in touched_matches:
                 touched = np.flatnonzero(sim.touch[match])
-                if len(touched):
-                    player = int(touched[-1])
-                    team = player // 3
-                    team_metrics[match, team, 4] += 1
-                    if owner[match] >= 0 and owner[match] // 3 != team:
-                        team_metrics[match, team, 3] += 1
-                        pending_passer[match] = -1
-                    elif (pending_passer[match] >= 0 and pending_passer[match] // 3 == team
-                          and pending_passer[match] != player):
-                        team_metrics[match, team, 2] += 1
-                        pending_passer[match] = -1
-                    owner[match] = player
-                if len(kickers):
-                    pending_passer[match] = int(kickers[-1])
+                player = int(touched[-1])
+                team_idx = player // 3
+                team_metrics[match, team_idx, 4] += 1
+                if owner[match] >= 0 and owner[match] // 3 != team_idx:
+                    team_metrics[match, team_idx, 3] += 1
+                    pending_passer[match] = -1
+                elif (pending_passer[match] >= 0 and pending_passer[match] // 3 == team_idx
+                      and pending_passer[match] != player):
+                    team_metrics[match, team_idx, 2] += 1
+                    pending_passer[match] = -1
+                owner[match] = player
 
-                goal = int(sim.goal[match])
-                ticks_played[match] += 1
-                if goal:
-                    scoring_team = 0 if goal > 0 else 1
+            # Vectorized goal and kickoff timeout handling
+            scored_matches = np.flatnonzero(active & (sim.goal != 0))
+            if len(scored_matches):
+                for match in scored_matches:
+                    g = int(sim.goal[match])
+                    scoring_team = 0 if g > 0 else 1
                     conceding_team = 1 - scoring_team
                     goals[match, scoring_team] += 1
                     sim.reset_kickoff([match], kickoff_team=conceding_team)
@@ -586,38 +716,58 @@ def play_batch(red: Policy, blue: Policy, *, matches: int, minutes: float, seed:
                     pending_passer[match] = -1
                     previous[match] = 0
                     has_previous[match] = False
-                elif sim.kickoff[match]:
-                    kickoff_ticks[match] += 1
-                    if kickoff_ticks[match] >= KICKOFF_SAFETY_TICKS:
-                        sim.kickoff[match] = False
-                        sim.mask[match, sim.first_player:] = sim.base_mask[sim.first_player:]
-                        team_metrics[match, int(sim.kickoff_team[match]), 7] += 1
-                        kickoff_ticks[match] = 0
-                else:
+                    prev_last_man[match] = -1
+
+            no_goal_active = active & (sim.goal == 0)
+            ko_active = no_goal_active & sim.kickoff
+            kickoff_ticks[ko_active] += 1
+            kickoff_ticks[no_goal_active & (~sim.kickoff)] = 0
+            expired_ko = np.flatnonzero(ko_active & (kickoff_ticks >= KICKOFF_SAFETY_TICKS))
+            if len(expired_ko):
+                for match in expired_ko:
+                    sim.kickoff[match] = False
+                    sim.mask[match, sim.first_player:] = sim.base_mask[sim.first_player:]
+                    team_metrics[match, int(sim.kickoff_team[match]), 7] += 1
                     kickoff_ticks[match] = 0
+
+            if trajectory is not None:
+                for match in np.flatnonzero(active):
+                    trajectory[match].append({
+                        "ball": sim.ball_pos[match].tolist(),
+                        "players": sim.player_pos[match].tolist(),
+                        "goals": goals[match].tolist(),
+                        "goal": int(sim.goal[match]),
+                    })
         decision += 1
 
     result = []
     for match in range(matches):
-        result.append({
+        game = {
             "goals": goals[match].tolist(),
             "ticks": int(ticks_played[match]),
             "safetyKickoffs": int(team_metrics[match, :, 7].sum()),
             "teams": [
                 {
-                    "kicks": int(team_metrics[match, team, 0]),
-                    "shots": int(team_metrics[match, team, 1]),
-                    "completedPasses": int(team_metrics[match, team, 2]),
-                    "turnovers": int(team_metrics[match, team, 3]),
-                    "touches": int(team_metrics[match, team, 4]),
-                    "movementDecisions": int(team_metrics[match, team, 5]),
-                    "meanPlayerSpeed": float(team_metrics[match, team, 6] / max(1, decision)),
-                    "safetyKickoffs": int(team_metrics[match, team, 7]),
-                    "meanTeamSpread": float(spread_sum[match, team] / max(1, spread_samples[match])),
+                    "kicks": int(team_metrics[match, team_idx, 0]),
+                    "shots": int(team_metrics[match, team_idx, 1]),
+                    "completedPasses": int(team_metrics[match, team_idx, 2]),
+                    "turnovers": int(team_metrics[match, team_idx, 3]),
+                    "touches": int(team_metrics[match, team_idx, 4]),
+                    "movementDecisions": int(team_metrics[match, team_idx, 5]),
+                    "meanPlayerSpeed": float(team_metrics[match, team_idx, 6] / max(1, decision)),
+                    "safetyKickoffs": int(team_metrics[match, team_idx, 7]),
+                    "meanTeamSpread": float(spread_sum[match, team_idx] / max(1, spread_samples[match])),
+                    "ownBoxCampingFrac": float(
+                        team_metrics[match, team_idx, 8] / max(1.0, team_metrics[match, team_idx, 9])
+                    ),
+                    "roleRotations": int(team_metrics[match, team_idx, 10]),
                 }
-                for team in range(2)
+                for team_idx in range(2)
             ],
-        })
+        }
+        if trajectory is not None:
+            game["trajectory"] = trajectory[match]
+        result.append(game)
     return result
 
 
@@ -625,7 +775,10 @@ def _aggregate(games: list[dict], policy_role: int) -> dict:
     wins = draws = losses = goals_for = goals_against = 0
     stat_names = ("kicks", "shots", "completedPasses", "turnovers", "touches",
                   "movementDecisions", "meanPlayerSpeed", "meanTeamSpread", "safetyKickoffs")
+    optional_names = ("ownBoxCampingFrac", "roleRotations")
     stats = {name: 0.0 for name in stat_names}
+    opt_stats = {name: 0.0 for name in optional_names}
+    has_opt = {name: False for name in optional_names}
     for game in games:
         own_team = game["firstPolicyTeam"] if policy_role == 0 else 1 - game["firstPolicyTeam"]
         other_team = 1 - own_team
@@ -635,15 +788,24 @@ def _aggregate(games: list[dict], policy_role: int) -> dict:
         wins += own > other
         losses += own < other
         draws += own == other
+        team_dict = game["teams"][own_team]
         for name in stat_names:
-            stats[name] += game["teams"][own_team][name]
+            stats[name] += team_dict[name]
+        for name in optional_names:
+            if name in team_dict:
+                opt_stats[name] += team_dict[name]
+                has_opt[name] = True
     count = max(1, len(games))
-    return {
+    out = {
         "matches": len(games), "wins": int(wins), "draws": int(draws), "losses": int(losses),
         "winRate": float(wins / count), "goalFor": int(goals_for), "goalAgainst": int(goals_against),
         "goalDifferencePerMatch": float((goals_for - goals_against) / count),
         **{f"{name}PerMatch": float(value / count) for name, value in stats.items()},
     }
+    for name in optional_names:
+        if has_opt[name]:
+            out[f"{name}PerMatch"] = float(opt_stats[name] / count)
+    return out
 
 
 def _load_policy_spec(spec: str | Path, stadium, device, *, assist_mode: str = "hybrid") -> Policy:
@@ -661,6 +823,7 @@ def evaluate(checkpoint: Path | str, pool: list[Path | str], *, matches: int, mi
              seed: int, device_name: str, threads: int, assist_mode: str = "hybrid") -> dict:
     if matches < 1 or minutes <= 0 or threads < 1:
         raise ValueError("parámetros de evaluación inválidos")
+    set_physics_threads(threads)
     if torch is not None:
         torch.set_num_threads(threads)
         torch.manual_seed(seed)
@@ -704,7 +867,7 @@ def evaluate(checkpoint: Path | str, pool: list[Path | str], *, matches: int, mi
     from tools.x3futsal_audit import stadium_identity
     identity = getattr(policies[0], "stadium_identity", None) or stadium_identity(STADIUM)
     return {
-        "version": "x3-closed-loop-eval-4",
+        "version": "x3-closed-loop-eval-5",
         "stadium": stadium.name,
         "stadiumIdentity": identity,
         "seed": seed,

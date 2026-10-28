@@ -7,8 +7,10 @@ from learn.x3futsal_eval import (
     TacticalPolicy,
     _aggregate,
     action_to_sim,
+    action_to_sim_batch,
     play_batch,
 )
+from sim.physics import BatchSim
 from sim.stadium import load_stadium
 
 
@@ -32,6 +34,9 @@ def test_model_actions_mirror_horizontally_for_blue():
     assert action_to_sim(2, 1) == 8
     assert action_to_sim(1, 1) == 1
     assert action_to_sim(11, 1) == 17
+    all_acts = np.arange(18, dtype=np.int64)
+    assert np.array_equal(action_to_sim_batch(all_acts, 0), np.array([action_to_sim(a, 0) for a in all_acts]))
+    assert np.array_equal(action_to_sim_batch(all_acts, 1), np.array([action_to_sim(a, 1) for a in all_acts]))
 
 
 def test_scripted_striker_excludes_goalkeeper():
@@ -65,6 +70,25 @@ def test_tactical_policy_completes_kickoff_and_scores_against_still():
     assert all(game["teams"][0]["safetyKickoffs"] == 0 for game in games)
     assert sum(game["goals"][0] for game in games) >= 2
     assert all(game["goals"][1] == 0 for game in games)
+
+
+def test_tactical_policy_rotates_roles_and_avoids_box_camping():
+    stadium = load_stadium(STADIUM)
+    games = play_batch(TacticalPolicy(stadium), ScriptedPolicy(stadium), matches=2, minutes=0.5, seed=20261028)
+    for game in games:
+        tactical_team = game["teams"][0]
+        # Verify players rotate roles dynamically and do not stay anchored inside their own penalty box
+        assert tactical_team["ownBoxCampingFrac"] < 0.15
+        assert tactical_team["roleRotations"] >= 4
+
+
+def test_open_play_tactical_reset_places_players_outside_goal_box():
+    stadium = load_stadium(STADIUM)
+    sim = BatchSim(8, 3, 3, stadium=stadium, seed=42)
+    sim.reset_open_play_tactical(np.arange(8))
+    assert not np.any(sim.kickoff)
+    assert np.all(np.abs(sim.player_pos[:, :, 0]) <= stadium.field_half_w - 60.0)
+    assert np.all(np.abs(sim.player_pos[:, :, 1]) <= stadium.field_half_h - 25.0)
 
 
 def test_play_batch_rearms_kick_cancel_when_policy_holds_kick():

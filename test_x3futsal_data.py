@@ -13,10 +13,14 @@ from learn.x3futsal_data import (
     extract_recording,
     featurize,
     featurize_tactical,
+    featurize_tactical_team,
     flip_action_y,
     mirror_states_y,
 )
+from learn.x3futsal_eval import STADIUM, _player_states
 from learn.x3futsal_policy import decode_actions_np
+from sim.physics import BatchSim
+from sim.stadium import load_stadium
 
 
 def _tick(frame, inputs, state=1):
@@ -136,6 +140,28 @@ def test_tactical_observation_is_mirror_invariant_and_detects_kick_reach():
     assert rivals.shape == (2, 3, TACTICAL_ENTITY_DIM)
     assert own[0, 12] == 1.0  # ball_in_reach (distance 18 <= 25.25)
     assert own[0, 24] == 1.0  # is_closest_to_ball
+
+
+def test_featurize_tactical_team_matches_featurize_tactical():
+    stadium = load_stadium(STADIUM)
+    sim = BatchSim(16, 3, 3, stadium=stadium, seed=19)
+    sim.reset_random(np.arange(16))
+    sim.kick_cancel = np.random.default_rng(7).random((16, 6)) < 0.35
+    for team in (0, 1):
+        slots = np.arange(3 * team, 3 * team + 3, dtype=np.int64)
+        states = _player_states(sim)
+        rep = np.repeat(states[:, None, :, :], 3, axis=1).reshape(16 * 3, 7, 4)
+        actor_slots = np.tile(slots, 16)
+        kc = sim.kick_cancel[:, slots].reshape(-1)
+        ref_o, ref_m, ref_r = featurize_tactical(
+            rep, actor_slots, stadium.field_half_w, stadium.field_half_h, stadium.goal_x, kick_cancel=kc
+        )
+        fast_o, fast_m, fast_r = featurize_tactical_team(
+            sim, team, stadium.field_half_w, stadium.field_half_h, stadium.goal_x
+        )
+        assert np.allclose(ref_o, fast_o, atol=1e-6)
+        assert np.allclose(ref_m, fast_m, atol=1e-6)
+        assert np.allclose(ref_r, fast_r, atol=1e-6)
 
 
 def test_decode_actions_suppresses_out_of_reach_kicks_and_respects_kick_cancel():

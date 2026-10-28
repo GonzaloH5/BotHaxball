@@ -43,13 +43,7 @@ def decode_actions_np(
 ) -> np.ndarray:
     """Decode 18-class logits into actions by decoupling movement and kick decisions.
 
-    Fixes three closed-loop failure modes identified in Phase 3:
-    1. Marginalizes movement over kick/no-kick (`probs[:, :9] + probs[:, 9:]`) so split kick
-       probabilities do not corrupt movement direction or force `stay`.
-    2. Escapes passive `stay` (`direction == 0`) when total non-stay probability exceeds
-       `stay_escape_threshold`.
-    3. Suppresses premature kick bits outside `max_kick_dist_px` (avoiding the 24.5%
-       `kickingAcceleration` penalty) and releases kick for 1 step when `kick_cancel` is active.
+    Fully vectorized across the batch (both greedy and stochastic inverse-CDF modes).
     """
     logits = np.asarray(logits, dtype=np.float64)
     temp = max(float(temperature), 1e-3)
@@ -69,13 +63,15 @@ def decode_actions_np(
             directions[escape_mask] = move_probs[escape_mask, 1:].argmax(axis=-1) + 1
         kick = kick_probs >= kick_threshold
     else:
-        directions = np.empty(len(probs), dtype=np.int64)
-        for i in range(len(probs)):
-            p = move_probs[i].copy()
-            if 1.0 - p[0] >= stay_escape_threshold:
-                p[0] *= 0.35
-                p /= p.sum()
-            directions[i] = int(rng.choice(9, p=p))
+        p = move_probs.copy()
+        escape_mask = (1.0 - p[:, 0]) >= stay_escape_threshold
+        if np.any(escape_mask):
+            p[escape_mask, 0] *= 0.35
+            p[escape_mask] /= np.maximum(p[escape_mask].sum(axis=-1, keepdims=True), 1e-12)
+        cdf = np.cumsum(p, axis=-1)
+        cdf[:, -1] = 1.0
+        u = rng.random((len(probs), 1))
+        directions = (cdf >= u).argmax(axis=-1).astype(np.int64)
         kick = rng.random(len(probs)) < np.clip(kick_probs / max(kick_threshold * 2.0, 1e-6), 0.0, 1.0)
 
     if ball_dist_px is not None:
@@ -169,16 +165,24 @@ if nn is not None:
         def _pool(entities: torch.Tensor) -> torch.Tensor:
             return torch.cat((entities.mean(dim=1), entities.max(dim=1).values), dim=-1)
 
+        @staticmethod
+        def _encode_entities(net: nn.Sequential, entities: torch.Tensor, ctx: torch.Tensor) -> torch.Tensor:
+            """Zero-allocation linear decomposition: avoids expanding and concatenating `ctx` across entities."""
+            first: nn.Linear = net[0]
+            w = first.weight
+            b = first.bias
+            ent_proj = F.linear(entities, w[:, :TACTICAL_ENTITY_DIM])
+            ctx_proj = F.linear(ctx, w[:, TACTICAL_ENTITY_DIM:], b).unsqueeze(1)
+            return net[1:](ent_proj + ctx_proj)
+
         def features(self, own: torch.Tensor, mates: torch.Tensor, rivals: torch.Tensor,
                      previous_action: torch.Tensor | None = None,
                      has_previous: torch.Tensor | None = None) -> torch.Tensor:
-            ctx = own[:, :TACTICAL_CTX_DIM].unsqueeze(1)
-            mates_in = torch.cat((mates, ctx.expand(-1, mates.shape[1], -1)), dim=-1)
-            rivals_in = torch.cat((rivals, ctx.expand(-1, rivals.shape[1], -1)), dim=-1)
+            ctx = own[:, :TACTICAL_CTX_DIM]
             parts = [
                 self.self_net(own),
-                self._pool(self.mate_net(mates_in)),
-                self._pool(self.rival_net(rivals_in)),
+                self._pool(self._encode_entities(self.mate_net, mates, ctx)),
+                self._pool(self._encode_entities(self.rival_net, rivals, ctx)),
             ]
             if self.use_history:
                 if previous_action is None or has_previous is None:
